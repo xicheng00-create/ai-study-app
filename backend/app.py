@@ -10,7 +10,7 @@ from flask import Flask, jsonify, send_from_directory
 from middleware.errors import e_internal
 
 # 版本号诚实规则：任何入 CHANGELOG 的改动必须同步 bump 此常量
-version = "0.1.0"
+version = "1.0.0"
 
 
 def create_app(env=None):
