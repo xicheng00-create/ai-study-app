@@ -5,13 +5,18 @@ import os
 
 
 class BaseConfig:
-    SECRET_KEY = os.environ.get("APP_SECRET", "dev-secret-change-me")
+    SECRET_KEY = os.environ.get("APP_SECRET", "dev-secret-change-me-0123456789abcdef0123456789abcdef")
     JWT_SECRET = os.environ.get("JWT_SECRET", SECRET_KEY)
     ACCESS_TOKEN_TTL_HOURS = int(os.environ.get("ACCESS_TOKEN_TTL_HOURS", "12"))
     RATE_LIMIT_PER_DAY = int(os.environ.get("RATE_LIMIT_PER_DAY", "60"))
     DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
     DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+    MAX_CONTENT_LENGTH = 32 * 1024 * 1024  # 上传上限（MAT-002 ≤30MB，留余量）
+    UPLOAD_FOLDER = os.environ.get(
+        "UPLOAD_FOLDER",
+        os.path.join(os.path.dirname(__file__), "..", "uploads"),
+    )
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "DATABASE_URL", "sqlite:///" + os.path.join(os.path.dirname(__file__), "..", "instance", "aistudy.sqlite3")
     )
