@@ -6,7 +6,8 @@
 import os
 
 from config import config_map
-from flask import Flask, send_from_directory
+from flask import Flask, jsonify, send_from_directory
+from middleware.errors import e_internal
 
 # 版本号诚实规则：任何入 CHANGELOG 的改动必须同步 bump 此常量
 version = "0.1.0"
@@ -17,9 +18,46 @@ def create_app(env=None):
     cfg = config_map.get(env or os.environ.get("FLASK_ENV", "development"))
     app.config.from_object(cfg)
 
-    # 注册蓝图（模块未落地前先占位，逐步由 Claude Code 填充）
+    # 数据层：连接 teardown + 建表 + 种子教师
+    from data.db import init_app as db_init_app
+    from data.db import init_db
+    from data.seed import seed_teacher
+
+    db_init_app(app)
+    with app.app_context():
+        init_db(app)
+        seed_teacher()
+
+    # 蓝图注册（REQ 追溯：AUTH/MAT/CHAT/QUIZ/PROG/RPT/ADMIN/DEP）
+    from api.attempts import attempts_bp
+    from api.auth import auth_bp
+    from api.chapters import chapters_bp
+    from api.conversations import conversations_bp
     from api.health import health_bp
+    from api.materials import materials_bp
+    from api.progress import progress_bp
+    from api.quizzes import quizzes_bp
+    from api.reports import reports_bp
+    from api.teacher import teacher_bp
+
     app.register_blueprint(health_bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(chapters_bp)
+    app.register_blueprint(materials_bp)
+    app.register_blueprint(conversations_bp)
+    app.register_blueprint(quizzes_bp)
+    app.register_blueprint(attempts_bp)
+    app.register_blueprint(progress_bp)
+    app.register_blueprint(reports_bp)
+    app.register_blueprint(teacher_bp)
+
+    # 统一兜底异常 → JSON（不泄露堆栈）
+    @app.errorhandler(Exception)
+    def handle_exception(exc):
+        from werkzeug.exceptions import HTTPException
+        if isinstance(exc, HTTPException):
+            return jsonify({"code": f"E_HTTP_{exc.code}", "msg": exc.description}), exc.code
+        return e_internal()
 
     # 静态托管 frontend/（同源，避免 CORS）
     frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
@@ -39,11 +77,9 @@ def create_app(env=None):
     return app
 
 
-app = create_app()
-
-
 if __name__ == "__main__":
     from waitress import serve
+    app = create_app()
     port = int(os.environ.get("PORT", "5001"))
     host = os.environ.get("HOST", "127.0.0.1")
     print(f"[boot] AI Study Group {version} serving on {host}:{port}")
