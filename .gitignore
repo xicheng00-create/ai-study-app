@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Runtime data (never commit)
+instance/
+data/*.db
+data/*.sqlite
+*.sqlite*
+chroma_db/
+uploads/
+files/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Mac
+.DS_Store
+
+# 内部工作日志（非项目产物）
+.workbuddy/

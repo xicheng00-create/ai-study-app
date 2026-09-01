@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="gltN95UHPftASGiWMCED4c">
+<head data-page-node-id="dsZW4c5ZIob4L80727XJf2">
+<meta charset="UTF-8" data-page-node-id="HB4wk8blEldlQ8dlUZVU8J" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" data-page-node-id="CsyntKFpP05Jz2phYz54VI" />
+<title>AI 学习小组 · 原型 v3</title>
+<style>
+  :root{
+    --bg:#FBF7F2; --surface:#FFFFFF; --surface-2:#F6F1EB;
+    --accent:#F2714E; --accent-soft:#FCEBE4; --accent-strong:#E25C3A;
+    --teacher:#5B5BD6; --teacher-soft:#ECECFB;
+    --text:#1D1D1F; --text-2:#86868B; --text-3:#B0A89F;
+    --border:#EDE6DE; --green:#34C759; --amber:#FF9F0A; --red:#FF3B30;
+    --radius:18px; --radius-s:12px; --shadow:0 6px 24px rgba(40,30,20,.08);
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Helvetica Neue",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{font-family:var(--font);background:#E9E4DD;color:var(--text);display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+  .phone{width:390px;height:844px;background:var(--bg);border-radius:46px;position:relative;box-shadow:0 30px 70px rgba(0,0,0,.35),0 0 0 11px #1c1c1e,0 0 0 13px #2c2c2e;overflow:hidden;display:flex;flex-direction:column}
+  .notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:150px;height:30px;background:#1c1c1e;border-radius:0 0 18px 18px;z-index:50}
+  .statusbar{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:600;z-index:40;flex-shrink:0}
+  .statusbar .right{display:flex;gap:6px;align-items:center}
+  .screen{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;position:relative;display:flex;flex-direction:column}
+  .screen::-webkit-scrollbar{display:none}
+  .appbar{display:flex;align-items:center;justify-content:space-between;padding:6px 20px 12px;flex-shrink:0}
+  .appbar h1{font-size:22px;font-weight:700;letter-spacing:-.3px}
+  .appbar .sub{font-size:12px;color:var(--text-2);font-weight:500;margin-top:2px}
+  .avatar{width:36px;height:36px;border-radius:50%;background:var(--accent-soft);color:var(--accent-strong);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;border:1px solid var(--border);cursor:pointer}
+  .avatar.teacher{background:var(--teacher-soft);color:var(--teacher)}
+  .content{padding:4px 20px 110px;flex:1}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
+  .card.sm{padding:13px 15px}
+  .muted{color:var(--text-2);font-size:13px}
+  .pill{display:inline-flex;align-items:center;gap:5px;background:var(--surface-2);color:var(--text-2);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600}
+  .pill.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .pill.teacher{background:var(--teacher);color:#fff;border-color:var(--teacher)}
+  .pill-wrap{display:flex;gap:8px;overflow-x:auto;padding:2px 0 4px;scrollbar-width:none}
+  .pill-wrap::-webkit-scrollbar{display:none}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:14px;padding:13px;width:100%;font-size:15px;font-weight:700;font-family:var(--font);cursor:pointer;transition:.15s}
+  .btn:active{transform:scale(.98)}
+  .btn.sec{background:var(--surface-2);color:var(--text)}
+  .btn.ghost{background:transparent;color:var(--accent-strong);border:1px solid var(--border)}
+  .btn.teacher{background:var(--teacher)}
+  .btn.sm{padding:9px 13px;font-size:13px;width:auto}
+  .login{height:100%;display:flex;flex-direction:column;justify-content:center;padding:0 32px}
+  .logo{width:74px;height:74px;border-radius:22px;background:linear-gradient(135deg,var(--accent),#FF9E7A);display:flex;align-items:center;justify-content:center;margin:0 auto 18px;box-shadow:0 10px 26px rgba(242,113,78,.35)}
+  .login h2{text-align:center;font-size:25px;font-weight:800;letter-spacing:-.4px}
+  .login .tag{text-align:center;color:var(--text-2);font-size:13.5px;margin:8px 0 30px}
+  .field{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+  .field label{display:block;font-size:11.5px;color:var(--text-2);font-weight:600;margin-bottom:4px;letter-spacing:.5px}
+  .field input{width:100%;border:none;outline:none;font-size:16px;font-family:var(--font);background:transparent;color:var(--text)}
+  .demo-row{display:flex;gap:10px;margin-top:18px}
+  .demo-row .btn{flex:1;font-size:13.5px;padding:12px}
+  .divider{display:flex;align-items:center;gap:12px;color:var(--text-3);font-size:12px;margin:22px 0}
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--border)}
+  .chat{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .msg{max-width:82%;padding:11px 14px;border-radius:16px;font-size:14.5px;line-height:1.45;margin-bottom:10px}
+  .msg.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:5px}
+  .msg.bot{align-self:flex-start;background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:5px}
+  .msg .who{font-size:10.5px;font-weight:700;color:var(--accent-strong);margin-bottom:3px}
+  .msg .cite{font-size:11px;color:var(--text-2);margin-top:6px;border-top:1px dashed var(--border);padding-top:5px}
+  .composer{position:absolute;left:0;right:0;bottom:0;display:flex;gap:10px;padding:12px 16px;background:var(--bg);border-top:1px solid var(--border)}
+  .composer input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 15px;font-size:15px;outline:none;font-family:var(--font)}
+  .composer .send{width:46px;height:46px;border-radius:14px;background:var(--accent);border:none;color:#fff;font-size:18px;cursor:pointer}
+  .qcard{display:flex;align-items:center;gap:12px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;cursor:pointer}
+  .qcard .ic{width:42px;height:42px;border-radius:12px;background:var(--accent-soft);color:var(--accent-strong);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+  .qcard .meta{flex:1}
+  .qcard .meta .t{font-weight:700;font-size:14.5px}
+  .qcard .meta .s{font-size:12px;color:var(--text-2);margin-top:2px}
+  .q{margin-bottom:16px}
+  .q .qt{font-size:14.5px;font-weight:600;margin-bottom:9px;display:flex;gap:8px;align-items:flex-start}
+  .q .qt .n{background:var(--accent-soft);color:var(--accent-strong);border-radius:8px;min-width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;padding:0 6px}
+  .opt{display:flex;align-items:center;gap:10px;padding:11px 13px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;font-size:14px;cursor:pointer}
+  .opt .dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--border);flex-shrink:0}
+  .opt.chosen{border-color:var(--accent);background:var(--accent-soft)}
+  .opt.chosen .dot{border-color:var(--accent);background:var(--accent)}
+  .opt.correct{border-color:var(--green);background:#ECF8EF}
+  .opt.wrong{border-color:var(--red);background:#FDECEB}
+  .q textarea{width:100%;border:1px solid var(--border);border-radius:12px;padding:11px;font-family:var(--font);font-size:14px;outline:none;resize:none;min-height:64px}
+  .result{background:linear-gradient(135deg,#FFF4EF,#FCEBE4);border:1px solid var(--accent-soft);border-radius:var(--radius);padding:18px;margin-bottom:14px}
+  .result .score{font-size:42px;font-weight:800;color:var(--accent-strong);line-height:1}
+  .result .lbl{font-size:13px;color:var(--text-2);margin-top:4px}
+  .tag-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+  .tag{font-size:12px;background:#fff;border:1px solid var(--border);border-radius:8px;padding:5px 10px}
+  .badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px}
+  .badge.master{background:#EAF8EE;color:var(--green)}
+  .badge.prog{background:#FFF3E0;color:var(--amber)}
+  .badge.weak{background:#FDECEB;color:var(--red)}
+  .badge.na{background:var(--surface-2);color:var(--text-3)}
+  .badge.ver{background:var(--teacher-soft);color:var(--teacher)}
+  .badge.super{background:var(--surface-2);color:var(--text-3)}
+  .badge.parse{background:#EAF2FB;color:#2E7BD6}
+  .badge.fail{background:#FDECEB;color:var(--red)}
+  .folder{font-size:11.5px;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px}
+  .chapter{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;background:var(--surface);cursor:pointer}
+  .chapter.active{border-color:var(--accent);background:var(--accent-soft)}
+  .chapter .nm{font-weight:600;font-size:14.5px}
+  .chapter .mt{font-size:12px;color:var(--text-2)}
+  .stat-row{display:flex;gap:12px;margin-bottom:14px}
+  .stat{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;text-align:center}
+  .stat .v{font-size:22px;font-weight:800}
+  .stat .k{font-size:11px;color:var(--text-2);margin-top:3px}
+  .donut-wrap{display:flex;align-items:center;gap:16px}
+  .legend{font-size:12.5px;line-height:2}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:7px;vertical-align:middle}
+  .weak{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid var(--border)}
+  .weak:last-child{border:none}
+  .weak .ev{font-size:12.5px;color:var(--text-2);margin-top:4px;line-height:1.5}
+  .ai-tip{display:flex;gap:11px;align-items:flex-start;margin-bottom:10px}
+  .ai-tip .ic{width:26px;height:26px;border-radius:8px;background:var(--accent-soft);color:var(--accent-strong);display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;font-size:13px}
+  .chk{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--border);font-size:14px;cursor:pointer}
+  .chk .box{width:21px;height:21px;border-radius:6px;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px}
+  .chk.on .box{background:var(--accent);border-color:var(--accent)}
+  .report-h{background:linear-gradient(135deg,var(--accent),#FF9E7A);border-radius:var(--radius);padding:20px;color:#fff;margin-bottom:14px}
+  .report-h .t{font-size:13px;opacity:.9}
+  .report-h .d{font-size:20px;font-weight:800;margin-top:4px}
+  .adm-card{display:flex;align-items:center;gap:13px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px}
+  .adm-card .av{width:42px;height:42px;border-radius:12px;background:var(--teacher-soft);color:var(--teacher);display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0}
+  .adm-card .meta{flex:1}
+  .adm-card .meta .nm{font-weight:700;font-size:15px}
+  .adm-card .meta .st{font-size:12px;color:var(--text-2)}
+  .mini-btn{font-size:12px;padding:7px 11px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);cursor:pointer;font-family:var(--font)}
+  .mini-btn.danger{color:var(--red);border-color:#FAD9D6;background:#FDECEB}
+  .mini-btn.teacher{color:var(--teacher);border-color:#D9D9F5;background:var(--teacher-soft)}
+  .note{text-align:center;color:var(--text-2);font-size:14px;padding:40px 24px;line-height:1.6}
+  .note .big{font-size:40px;margin-bottom:14px}
+  .tabbar{position:absolute;left:0;right:0;bottom:0;height:78px;background:rgba(251,247,242,.86);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--border);display:flex;padding:8px 6px 18px;z-index:30}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--text-3);font-size:10.5px;font-weight:600;cursor:pointer;border:none;background:none;font-family:var(--font)}
+  .tab svg{width:23px;height:23px}
+  .tab.active{color:var(--accent)}
+  .tab.teacher.active{color:var(--teacher)}
+  .home-indicator{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);width:120px;height:5px;border-radius:3px;background:#1c1c1e;z-index:60;opacity:.85}
+  .sheet-mask{position:absolute;inset:0;background:rgba(0,0,0,.32);z-index:70;display:none;align-items:flex-end}
+  .sheet-mask.show{display:flex}
+  .sheet{background:#F2EDE7;width:100%;border-radius:18px 18px 0 0;padding:8px;animation:up .22s ease;max-height:80%;overflow-y:auto}
+  @keyframes up{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .sheet .row{padding:16px;text-align:center;font-size:16px;border-radius:12px;background:var(--surface);margin:6px;border:1px solid var(--border);cursor:pointer}
+  .sheet .row.danger{color:var(--red)}
+  .sheet .row.teacher{color:var(--teacher)}
+  .sheet .cancel{font-weight:700}
+  .toast{position:absolute;top:64px;left:50%;transform:translateX(-50%);background:rgba(29,29,31,.92);color:#fff;padding:10px 18px;border-radius:12px;font-size:13px;z-index:90;opacity:0;transition:.25s;pointer-events:none;max-width:80%;text-align:center}
+  .toast.show{opacity:1}
+  /* v3 additions */
+  .turn-pill{font-size:11.5px;font-weight:700;color:var(--accent-strong);background:var(--accent-soft);border-radius:999px;padding:5px 11px}
+  .gate{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-2);background:var(--surface-2);border-radius:10px;padding:8px 11px;margin-bottom:10px;border:1px solid var(--border)}
+  .intent{display:flex;gap:8px;margin-bottom:10px}
+  .intent .chip{flex:1;text-align:center;font-size:12.5px;font-weight:600;padding:9px 6px;border-radius:12px;border:1px solid var(--border);background:var(--surface);cursor:pointer;color:var(--text-2)}
+  .intent .chip.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .conv-bar{display:flex;gap:8px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none}
+  .conv-bar::-webkit-scrollbar{display:none}
+  .conv-chip{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:6px 10px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .conv-chip.active{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-strong)}
+  .conv-chip .x{color:var(--text-3);font-weight:700;margin-left:2px}
+  .trend-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:14px}
+  .wrong-q{background:#FDECEB;border:1px solid #FAD9D6;border-radius:12px;padding:11px;margin-bottom:10px}
+  .wrong-q .qa{font-size:13px;line-height:1.5}
+  .wrong-q .why{font-size:12px;color:var(--text-2);margin-top:6px;border-top:1px dashed #FAD9D6;padding-top:6px}
+  .rev-item{display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:8px}
+  .rev-item.done{opacity:.65}
+  .parse-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px}
+  .mini-input{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px;font-family:var(--font);font-size:13.5px;outline:none;margin-top:8px}
+</style>
+</head>
+<body data-page-node-id="OE9fY1ebGT2ltVApJerXaG">
+<div class="phone" data-page-node-id="IamdrIEI0PYapR5DZTogQw">
+  <div class="notch" data-page-node-id="Xbv3rPgyFQj9WQWRst1blt"></div>
+  <div class="statusbar" data-page-node-id="UO3b8wgF90t04Lw0ovvYDs"><span data-page-node-id="8BVlzUdGGcY2iHC3tGZvVn">9:41</span><span class="right" data-page-node-id="KhznCQ7kB67RhcQBK4LtzP">●●● &nbsp;📶 &nbsp;🔋</span></div>
+  <div class="screen" id="screen" data-page-node-id="uOMcNNzHSX1nsFAVLonL5X"></div>
+  <div class="toast" id="toast" data-page-node-id="MqWt6N7XwE03WfOWaz4kri"></div>
+  <div class="sheet-mask" id="sheetMask" data-page-node-id="GGe6ignQJmYwc19cQkbNcs"><div class="sheet" id="sheet" data-page-node-id="YawQ0rqMl2TFUUKTFXVurF"></div></div>
+  <div class="home-indicator" data-page-node-id="9FJyOyQfzcnILFDB96AM4Q"></div>
+</div>
+
+<script>
+const ICON = {
+  learn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  quiz:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+  progress:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>',
+  report:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>',
+  admin:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+};
+
+/* ===== Data (aligned to Design Spec v2.0) ===== */
+const LIBRARY=[
+  {folder:'模块一 · 神经网络基础',chapters:[
+    {id:'c1',name:'感知机与激活函数',mats:[{name:'感知机导论.pdf',status:'parsed'}]},
+    {id:'c2',name:'反向传播',mats:[{name:'BP 推导.pdf',status:'parsed'},{name:'梯度实战.ipynb',status:'parsing'}]},
+  ]},
+  {folder:'模块二 · 序列模型',chapters:[
+    {id:'c3',name:'RNN 与梯度消失',mats:[{name:'RNN 笔记.pdf',status:'parsed'}]},
+    {id:'c4',name:'Transformer 与注意力',mats:[{name:'Transformer 论文精读.pdf',status:'failed'}]},
+  ]},
+];
+const MY_M={c1:null,c2:78,c3:55,c4:42};           // 学生本人掌握度（null=未评估）
+const WEAK_EVID={c4:[{q:'自注意力中 QKᵀ/√dₖ 的作用',why:'错选为「加速收敛」，正确为「防止点积过大致 softmax 梯度消失」'}]};
+const STUDENTS=[
+  {name:'Alice',m:{c1:null,c2:82,c3:60,c4:45}},
+  {name:'Bob',  m:{c1:null,c2:70,c3:48,c4:52}},
+  {name:'Carol',m:{c1:null,c2:90,c3:75,c4:68}},
+];
+// 成绩趋势（PROG-003）：Alice 历次测评
+const SCORES=[{l:'8/10 入门测',s:72},{l:'8/17 反向传播',s:78},{l:'8/25 模块二',s:85}];
+// 对话/提问统计（PROG-002，按章）
+const CHAT_STATS={c1:0,c2:8,c3:5,c4:3};
+const QUIZZES=[
+  {id:'q1',title:'第2章 反向传播 单元测验',chapters:['c2'],version:1,status:'published',taken:false,score:null,
+   qs:[{t:'在反向传播中，梯度是如何从输出层传回输入层的？',type:'choice',opts:['A. 前向累积','B. 链式法则逐层反传','C. 随机扰动','D. 全局搜索'],ans:1,reason:'链式法则逐层反传是反向传播的核心机制'},
+       {t:'判断：梯度消失是指深层网络梯度呈指数级增大。',type:'bool',opts:['正确','错误'],ans:1,reason:'梯度消失是梯度呈指数级减小，并非增大'},
+       {t:'简答：为什么要用链式法则计算梯度？',type:'essay'}]},
+  {id:'q2',title:'模块二 中期测验',chapters:['c3','c4'],version:1,status:'published',taken:true,score:85,
+   qs:[{t:'LSTM 引入门控主要是为了缓解什么？',type:'choice',opts:['A. 过拟合','B. 梯度消失/长程依赖','C. 计算过慢','D. 类别不平衡'],ans:1,reason:'LSTM 门控主要缓解梯度消失与长程依赖'},
+       {t:'自注意力中 QKᵀ/√dₖ 的作用是什么？',type:'choice',opts:['A. 加速收敛','B. 防止点积过大致 softmax 梯度消失','C. 降维','D. 正则化'],ans:1,reason:'缩放点积防止维度 dₖ 增大时点积过大、softmax 梯度消失'},
+       {t:'简答：位置编码解决了 Transformer 的什么缺失？',type:'essay'}]},
+];
+// 巩固练习复习题（PROG-006，按章）
+const REVIEW_Q={
+  c4:{t:'自注意力中缩放因子 √dₖ 的作用是？',type:'choice',opts:['A. 加速收敛','B. 防止点积过大致 softmax 梯度消失','C. 降维','D. 正则化'],ans:1},
+};
+
+const MY_PERSONA={grade:'高二', weak:['c4']};
+let REVIEW=[];   // [{ch, interval, status:'pending'|'done'}]
+let activeRev=null;
+// 多对话（CHAT-008）
+let CONVS=[
+  {id:'conv1', title:'反向传播答疑', chapter:'c2', turn:3, messages:[
+    {me:true,txt:'反向传播里梯度是怎么从输出层传回输入层的？'},
+    {me:false,txt:'好问题 👍 先想一步：前向传播时，每一层的输出是怎么算出来的？',who:'TUTOR'},
+    {me:true,txt:'是上一层输出 × 当前权重 + 偏置，再过激活函数。'},
+    {me:false,txt:'对。那如果想改第一层的权重来减小最终误差，你需要知道什么？',who:'TUTOR'},
+    {me:true,txt:'需要知道误差对每个权重的"影响程度"——也就是梯度。'},
+    {me:false,txt:'没错，这正是链式法则的用武之地。你能推一下：第 L 层梯度 和 第 L+1 层梯度 是什么关系？',who:'TUTOR',cite:'《BP 推导.pdf》'},
+  ]},
+  {id:'conv2', title:'RNN 梯度消失讨论', chapter:'c3', turn:2, messages:[
+    {me:true,txt:'为什么 RNN 会有梯度消失？'},
+    {me:false,txt:'想想 RNN 在时间维度上是怎么传递梯度的？这和深层网络的梯度传播有什么相似？',who:'TUTOR'},
+  ]},
+];
+let activeConv='conv1';
+let intent='答疑';   // CHAT-003 意图路由：答疑/复习/出题
+
+let state={user:null,role:null,hash:'login',activeChapter:'c2',activeQuiz:null,answers:{}};
+
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1700);}
+function esc(s){return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function chapterName(id){for(const f of LIBRARY)for(const c of f.chapters)if(c.id===id)return c.name;return id;}
+function stateOf(m){
+  if(m===null)return {key:'na',label:'未评估',cls:'na'};
+  if(m>=80)return {key:'master',label:'已掌握',cls:'master'};
+  if(m>=50)return {key:'prog',label:'进行中',cls:'prog'};
+  return {key:'weak',label:'薄弱',cls:'weak'};
+}
+function matName(cid,idx){const f=LIBRARY.find(x=>x.chapters.some(c=>c.id===cid));if(!f)return '';const c=f.chapters.find(x=>x.id===cid);return c.mats[idx]?c.mats[idx].name:'';}
+
+/* ===== Login ===== */
+function viewLogin(){
+  return `<div class="login">
+    <div class="logo"><svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L19 9l-4 3.4.9 5.6L12 15.8 8.1 18l.9-5.6L5 9l5.1-1.4z"/></svg></div>
+    <h2>AI 学习小组</h2><div class="tag">私有化 AI 辅助学习 · 仅限本组 4 人</div>
+    <div class="field"><label>账号</label><input value="alice"/></div>
+    <div class="field"><label>密码</label><input type="password" value="••••••"/></div>
+    <button class="btn" onclick="doLogin('student')">登 录</button>
+    <div class="divider">演示账号 · 一键进入</div>
+    <div class="demo-row"><button class="btn sec" onclick="doLogin('teacher')">教师视图</button><button class="btn sec" onclick="doLogin('student')">学生视图</button></div>
+  </div>`;
+}
+function doLogin(role){
+  state.role=role;state.user=role==='teacher'?{name:'西城老师',display:'西'}:{name:'Alice',display:'A'};
+  state.hash=role==='teacher'?'admin':'learn';render();
+  toast(role==='teacher'?'已以教师身份登录':'已以学生身份登录（Alice）');
+}
+
+/* ===== App bar / Tab bar ===== */
+function appbar(title,sub){const av=state.role==='teacher'?'<div class="avatar teacher" onclick="openMenu()">西</div>':'<div class="avatar" onclick="openMenu()">A</div>';
+  return `<div class="appbar"><div><h1>${title}</h1>${sub?`<div class="sub">${sub}</div>`:''}</div>${av}</div>`;}
+function tabbar(){
+  const tabs=state.role==='teacher'
+    ?[['admin','管理后台',ICON.admin,'teacher'],['learn','学习',ICON.learn],['quiz','测评',ICON.quiz],['progress','进度',ICON.progress],['report','周报',ICON.report]]
+    :[['learn','学习',ICON.learn],['quiz','测评',ICON.quiz],['progress','进度',ICON.progress],['report','周报',ICON.report]];
+  return `<div class="tabbar">${tabs.map(([h,l,ic,cls])=>`<button class="tab ${state.hash===h?'active':''} ${cls||''}" onclick="go('${h}')">${ic}<span>${l}</span></button>`).join('')}</div>`;
+}
+function go(h){state.hash=h;if(h==='quiz')state.activeQuiz=null;render();}
+
+/* ===== STUDENT: LEARN (chapter-scoped, Socratic, guided) ===== */
+function viewLearn(){
+  const conv=CONVS.find(c=>c.id===activeConv)||CONVS[0];
+  const lib=LIBRARY.map(f=>`<div class="folder">${esc(f.folder)}</div>`+f.chapters.map(c=>{
+    const mats=c.mats.map(m=>`📄 ${esc(m.name)} <span class="parse-dot" style="background:${m.status==='parsed'?'var(--green)':m.status==='parsing'?'var(--amber)':'var(--red)'}"></span>`).join(' · ');
+    return `<div class="chapter ${state.activeChapter===c.id?'active':''}" onclick="state.activeChapter='${c.id}';render()">
+      <div><div class="nm">${esc(c.name)}</div><div class="mt">${mats}</div></div>
+      <span class="badge ${stateOf(MY_M[c.id]).cls}">${stateOf(MY_M[c.id]).label}</span></div>`;
+  }).join('')).join('');
+  const convChips=CONVS.map(c=>`<div class="conv-chip ${c.id===activeConv?'active':''}" onclick="activeConv='${c.id}';render()">${esc(c.title)}${CONVS.length>1?`<span class="x" onclick="event.stopPropagation();delConv('${c.id}')">✕</span>`:''}</div>`).join('')+'<div class="conv-chip" onclick="newConv()">＋ 新对话</div>';
+  return appbar('学习','引导式辅导（不直接给答案）')+
+  `<div class="content">
+    <div class="pill-wrap" style="margin-bottom:10px">
+      <span class="pill active">🧑‍🎓 人设：${esc(MY_PERSONA.grade)}</span>
+      <span class="pill">薄弱章：${MY_PERSONA.weak.map(chapterName).map(esc).join('、')}</span>
+      <span class="pill">🧭 引导式</span>
+    </div>
+    <div class="intent">
+      <div class="chip ${intent==='答疑'?'active':''}" onclick="setIntent('答疑')">💬 答疑</div>
+      <div class="chip ${intent==='复习'?'active':''}" onclick="setIntent('复习')">🔁 复习</div>
+      <div class="chip ${intent==='出题'?'active':''}" onclick="setIntent('出题')">📝 出题</div>
+    </div>
+    <div class="conv-bar">${convChips}</div>
+    <div class="gate">🛡️ 回答由 AI 生成，请核对资料原文 · 越界内容已拦截（CHAT-004 门控）</div>
+    <div class="card sm" style="margin-bottom:12px"><div style="font-weight:700;font-size:13px;margin-bottom:8px">📚 资料库（文件夹 → 章节）</div>${lib}</div>
+    <div class="turn-pill" style="margin-bottom:10px">🧭 第 ${conv.turn} / 12 轮 · 引导式护栏</div>
+    <div class="chat">
+      ${conv.messages.map(m=>`<div class="msg ${m.me?'user':'bot'}">${m.me?'':`<div class="who">${m.who||'TUTOR'}</div>`}${esc(m.txt)}${m.cite?`<div class="cite">📎 引用：${esc(m.cite)}</div>`:''}</div>`).join('')}
+    </div>
+    <button class="btn ghost sm" style="margin-top:8px" onclick="forceConclude('${conv.id}')">模拟第 12 轮（强制给结论 + 推荐练习）</button>
+  </div>
+  <div class="composer"><input placeholder="回答引导问题，或追问…"/><button class="send" onclick="simSend('${conv.id}')">↑</button></div>`+tabbar();
+}
+function setIntent(i){
+  intent=i;
+  if(i==='出题'){toast('意图路由：已切换到「测评」（CHAT-003）');go('quiz');return;}
+  if(i==='复习'){toast('意图路由：已切换到「进度」复习薄弱点');go('progress');return;}
+  render();
+}
+function simSend(id){
+  const c=CONVS.find(x=>x.id===id);if(!c)return;
+  c.messages.push({me:true,txt:'（学生作答：梯度 = 后一层梯度 × 当前层激活导数 × 输入）'});
+  c.messages.push({me:false,txt:'准确 👏 这正是链式法则的展开式。下一条：如果某层激活导数是 0，会发生什么？',who:'TUTOR',cite:matName(c.chapter,0)});
+  c.turn=Math.min(c.turn+1,12);render();
+  toast('已发送并引导（第 '+c.turn+' 轮）');
+}
+function forceConclude(id){
+  const c=CONVS.find(x=>x.id===id);if(!c)return;
+  c.turn=12;
+  c.messages.push({me:false,txt:'【已达 12 轮护栏】结论：梯度从输出层经链式法则逐层乘激活导数与输入反传至输入层。建议下一步：做「反向传播单元测验」巩固（点底部测评）。',who:'TUTOR'});
+  render();toast('触发 CHAT-005 护栏：强制给结论 + 推荐练习');
+}
+function newConv(){
+  const id='conv'+(CONVS.length+1);
+  CONVS.push({id,title:'新对话 '+(CONVS.length+1),chapter:state.activeChapter,turn:0,messages:[]});
+  activeConv=id;render();toast('已新建对话（CHAT-008）');
+}
+function delConv(id){
+  if(CONVS.length<=1){toast('至少保留一个对话');return;}
+  CONVS=CONVS.filter(c=>c.id!==id);activeConv=CONVS[0].id;render();toast('已删除对话');
+}
+
+/* ===== STUDENT: QUIZ (teacher-published, uniform) ===== */
+function viewQuizList(){
+  const list=QUIZZES.filter(q=>q.status!=='draft').map(q=>{
+    const chs=q.chapters.map(chapterName).join('、');
+    let badge,btn;
+    if(q.taken){badge=`<span class="badge master">已完成 ${q.score}</span>`;btn='<div class="mini-btn" style="border-color:var(--accent);color:var(--accent-strong)">重做</div>';}
+    else{badge=`<span class="badge prog">待完成</span>`;btn='<div class="mini-btn" style="background:var(--accent);color:#fff">去作答</div>';}
+    const ver=q.version>1?`<span class="badge ver">v${q.version}</span> `:'';
+    return `<div class="qcard" onclick="state.activeQuiz='${q.id}';state.answers={};render()">
+      <div class="ic">📝</div><div class="meta"><div class="t">${ver}${esc(q.title)}</div><div class="s">覆盖：${esc(chs)} · 全班同题</div></div>
+      <div style="text-align:right">${badge}<div style="margin-top:6px">${btn}</div></div></div>`;
+  }).join('');
+  return appbar('测评','教师发布 · 全班同题')+
+  `<div class="content"><div class="card sm" style="display:flex;justify-content:space-between;align-items:center">
+      <div><div style="font-weight:700">老师发布的测评</div><div class="muted">你看到的题与同学完全一致</div></div>
+      <span class="pill active">${QUIZZES.filter(q=>q.status!=='draft').length} 个</span></div>${list}
+    <div class="muted" style="text-align:center;font-size:12px;margin-top:6px">可重做，成绩取最近一次</div>
+  </div>`+tabbar();
+}
+function viewQuizTake(){
+  const q=QUIZZES.find(x=>x.id===state.activeQuiz);
+  const qs=q.qs.map((item,i)=>{
+    if(item.type==='essay')return `<div class="q"><div class="qt"><span class="n">${i+1}</span><span>${esc(item.t)}</span></div><textarea placeholder="输入你的回答…"></textarea></div>`;
+    return `<div class="q"><div class="qt"><span class="n">${i+1}</span><span>${esc(item.t)}</span></div>${item.opts.map((o,oi)=>`<div class="opt" onclick="pickQ(this,${i},${oi})"><span class="dot"></span>${esc(o)}</div>`).join('')}</div>`;
+  }).join('');
+  return appbar('测评',esc(q.title))+
+  `<div class="content"><div class="card sm" style="margin-bottom:12px">覆盖章节：${q.chapters.map(chapterName).map(c=>`<span class="pill" style="margin-right:6px">${esc(c)}</span>`).join('')}</div>${qs}
+    <button class="btn" onclick="submitQuiz()">提交并批改</button>
+    <button class="btn ghost" style="margin-top:8px" onclick="go('quiz')">返回列表</button>
+  </div>`+tabbar();
+}
+function pickQ(el,i,oi){const g=el.parentElement;g.querySelectorAll('.opt').forEach(o=>o.classList.remove('chosen'));el.classList.add('chosen');state.answers[i]=oi;}
+function submitQuiz(){
+  const q=QUIZZES.find(x=>x.id===state.activeQuiz);
+  let correct=0,total=0;const wrong=[];
+  q.qs.forEach((item,i)=>{if(item.type!=='essay'){total++;const ok=state.answers[i]===item.ans;if(ok)correct++;else wrong.push({t:item.t,your:item.opts[state.answers[i]]||'未作答',correct:item.opts[item.ans],reason:item.reason});}});
+  const score=total?Math.round(correct/total*100*0.8+20):80;
+  q.score=score;q.taken=true;q.wrong=wrong;
+  const wrongHtml=wrong.length?wrong.map(w=>`<div class="wrong-q"><div class="qa"><b>题：</b>${esc(w.t)}</div><div class="qa" style="margin-top:5px"><span style="color:var(--red)">你的答案：${esc(w.your)}</span> &nbsp; <span style="color:var(--green)">正确答案：${esc(w.correct)}</span></div><div class="why">📌 ${esc(w.reason)}</div></div>`).join(''):'<div class="muted">全部正确 🎉</div>';
+  const html=appbar('测评','批改完成')+`<div class="content">
+    <div class="result"><div class="score">${score}</div><div class="lbl">本次测评得分 / 100（取最近一次）</div>
+      <div class="tag-row"><span class="tag">✓ 客观题 ${correct}/${total}</span><span class="tag">简答 已评</span></div></div>
+    <div class="card"><div style="font-weight:700;margin-bottom:8px">错题明细（QUIZ-004）</div>${wrongHtml}</div>
+    <div class="card"><div style="font-weight:700;margin-bottom:8px">本章薄弱点</div>${q.chapters.map(c=>`<div class="weak"><span style="width:120px;font-size:13px;font-weight:600">${esc(chapterName(c))}</span><span class="badge ${stateOf(MY_M[c]).cls}">${stateOf(MY_M[c]).label}</span></div>`).join('')}</div>
+    <button class="btn sec" onclick="go('learn')">回到学习巩固</button>
+  </div>`+tabbar();
+  document.getElementById('screen').innerHTML=html;toast('批改完成：'+score+' 分');
+}
+
+/* ===== STUDENT: PROGRESS (per-chapter mastery + trend + review) ===== */
+function trendChart(){
+  if(SCORES.length<2)return '<div class="muted">暂无足够数据</div>';
+  const w=300,h=90,pad=10;const max=100,min=0;
+  const xs=SCORES.map((_,i)=>pad+i*(w-2*pad)/(SCORES.length-1));
+  const ys=SCORES.map(s=>h-pad-(s.s-min)/(max-min)*(h-2*pad));
+  const pts=ys.map((y,i)=>`${xs[i]},${y}`).join(' ');
+  const dots=SCORES.map((s,i)=>`<circle cx="${xs[i]}" cy="${ys[i]}" r="3.5" fill="var(--accent-strong)"/><text x="${xs[i]}" y="${ys[i]-8}" font-size="9" text-anchor="middle" fill="var(--text-2)">${s.s}</text>`).join('');
+  const labels=SCORES.map((s,i)=>`<text x="${xs[i]}" y="${h-1}" font-size="8" text-anchor="middle" fill="var(--text-3)">${esc(s.l)}</text>`).join('');
+  return `<svg width="100%" viewBox="0 0 ${w} ${h}" style="margin-top:6px">
+    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+    ${dots}${labels}</svg>`;
+}
+function viewProgress(){
+  const ids=Object.keys(MY_M);
+  const counts={master:0,prog:0,weak:0,na:0};
+  ids.forEach(id=>counts[stateOf(MY_M[id]).key]++);
+  const donut=`<svg width="110" height="110" viewBox="0 0 42 42">
+    <circle cx="21" cy="21" r="15.9" fill="none" stroke="#F0EAE2" stroke-width="6"/>
+    <circle cx="21" cy="21" r="15.9" fill="none" stroke="#34C759" stroke-width="6" stroke-dasharray="${counts.master*25} 100" stroke-dashoffset="25" transform="rotate(-90 21 21)"/>
+    <circle cx="21" cy="21" r="15.9" fill="none" stroke="#FF9F0A" stroke-width="6" stroke-dasharray="${counts.prog*25} 100" stroke-dashoffset="${25-counts.master*25}" transform="rotate(-90 21 21)"/>
+    <circle cx="21" cy="21" r="15.9" fill="none" stroke="#FF3B30" stroke-width="6" stroke-dasharray="${counts.weak*25} 100" stroke-dashoffset="${25-(counts.master+counts.prog)*25}" transform="rotate(-90 21 21)"/>
+    <circle cx="21" cy="21" r="15.9" fill="none" stroke="#C9C2B8" stroke-width="6" stroke-dasharray="${counts.na*25} 100" stroke-dashoffset="${25-(counts.master+counts.prog+counts.weak)*25}" transform="rotate(-90 21 21)"/>
+  </svg>`;
+  const chapList=LIBRARY.map(f=>`<div class="folder">${esc(f.folder)}</div>`+f.chapters.map(c=>{
+    const st=stateOf(MY_M[c.id]);
+    const qn=CHAT_STATS[c.id]?`<div class="mt">提问 ${CHAT_STATS[c.id]} 次 · 掌握度 ${MY_M[c.id]===null?'—':MY_M[c.id]+'%'}</div>`:`<div class="mt">掌握度 ${MY_M[c.id]===null?'—':MY_M[c.id]+'%'}</div>`;
+    return `<div class="chapter"><div><div class="nm">${esc(c.name)}</div>${qn}</div><span class="badge ${st.cls}">${st.label}</span></div>`;
+  }).join('')).join('');
+  const weakChapters=ids.filter(id=>MY_M[id]!==null&&MY_M[id]<50);
+  const weakHtml=weakChapters.length?weakChapters.map(id=>`<div class="weak"><span class="badge weak" style="flex-shrink:0">${esc(chapterName(id))}</span><div><div style="font-weight:600;font-size:13.5px">M=${MY_M[id]}% · 待补强</div>${WEAK_EVID[id]?WEAK_EVID[id].map(e=>`<div class="ev">• ${esc(e.q)}：${esc(e.why)}</div>`).join(''):''}</div></div>`).join(''):'<div class="muted">暂无薄弱章节 🎉</div>';
+  const reviewHtml=REVIEW.length?REVIEW.map((r,i)=>`<div class="rev-item ${r.status==='done'?'done':''}">
+      <span class="badge ${r.status==='done'?'master':'weak'}">${esc(chapterName(r.ch))}</span>
+      <div style="flex:1;font-size:13px">${r.status==='done'?'已完成':'下次复习：<b>'+r.interval+'</b> 天后 · 节奏 1→3→7'}</div>
+      ${r.status==='pending'?`<button class="mini-btn" style="border-color:var(--accent);color:var(--accent-strong)" onclick="openRev('${r.ch}')">作答并批改</button>`:'<span class="badge master">✓</span>'}
+    </div>`).join(''):'<div class="muted" style="font-size:12.5px">尚未生成计划</div>';
+  return appbar('进度','按章节掌握度（仅本人）')+
+  `<div class="content">
+    <div class="stat-row"><div class="stat"><div class="v" style="color:var(--green)">${counts.master}</div><div class="k">已掌握</div></div>
+      <div class="stat"><div class="v" style="color:var(--amber)">${counts.prog}</div><div class="k">进行中</div></div>
+      <div class="stat"><div class="v" style="color:var(--red)">${counts.weak}</div><div class="k">薄弱</div></div>
+      <div class="stat"><div class="v" style="color:var(--text-3)">${counts.na}</div><div class="k">未评估</div></div></div>
+    <div class="card"><div style="font-weight:700;margin-bottom:10px">掌握度分布</div><div class="donut-wrap">${donut}
+      <div class="legend"><div><i style="background:#34C759"></i>已掌握 ${counts.master}</div><div><i style="background:#FF9F0A"></i>进行中 ${counts.prog}</div><div><i style="background:#FF3B30"></i>薄弱 ${counts.weak}</div><div><i style="background:#C9C2B8"></i>未评估 ${counts.na}</div></div></div></div>
+    <div class="trend-wrap"><div style="font-weight:700;margin-bottom:6px">成绩趋势（PROG-003）</div>${trendChart()}</div>
+    <div class="card"><div style="font-weight:700;margin-bottom:8px">各章节状态（PROG-002 按章提问）</div>${chapList}</div>
+    <div class="card"><div style="font-weight:700;margin-bottom:8px">薄弱点（带依据）</div>${weakHtml}</div>
+    <div class="card"><div style="font-weight:700;margin-bottom:8px">巩固练习闭环（PROG-006 · 间隔复习）</div>
+      <div class="muted" style="margin-bottom:10px;font-size:12.5px">薄弱点 → 一键生成巩固练习，作答后按 1→3→7 天排入重做（答错重置 1 天）</div>
+      ${reviewHtml}
+      <button class="btn" style="margin-top:12px" onclick="genReview();render()">一键生成巩固练习（间隔复习）</button>
+    </div>
+  </div>`+tabbar();
+}
+function genReview(){
+  const weak=Object.keys(MY_M).filter(id=>MY_M[id]!==null&&MY_M[id]<50);
+  REVIEW=weak.map(id=>({ch:id,interval:1,status:'pending'}));
+  toast('已为 '+weak.length+' 个薄弱章生成巩固练习（间隔复习 1→3→7）');
+}
+function openRev(ch){
+  const rq=REVIEW_Q[ch];if(!rq){toast('该章暂无复习题（原型演示）');return;}
+  let html=`<div class="row" style="font-weight:700">巩固练习 · ${esc(chapterName(ch))}</div>
+    <div class="row" style="text-align:left;font-weight:500;font-size:14px;border:none;background:transparent">${esc(rq.t)}</div>`;
+  rq.opts.forEach((o,oi)=>{html+=`<div class="row" style="text-align:left;border:none;background:transparent;padding:8px 16px" onclick="gradeRev('${ch}',${oi})">${String.fromCharCode(65+oi)}. ${esc(o)}</div>`;});
+  html+=`<div class="row cancel" onclick="closeSheet()">取消</div>`;
+  document.getElementById('sheet').innerHTML=html;document.getElementById('sheetMask').classList.add('show');
+}
+function gradeRev(ch,oi){
+  const r=REVIEW.find(x=>x.ch===ch);if(!r)return;
+  const rq=REVIEW_Q[ch];
+  if(oi===rq.ans){r.interval=Math.min(r.interval*3,7);toast('答对 ✓ 间隔延长至 '+r.interval+' 天（1→3→7）');}
+  else{r.interval=1;toast('答错 · 间隔重置为 1 天');}
+  r.status='done';closeSheet();render();
+}
+
+/* ===== STUDENT: REPORT ===== */
+function viewReport(){
+  return appbar('周报','本周学习总结')+
+  `<div class="content">
+    <div class="report-h"><div class="t">2026 第 35 周 · 8/25 – 8/31</div><div class="d">Alice 的学习周报</div></div>
+    <div class="card"><div style="font-weight:700;margin-bottom:12px">本周概况</div><div class="stat-row" style="margin:0">
+      <div class="stat"><div class="v">5</div><div class="k">学习天数</div></div><div class="stat"><div class="v">18</div><div class="k">对话数</div></div><div class="stat"><div class="v">3</div><div class="k">测评数</div></div></div></div>
+    <div class="card"><div style="font-weight:700;margin-bottom:10px">成绩分析</div><div style="display:flex;gap:18px;align-items:center">
+      <div><div style="font-size:28px;font-weight:800;color:var(--accent-strong)">82</div><div class="muted">平均</div></div>
+      <div><div style="font-size:28px;font-weight:800">90</div><div class="muted">最高</div></div>
+      <div style="flex:1"><div class="muted" style="margin-bottom:4px">薄弱：Transformer 与注意力</div><div style="height:7px;background:var(--surface-2);border-radius:5px;overflow:hidden"><i style="display:block;height:100%;width:42%;background:var(--red)"></i></div></div></div></div>
+    <div class="card"><div style="font-weight:700;margin-bottom:10px">AI 学习建议</div>
+      ${['Transformer 与注意力仍偏弱（M=42%），建议重读《Transformer 论文精读》p.4-5 并做模块二中期测验重做。','本周 5 天连续学习节奏良好，下周可加入位置编码的对比练习。','反向传播已掌握，可尝试用 ResNet 案例做迁移巩固。'].map(t=>`<div class="ai-tip"><div class="ic">AI</div><div style="font-size:13.5px;line-height:1.5">${t}</div></div>`).join('')}</div>
+    <button class="btn ghost" onclick="toast('已导出 Markdown（原型演示）')">导出周报 (Markdown)</button>
+  </div>`+tabbar();
+}
+
+/* ===== TEACHER: ADMIN (chapters / materials / students) ===== */
+function viewAdmin(){
+  const lib=LIBRARY.map(f=>`<div class="folder">${esc(f.folder)}</div>`+f.chapters.map(c=>{
+    const matHtml=c.mats.map((m,i)=>`<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px">📄 ${esc(m.name)} <span class="badge ${m.status==='parsed'?'master':m.status==='parsing'?'prog':'fail'}">${m.status==='parsed'?'已解析':m.status==='parsing'?'解析中':'解析失败'}</span>${m.status==='failed'?`<span class="mini-btn teacher" style="margin-left:auto;padding:3px 8px" onclick="toast('已重新解析（原型）')">重试</span>`:''}</div>`).join('');
+    return `<div class="adm-card" style="margin-bottom:8px;flex-direction:column;align-items:stretch"><div style="display:flex;align-items:center;gap:13px"><div class="av">§</div><div class="meta"><div class="nm">${esc(c.name)}</div><div class="st">${c.mats.length} 份资料</div></div><span class="mini-btn danger" style="margin-left:auto" onclick="softDelChapter('${c.id}')">删</span></div><div style="margin-top:8px;padding-left:55px">${matHtml}</div></div>`;
+  }).join('')).join('');
+  const students=STUDENTS.map(s=>{const c={master:0,prog:0,weak:0,na:0};Object.values(s.m).forEach(v=>c[stateOf(v).key]++);
+    return `<div class="card sm" style="display:flex;align-items:center;gap:12px">
+      <div class="av" style="width:40px;height:40px;border-radius:11px;background:var(--teacher-soft);color:var(--teacher);display:flex;align-items:center;justify-content:center;font-weight:800">${s.name[0]}</div>
+      <div style="flex:1"><div style="font-weight:700">${s.name}</div><div class="muted" style="font-size:12px">已掌握 ${c.master} · 进行中 ${c.prog} · 薄弱 ${c.weak} · 未评估 ${c.na}</div></div></div>`;}).join('');
+  return appbar('管理后台','教师专有')+
+  `<div class="content">
+    <button class="btn teacher" style="margin-bottom:14px" onclick="newChapter()">＋ 新建文件夹 / 章节</button>
+    <div style="font-weight:700;font-size:15px;margin:4px 0 10px">资料与章节（ADMIN-002 · 解析态）</div>${lib}
+    <div style="font-weight:700;font-size:15px;margin:14px 0 10px">学生账号管理</div>
+    ${STUDENTS.map(s=>`<div class="adm-card"><div class="av">${s.name[0]}</div><div class="meta"><div class="nm">${s.name}</div><div class="st"><span style="color:var(--green)">●</span> 活跃 · 学生</div></div><button class="mini-btn" onclick="toast('已重置密码（原型）')">重置</button><button class="mini-btn danger" onclick="toast('已停用（原型）')">停用</button></div>`).join('')}
+    <div style="font-weight:700;font-size:15px;margin:14px 0 10px">全班学习概览</div>${students}
+  </div>`+tabbar();
+}
+function newChapter(){
+  const f=LIBRARY[0];
+  f.chapters.push({id:'c'+(LIBRARY.reduce((a,x)=>a+x.chapters.length,0)+1),name:'新章节（待命名）',mats:[]});
+  toast('已新建章节（原型的表单演示）');render();
+}
+function softDelChapter(id){
+  const c=LIBRARY.flatMap(f=>f.chapters).find(x=>x.id===id);
+  let html=`<div class="row" style="font-weight:700">软删除确认（F7）</div>
+    <div class="row" style="text-align:left;border:none;background:transparent;font-weight:500;font-size:14px">确定删除章节「${esc(c?c.name:'')}」？<br>关联向量与测评将保留 <b>7 天</b> 硬删窗口，期间可恢复。</div>
+    <div class="row danger" onclick="confirmDelChapter('${id}')">确认删除（进入 7 天窗口）</div>
+    <div class="row cancel" onclick="closeSheet()">取消</div>`;
+  document.getElementById('sheet').innerHTML=html;document.getElementById('sheetMask').classList.add('show');
+}
+function confirmDelChapter(id){
+  LIBRARY.forEach(f=>{f.chapters=f.chapters.filter(c=>c.id!==id);});
+  closeSheet();toast('已软删除，7 天内可在备份恢复（F7）');render();
+}
+
+/* ===== TEACHER: QUIZ publish (draft → confirm → revision) ===== */
+let pubSel={};
+function viewTeacherQuiz(){
+  const chks=LIBRARY.map(f=>`<div class="folder">${esc(f.folder)}</div>`+f.chapters.map(c=>`<div class="chk ${pubSel[c.id]?'on':''}" onclick="pubSel['${c.id}']=!pubSel['${c.id}'];render()"><span class="box">${pubSel[c.id]?'✓':''}</span>${esc(c.name)}</div>`).join('')).join('');
+  const sel=Object.keys(pubSel).filter(k=>pubSel[k]);
+  const published=QUIZZES.filter(q=>q.status==='published').map(q=>{
+    const ver=q.version>1?`<span class="badge ver">v${q.version}</span> `:'';
+    return `<div class="card sm" style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-weight:700">${ver}${esc(q.title)}</div><div class="muted">覆盖：${q.chapters.map(chapterName).map(esc).join('、')} · 全班同题</div></div>
+      <div style="text-align:right"><span class="badge master">已发布</span><div style="margin-top:6px"><span class="mini-btn teacher" onclick="revisionQuiz('${q.id}')">重出</span></div></div></div>`;}).join('');
+  const superseded=QUIZZES.filter(q=>q.status==='superseded').map(q=>`<div class="card sm" style="opacity:.6"><div style="display:flex;justify-content:space-between"><div style="font-weight:700">${esc(q.title)}</div><span class="badge super">已替换 v${q.version}</span></div><div class="muted" style="font-size:12px">覆盖：${q.chapters.map(chapterName).map(esc).join('、')}</div></div>`).join('');
+  const drafts=QUIZZES.filter(q=>q.status==='draft').map(q=>`<div class="card sm" style="border-color:var(--teacher)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-weight:700">${esc(q.title)}</div><span class="badge na">草稿待确认</span></div>
+      <div class="muted" style="font-size:12px;margin-bottom:8px">覆盖：${q.chapters.map(chapterName).map(esc).join('、')} · 含 ${q.qs.length} 道 AI 生成题</div>
+      <div style="border:1px dashed var(--border);border-radius:10px;padding:10px;margin-bottom:10px">
+        ${q.qs.map((it,i)=>`<div style="font-size:13px;margin-bottom:6px"><b>Q${i+1}.</b> ${esc(it.t)}</div>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px"><button class="btn teacher sm" style="flex:1" onclick="confirmQuiz('${q.id}')">确认发布</button><button class="mini-btn danger" onclick="dropQuiz('${q.id}')">放弃</button></div>
+    </div>`).join('');
+  return appbar('出题 / 发布','选章 → 生成草稿 → 确认发布')+
+  `<div class="content">
+    <div class="card"><div style="font-weight:700;margin-bottom:6px">① 选择覆盖章节</div>${chks}
+      <button class="btn teacher" style="margin-top:12px" onclick="publishQuiz()">生成草稿（${sel.length} 章）</button></div>
+    ${drafts?`<div style="font-weight:700;font-size:14px;margin:12px 0 8px">待确认草稿（QUIZ-001 轻量审核）</div>${drafts}`:''}
+    <div style="font-weight:700;font-size:15px;margin:14px 0 10px">已发布的测评</div>${published||'<div class="muted">暂无</div>'}
+    ${superseded?`<div style="font-weight:700;font-size:14px;margin:14px 0 8px">历史版本</div>${superseded}`:''}
+  </div>`+tabbar();
+}
+function publishQuiz(){
+  const sel=Object.keys(pubSel).filter(k=>pubSel[k]);
+  if(!sel.length){toast('请至少选择一章');return;}
+  const id='q'+(QUIZZES.length+1);
+  const qs=sel.map((c,i)=>({t:'（基于《'+chapterName(c)+'》AI 生成的 '+(i+1)+' 号题：选择题 / 判断题 / 简答）',type:'choice',opts:['A','B','C','D'],ans:0,reason:'（教师确认后由 GRADER 记录原因）'}));
+  QUIZZES.push({id,title:'草稿 · '+sel.length+' 章',chapters:sel.slice(),version:1,status:'draft',taken:false,score:null,qs});
+  pubSel={};toast('已生成草稿，请预览后确认发布');render();
+}
+function confirmQuiz(id){const q=QUIZZES.find(x=>x.id===id);if(q){q.status='published';q.title='新测评 · '+q.chapters.length+' 章';}toast('已发布，全班可见相同题目');render();}
+function dropQuiz(id){const i=QUIZZES.findIndex(x=>x.id===id);if(i>=0)QUIZZES.splice(i,1);toast('已放弃草稿');render();}
+function revisionQuiz(id){
+  const old=QUIZZES.find(x=>x.id===id);if(!old)return;
+  old.status='superseded';
+  const nid='q'+(QUIZZES.length+1);
+  const sel=old.chapters;
+  const qs=sel.map((c,i)=>({t:'（重出：基于《'+chapterName(c)+'》新生成 '+(i+1)+' 号题）',type:'choice',opts:['A','B','C','D'],ans:0,reason:'（教师确认后记录）'}));
+  QUIZZES.push({id:nid,title:'草稿 · 重出 v'+(old.version+1),chapters:sel.slice(),version:old.version+1,status:'draft',taken:false,score:null,qs});
+  toast('已重出为新草稿 v'+(old.version+1)+'（旧版保留，F3 不污染掌握度）');render();
+}
+
+/* ===== TEACHER: notes / progress / report ===== */
+function teacherNote(){
+  return appbar('学习','')+
+  `<div class="content"><div class="note"><div class="big">🧑‍🏫</div>教师无独立学习界面。<br>请在「管理后台」查看全班资料与聚合进度。</div></div>`+tabbar();
+}
+function teacherProgress(){
+  const cards=STUDENTS.map(s=>{const c={master:0,prog:0,weak:0,na:0};Object.values(s.m).forEach(v=>c[stateOf(v).key]++);
+    const weakCh=Object.keys(s.m).filter(k=>s.m[k]!==null&&s.m[k]<50).map(chapterName);
+    return `<div class="card"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div class="av" style="width:38px;height:38px;border-radius:11px;background:var(--teacher-soft);color:var(--teacher);display:flex;align-items:center;justify-content:center;font-weight:800">${s.name[0]}</div><div style="font-weight:700">${s.name}</div></div>
+      <div class="stat-row" style="margin:0"><div class="stat"><div class="v" style="color:var(--green);font-size:18px">${c.master}</div><div class="k">已掌握</div></div><div class="stat"><div class="v" style="color:var(--amber);font-size:18px">${c.prog}</div><div class="k">进行中</div></div><div class="stat"><div class="v" style="color:var(--red);font-size:18px">${c.weak}</div><div class="k">薄弱</div></div></div>
+      ${weakCh.length?`<div class="muted" style="margin-top:10px;font-size:12px">薄弱章节：${weakCh.map(esc).join('、')}</div>`:''}</div>`;}).join('');
+  return appbar('全班进度','按学生聚合')+`<div class="content">${cards}</div>`+tabbar();
+}
+function teacherReport(){
+  const totTake=QUIZZES.filter(q=>q.status==='published').length;
+  const avg=Math.round(STUDENTS.reduce((a,s)=>a+(Object.values(s.m).filter(v=>v!==null).reduce((x,y)=>x+y,0)/Object.values(s.m).filter(v=>v!==null).length),0)/STUDENTS.length);
+  const weakAll=STUDENTS.map(s=>Object.keys(s.m).filter(k=>s.m[k]!==null&&s.m[k]<50).map(chapterName)).flat();
+  const weakUniq=[...new Set(weakAll)];
+  return appbar('全班周报','RPT-004 聚合')+
+  `<div class="content">
+    <div class="report-h"><div class="t">2026 第 35 周 · 全班聚合</div><div class="d">教师视图 · 学习周报</div></div>
+    <div class="card"><div style="font-weight:700;margin-bottom:12px">全班概览</div><div class="stat-row" style="margin:0">
+      <div class="stat"><div class="v">${STUDENTS.length}</div><div class="k">学生数</div></div>
+      <div class="stat"><div class="v">${totTake}</div><div class="k">已发布测评</div></div>
+      <div class="stat"><div class="v">${avg}</div><div class="k">平均掌握度</div></div></div></div>
+    <div class="card"><div style="font-weight:700;margin-bottom:8px">共性薄弱章节</div>${weakUniq.length?weakUniq.map(c=>`<div class="weak"><span class="badge weak">${esc(c)}</span><div class="muted" style="font-size:12.5px">多名同学待补强</div></div>`).join(''):'<div class="muted">暂无共性薄弱 🎉</div>'}</div>
+    <div class="card"><div style="font-weight:700;margin-bottom:10px">AI 教学建议</div>
+      ${['「'+weakUniq.join('、')+'」为全班共性薄弱，建议下周统一加设巩固测评。','Alice、Bob 的反向传播已掌握，可推进 Transformer 专题。','Carol 进度领先，可布置拓展材料。'].map(t=>`<div class="ai-tip"><div class="ic">AI</div><div style="font-size:13.5px;line-height:1.5">${t}</div></div>`).join('')}</div>
+  </div>`+tabbar();
+}
+
+/* ===== Menu ===== */
+function openMenu(){
+  document.getElementById('sheet').innerHTML=`<div class="row" style="font-weight:700">${state.role==='teacher'?'西城老师（教师）':'Alice（学生）'}</div>
+    <div class="row" onclick="toast('改密页（原型）')">修改密码</div><div class="row danger" onclick="logout()">退出登录</div><div class="row cancel" onclick="closeSheet()">取消</div>`;
+  document.getElementById('sheetMask').classList.add('show');
+}
+function closeSheet(){document.getElementById('sheetMask').classList.remove('show');}
+function logout(){closeSheet();state={user:null,role:null,hash:'login',activeChapter:'c2',activeQuiz:null,answers:{}};CONVS=[{id:'conv1',title:'反向传播答疑',chapter:'c2',turn:3,messages:[{me:true,txt:'反向传播里梯度是怎么从输出层传回输入层的？'},{me:false,txt:'好问题 👍 先想一步：前向传播时，每一层的输出是怎么算出来的？',who:'TUTOR'}]}];activeConv='conv1';REVIEW=[];render();toast('已退出登录');}
+
+/* ===== Render ===== */
+function render(){
+  const s=document.getElementById('screen');let html;
+  if(!state.role){html=viewLogin();}
+  else if(state.role==='student'){
+    const map={learn:viewLearn,quiz:state.activeQuiz?viewQuizTake:viewQuizList,progress:viewProgress,report:viewReport};
+    html=(map[state.hash]||viewLearn)();
+  }else{
+    const map={admin:viewAdmin,learn:teacherNote,quiz:viewTeacherQuiz,progress:teacherProgress,report:teacherReport};
+    html=(map[state.hash]||viewAdmin)();
+  }
+  s.innerHTML=html;s.scrollTop=0;
+}
+document.getElementById('sheetMask').addEventListener('click',e=>{if(e.target.id==='sheetMask')closeSheet();});
+render();
+</script>
+</body>
+</html>

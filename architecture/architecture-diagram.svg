@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1000" font-family="-apple-system, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif">
+  <!-- Definitions -->
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7280"/>
+    </marker>
+    <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#F2714E"/>
+    </marker>
+    <linearGradient id="g1" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#FFFBEB"/>
+      <stop offset="100%" stop-color="#FEF3C7"/>
+    </linearGradient>
+    <linearGradient id="g3" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#EFF6FF"/>
+      <stop offset="100%" stop-color="#DBEAFE"/>
+    </linearGradient>
+    <linearGradient id="g4" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#FAF5FF"/>
+      <stop offset="100%" stop-color="#EDE9FE"/>
+    </linearGradient>
+    <linearGradient id="g5" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#F0FDF4"/>
+      <stop offset="100%" stop-color="#DCFCE7"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1400" height="1000" fill="#FFFFFF"/>
+
+  <!-- Title -->
+  <text x="700" y="38" text-anchor="middle" font-size="22" font-weight="700" fill="#1F2937">AI 学习小组 App — 系统架构图 v1.0</text>
+  <text x="700" y="60" text-anchor="middle" font-size="12" fill="#6B7280">配套 PRD v2.1 · 4 用户（1 教师 + 3 学生）· iMac + Cloudflare 隧道 · 极简三 Agent + 纯向量 RAG</text>
+
+  <!-- ============== L1 表现层 ============== -->
+  <g>
+    <text x="20" y="108" font-size="13" font-weight="700" fill="#9A3412">L1 表现层</text>
+    <rect x="20" y="78" width="3" height="92" fill="#F2714E" rx="1.5"/>
+    <!-- PWA 学生端 -->
+    <rect x="180" y="80" width="320" height="88" rx="10" fill="url(#g1)" stroke="#F59E0B" stroke-width="1.5"/>
+    <text x="340" y="112" text-anchor="middle" font-size="16" font-weight="700" fill="#92400E">PWA 学生端</text>
+    <text x="340" y="134" text-anchor="middle" font-size="11" fill="#B45309">3 名同学 · 移动浏览器 → 主屏</text>
+    <text x="340" y="152" text-anchor="middle" font-size="10" fill="#B45309">学习 / 测评 / 进度 / 周报</text>
+    <!-- PWA 教师端 -->
+    <rect x="540" y="80" width="320" height="88" rx="10" fill="url(#g1)" stroke="#F59E0B" stroke-width="1.5"/>
+    <text x="700" y="112" text-anchor="middle" font-size="16" font-weight="700" fill="#92400E">PWA 教师端</text>
+    <text x="700" y="134" text-anchor="middle" font-size="11" fill="#B45309">1 名教师 · 桌面/手机浏览器</text>
+    <text x="700" y="152" text-anchor="middle" font-size="10" fill="#B45309">管理后台 / 测评发布 / 全班概览</text>
+    <!-- 离线说明 -->
+    <rect x="900" y="80" width="240" height="88" rx="10" fill="#FAFAFA" stroke="#9CA3AF" stroke-dasharray="4,3" stroke-width="1.5"/>
+    <text x="1020" y="112" text-anchor="middle" font-size="14" font-weight="600" fill="#374151">ServiceWorker</text>
+    <text x="1020" y="134" text-anchor="middle" font-size="10" fill="#6B7280">App Shell 离线缓存</text>
+    <text x="1020" y="152" text-anchor="middle" font-size="10" fill="#6B7280">API 走网络 · manifest</text>
+    <!-- 箭头 L1→L2 -->
+    <line x1="700" y1="168" x2="700" y2="194" stroke="#6B7280" stroke-width="1.5" marker-end="url(#arr)"/>
+  </g>
+
+  <!-- ============== L2 接入层 ============== -->
+  <g>
+    <text x="20" y="218" font-size="13" font-weight="700" fill="#1E40AF">L2 接入层</text>
+    <rect x="20" y="188" width="3" height="40" fill="#3B82F6" rx="1.5"/>
+    <rect x="180" y="200" width="960" height="46" rx="8" fill="url(#g3)" stroke="#3B82F6" stroke-width="1.5"/>
+    <text x="660" y="222" text-anchor="middle" font-size="14" font-weight="700" fill="#1E40AF">Cloudflare 命名隧道 · ai-study.&lt;域&gt; · HTTPS · 仅 5001</text>
+    <text x="660" y="240" text-anchor="middle" font-size="11" fill="#1D4ED8">命名隧道（固定链接） · 隧道即 HTTPS · 源站 IP 不直暴</text>
+    <line x1="660" y1="246" x2="660" y2="272" stroke="#6B7280" stroke-width="1.5" marker-end="url(#arr)"/>
+  </g>
+
+  <!-- ============== L3 应用层 ============== -->
+  <g>
+    <text x="20" y="304" font-size="13" font-weight="700" fill="#1E3A8A">L3 应用层</text>
+    <rect x="20" y="274" width="3" height="320" fill="#1D4ED8" rx="1.5"/>
+    <!-- 应用层大框 -->
+    <rect x="180" y="278" width="960" height="312" rx="10" fill="url(#g3)" stroke="#1D4ED8" stroke-width="1.5" opacity="0.5"/>
+    <text x="200" y="300" font-size="13" font-weight="700" fill="#1E3A8A">Flask 单进程 · waitress 1 worker · debug=False · 单源托管 (前端 + /api/*)</text>
+
+    <!-- 3a 鉴权护栏 -->
+    <rect x="200" y="312" width="920" height="40" rx="6" fill="#FFFFFF" stroke="#F2714E" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <text x="220" y="337" font-size="12" font-weight="700" fill="#9A3412">护栏中间件（横切 A）</text>
+    <text x="380" y="337" font-size="11" fill="#374151">JWT 12h  ·  @role_required  ·  @rate_limit(60/天)  ·  @user_scope  ·  @validate_json</text>
+
+    <!-- 3b 业务服务 -->
+    <text x="200" y="376" font-size="12" font-weight="700" fill="#1E3A8A">业务服务（Flask Blueprints）</text>
+    <g font-size="10.5" fill="#1F2937">
+      <rect x="200" y="382" width="100" height="34" rx="5" fill="#FFFFFF" stroke="#60A5FA"/><text x="250" y="403" text-anchor="middle">auth</text>
+      <rect x="306" y="382" width="100" height="34" rx="5" fill="#FFFFFF" stroke="#60A5FA"/><text x="356" y="403" text-anchor="middle">chapters</text>
+      <rect x="412" y="382" width="100" height="34" rx="5" fill="#FFFFFF" stroke="#60A5FA"/><text x="462" y="403" text-anchor="middle">materials</text>
+      <rect x="518" y="382" width="100" height="34" rx="5" fill="#FFFFFF" stroke="#60A5FA"/><text x="568" y="403" text-anchor="middle">conversations</text>
+      <rect x="624" y="382" width="100" height="34" rx="5" fill="#FFFFFF" stroke="#60A5FA"/><text x="674" y="403" text-anchor="middle">quizzes</text>
+      <rect x="730" y="382" width="100" height="34" rx="5" fill="#FFFFFF" stroke="#60A5FA"/><text x="780" y="403" text-anchor="middle">attempts</text>
+      <rect x="836" y="382" width="100" height="34" rx="5" fill="#FFFFFF" stroke="#60A5FA"/><text x="886" y="403" text-anchor="middle">progress</text>
+      <rect x="942" y="382" width="80" height="34" rx="5" fill="#FFFFFF" stroke="#60A5FA"/><text x="982" y="403" text-anchor="middle">reports</text>
+      <rect x="1028" y="382" width="92" height="34" rx="5" fill="#FFFFFF" stroke="#60A5FA"/><text x="1074" y="403" text-anchor="middle">teacher</text>
+    </g>
+
+    <!-- 3c AI 服务 -->
+    <text x="200" y="442" font-size="12" font-weight="700" fill="#1E3A8A">AI 服务（极简三 Agent + 引导式编排）</text>
+    <rect x="200" y="450" width="170" height="80" rx="6" fill="#FFFFFF" stroke="#A78BFA" stroke-width="1.5"/>
+    <text x="285" y="472" text-anchor="middle" font-size="12" font-weight="700" fill="#5B21B6">rag</text>
+    <text x="285" y="490" text-anchor="middle" font-size="10" fill="#6B7280">向量检索 (top-k)</text>
+    <text x="285" y="505" text-anchor="middle" font-size="10" fill="#6B7280">chapter_id 过滤</text>
+    <text x="285" y="520" text-anchor="middle" font-size="10" fill="#6B7280">chunk 拼装</text>
+
+    <rect x="386" y="450" width="170" height="80" rx="6" fill="#FFFFFF" stroke="#A78BFA" stroke-width="1.5"/>
+    <text x="471" y="472" text-anchor="middle" font-size="12" font-weight="700" fill="#5B21B6">agent_orchestrator</text>
+    <text x="471" y="490" text-anchor="middle" font-size="10" fill="#6B7280">TUTOR (苏格拉底)</text>
+    <text x="471" y="505" text-anchor="middle" font-size="10" fill="#6B7280">QUIZZER (草稿)</text>
+    <text x="471" y="520" text-anchor="middle" font-size="10" fill="#6B7280">GRADER (批改)</text>
+
+    <rect x="572" y="450" width="170" height="80" rx="6" fill="#FFFFFF" stroke="#A78BFA" stroke-width="1.5"/>
+    <text x="657" y="472" text-anchor="middle" font-size="12" font-weight="700" fill="#5B21B6">review_sched</text>
+    <text x="657" y="490" text-anchor="middle" font-size="10" fill="#6B7280">薄弱章识别 (M&lt;50)</text>
+    <text x="657" y="505" text-anchor="middle" font-size="10" fill="#6B7280">巩固练习生成</text>
+    <text x="657" y="520" text-anchor="middle" font-size="10" fill="#6B7280">间隔复习 1→3→7d</text>
+
+    <rect x="758" y="450" width="170" height="80" rx="6" fill="#FFFFFF" stroke="#F2714E" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <text x="843" y="472" text-anchor="middle" font-size="12" font-weight="700" fill="#9A3412">fallback</text>
+    <text x="843" y="490" text-anchor="middle" font-size="10" fill="#6B7280">LLM 超时/异常 →</text>
+    <text x="843" y="505" text-anchor="middle" font-size="10" fill="#6B7280">模板引导语兜底</text>
+    <text x="843" y="520" text-anchor="middle" font-size="10" fill="#6B7280">不静默给结论</text>
+
+    <rect x="944" y="450" width="176" height="80" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-dasharray="4,3" stroke-width="1"/>
+    <text x="1032" y="472" text-anchor="middle" font-size="11" font-weight="600" fill="#6B7280">数据访问层</text>
+    <text x="1032" y="490" text-anchor="middle" font-size="10" fill="#6B7280">SQLAlchemy (ORM)</text>
+    <text x="1032" y="505" text-anchor="middle" font-size="10" fill="#6B7280">ChromaDB Client</text>
+    <text x="1032" y="520" text-anchor="middle" font-size="10" fill="#6B7280">uploads fs</text>
+
+    <line x1="660" y1="590" x2="660" y2="616" stroke="#6B7280" stroke-width="1.5" marker-end="url(#arr)"/>
+  </g>
+
+  <!-- ============== L4 AI 能力层 ============== -->
+  <g>
+    <text x="20" y="648" font-size="13" font-weight="700" fill="#5B21B6">L4 AI 能力</text>
+    <rect x="20" y="618" width="3" height="60" fill="#8B5CF6" rx="1.5"/>
+    <rect x="280" y="622" width="380" height="56" rx="8" fill="url(#g4)" stroke="#8B5CF6" stroke-width="1.5"/>
+    <text x="470" y="644" text-anchor="middle" font-size="14" font-weight="700" fill="#5B21B6">DeepSeek API（外部 HTTPS）</text>
+    <text x="470" y="662" text-anchor="middle" font-size="10" fill="#6D28D9">LLM 推理 · 不占本机内存</text>
+    <text x="470" y="675" text-anchor="middle" font-size="10" fill="#6D28D9">TUTOR/QUIZZER/GRADER 三角色提示词</text>
+    <line x1="470" y1="540" x2="470" y2="622" stroke="#A78BFA" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+
+    <rect x="700" y="622" width="380" height="56" rx="8" fill="url(#g4)" stroke="#8B5CF6" stroke-width="1.5"/>
+    <text x="890" y="644" text-anchor="middle" font-size="14" font-weight="700" fill="#5B21B6">all-MiniLM-L6-v2（本地）</text>
+    <text x="890" y="662" text-anchor="middle" font-size="10" fill="#6D28D9">向量化 · batch 编码</text>
+    <text x="890" y="675" text-anchor="middle" font-size="10" fill="#6D28D9">继承 v1 · 384 维</text>
+    <line x1="700" y1="490" x2="840" y2="622" stroke="#A78BFA" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+
+    <line x1="660" y1="678" x2="660" y2="704" stroke="#6B7280" stroke-width="1.5" marker-end="url(#arr)"/>
+  </g>
+
+  <!-- ============== L5 数据层 ============== -->
+  <g>
+    <text x="20" y="738" font-size="13" font-weight="700" fill="#166534">L5 数据层</text>
+    <rect x="20" y="708" width="3" height="100" fill="#22C55E" rx="1.5"/>
+    <rect x="280" y="710" width="260" height="92" rx="8" fill="url(#g5)" stroke="#22C55E" stroke-width="1.5"/>
+    <text x="410" y="734" text-anchor="middle" font-size="13" font-weight="700" fill="#166534">SQLite (WAL)</text>
+    <text x="410" y="752" text-anchor="middle" font-size="10" fill="#15803D">users · chapters</text>
+    <text x="410" y="766" text-anchor="middle" font-size="10" fill="#15803D">materials · quizzes</text>
+    <text x="410" y="780" text-anchor="middle" font-size="10" fill="#15803D">questions · attempts</text>
+    <text x="410" y="794" text-anchor="middle" font-size="10" fill="#15803D">review_items · reports</text>
+
+    <rect x="560" y="710" width="260" height="92" rx="8" fill="url(#g5)" stroke="#22C55E" stroke-width="1.5"/>
+    <text x="690" y="734" text-anchor="middle" font-size="13" font-weight="700" fill="#166534">ChromaDB</text>
+    <text x="690" y="752" text-anchor="middle" font-size="10" fill="#15803D">material_chunks</text>
+    <text x="690" y="766" text-anchor="middle" font-size="10" fill="#15803D">带 chapter_id 标签</text>
+    <text x="690" y="780" text-anchor="middle" font-size="10" fill="#15803D">cosine 检索 · top-k</text>
+    <text x="690" y="794" text-anchor="middle" font-size="10" fill="#15803D">≤500MB 资料</text>
+
+    <rect x="840" y="710" width="240" height="92" rx="8" fill="url(#g5)" stroke="#22C55E" stroke-width="1.5"/>
+    <text x="960" y="734" text-anchor="middle" font-size="13" font-weight="700" fill="#166534">uploads/</text>
+    <text x="960" y="752" text-anchor="middle" font-size="10" fill="#15803D">PDF / PPTX / DOCX</text>
+    <text x="960" y="766" text-anchor="middle" font-size="10" fill="#15803D">MD / TXT · ≤30MB/份</text>
+    <text x="960" y="780" text-anchor="middle" font-size="10" fill="#15803D">原文丢了向量重解析无救</text>
+    <text x="960" y="794" text-anchor="middle" font-size="10" fill="#15803D">与 DB 一起备份</text>
+  </g>
+
+  <!-- ============== 基础设施 ============== -->
+  <g>
+    <text x="20" y="852" font-size="13" font-weight="700" fill="#374151">基础设施</text>
+    <rect x="20" y="822" width="3" height="100" fill="#6B7280" rx="1.5"/>
+    <rect x="280" y="824" width="260" height="92" rx="8" fill="#F9FAFB" stroke="#6B7280" stroke-width="1.5"/>
+    <text x="410" y="848" text-anchor="middle" font-size="13" font-weight="700" fill="#374151">launchd + caffeinate</text>
+    <text x="410" y="866" text-anchor="middle" font-size="10" fill="#4B5563">登录自启 · 防合盖/空闲</text>
+    <text x="410" y="880" text-anchor="middle" font-size="10" fill="#4B5563">KeepAlive 崩溃自拉起</text>
+    <text x="410" y="894" text-anchor="middle" font-size="10" fill="#4B5563">caffeinate -ims</text>
+    <text x="410" y="908" text-anchor="middle" font-size="10" fill="#4B5563">断电仍中断（约定）</text>
+
+    <rect x="560" y="824" width="260" height="92" rx="8" fill="#F9FAFB" stroke="#6B7280" stroke-width="1.5"/>
+    <text x="690" y="848" text-anchor="middle" font-size="13" font-weight="700" fill="#374151">iCloud Drive rsync（每日）</text>
+    <text x="690" y="866" text-anchor="middle" font-size="10" fill="#4B5563">DB (含 -wal/-shm)</text>
+    <text x="690" y="880" text-anchor="middle" font-size="10" fill="#4B5563">chroma_db/ · uploads/</text>
+    <text x="690" y="894" text-anchor="middle" font-size="10" fill="#4B5563">唯一备份目标</text>
+    <text x="690" y="908" text-anchor="middle" font-size="10" fill="#4B5563">上线后做一次还原演练</text>
+
+    <rect x="840" y="824" width="240" height="92" rx="8" fill="#F9FAFB" stroke="#6B7280" stroke-width="1.5"/>
+    <text x="960" y="848" text-anchor="middle" font-size="13" font-weight="700" fill="#374151">/health + 日志</text>
+    <text x="960" y="866" text-anchor="middle" font-size="10" fill="#4B5563">/health 探活 (公开)</text>
+    <text x="960" y="880" text-anchor="middle" font-size="10" fill="#4B5563">logs/app.log 按日轮转</text>
+    <text x="960" y="894" text-anchor="middle" font-size="10" fill="#4B5563">异常可追溯</text>
+    <text x="960" y="908" text-anchor="middle" font-size="10" fill="#4B5563">无独立监控告警（4 人）</text>
+  </g>
+
+  <!-- ============== 右侧横切标注 ============== -->
+  <g>
+    <rect x="1170" y="278" width="210" height="100" rx="8" fill="#FEF2F2" stroke="#F87171" stroke-width="1" stroke-dasharray="3,3" opacity="0.7"/>
+    <text x="1275" y="300" text-anchor="middle" font-size="12" font-weight="700" fill="#9F1239">A · 安全护栏（横切）</text>
+    <text x="1185" y="320" font-size="10" fill="#7F1D1D">• JWT 鉴权 + 角色</text>
+    <text x="1185" y="336" font-size="10" fill="#7F1D1D">• @rate_limit 60/天</text>
+    <text x="1185" y="352" font-size="10" fill="#7F1D1D">• @user_scope 防越权读</text>
+    <text x="1185" y="368" font-size="10" fill="#7F1D1D">• 入参 schema 校验</text>
+
+    <rect x="1170" y="620" width="210" height="170" rx="8" fill="#F0F9FF" stroke="#60A5FA" stroke-width="1" stroke-dasharray="3,3" opacity="0.7"/>
+    <text x="1275" y="642" text-anchor="middle" font-size="12" font-weight="700" fill="#1E40AF">B · 可观测 + 备份（横切）</text>
+    <text x="1185" y="662" font-size="10" fill="#1E3A8A">• /health 探活</text>
+    <text x="1185" y="678" font-size="10" fill="#1E3A8A">• launchd KeepAlive 自拉起</text>
+    <text x="1185" y="694" font-size="10" fill="#1E3A8A">• iCloud 每日 rsync 备份</text>
+    <text x="1185" y="710" font-size="10" fill="#1E3A8A">• 日志按日轮转</text>
+    <text x="1185" y="726" font-size="10" fill="#1E3A8A">• 还原演练（上线后一次）</text>
+    <text x="1185" y="742" font-size="10" fill="#1E3A8A">• 无独立监控告警（4 人）</text>
+    <text x="1185" y="758" font-size="10" fill="#1E3A8A">• DeepSeek 成本护栏：限速</text>
+    <text x="1185" y="774" font-size="10" fill="#1E3A8A">+ 单请求 ≤120s</text>
+  </g>
+
+  <!-- ============== 底部图例 ============== -->
+  <g>
+    <rect x="40" y="950" width="1320" height="38" rx="6" fill="#FAFAFA" stroke="#E5E7EB"/>
+    <text x="60" y="970" font-size="11" font-weight="700" fill="#374151">图例：</text>
+    <rect x="100" y="960" width="14" height="14" rx="3" fill="#FFF7ED" stroke="#F59E0B"/>
+    <text x="120" y="972" font-size="10" fill="#374151">表现层 / 客户端</text>
+    <rect x="220" y="960" width="14" height="14" rx="3" fill="#EFF6FF" stroke="#3B82F6"/>
+    <text x="240" y="972" font-size="10" fill="#374151">接入 / 应用层</text>
+    <rect x="320" y="960" width="14" height="14" rx="3" fill="#FAF5FF" stroke="#8B5CF6"/>
+    <text x="340" y="972" font-size="10" fill="#374151">AI 能力层</text>
+    <rect x="420" y="960" width="14" height="14" rx="3" fill="#F0FDF4" stroke="#22C55E"/>
+    <text x="440" y="972" font-size="10" fill="#374151">数据层</text>
+    <rect x="500" y="960" width="14" height="14" rx="3" fill="#F9FAFB" stroke="#6B7280"/>
+    <text x="520" y="972" font-size="10" fill="#374151">基础设施</text>
+    <line x1="610" y1="967" x2="640" y2="967" stroke="#6B7280" stroke-width="1.5" marker-end="url(#arr)"/>
+    <text x="648" y="972" font-size="10" fill="#374151">数据/调用流</text>
+    <line x1="730" y1="967" x2="760" y2="967" stroke="#A78BFA" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+    <text x="768" y="972" font-size="10" fill="#374151">AI 调用（虚线）</text>
+    <rect x="870" y="960" width="14" height="14" rx="3" fill="#FFFFFF" stroke="#F2714E" stroke-dasharray="3,3"/>
+    <text x="890" y="972" font-size="10" fill="#374151">护栏/兜底（虚线）</text>
+    <text x="1050" y="972" font-size="10" fill="#6B7280">v1.0 · 2026-09-02 · 配套 PRD v2.1</text>
+  </g>
+</svg>
