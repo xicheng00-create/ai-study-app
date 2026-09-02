@@ -1,6 +1,12 @@
 /* 教师视图：管理后台（资料/章节/学生）+ 发布测评 + 全班进度/周报 */
 const Teacher = {
   pubSel: {},
+  quizConfig: { choice: 10, essay: 5 },   // 100 分组合（QUIZ-005）
+  QUIZ_PRESETS: [
+    { key: "10c5e", label: "10 选择 + 5 问答", cfg: { choice: 10, essay: 5 } },
+    { key: "8c6e", label: "8 选择 + 6 问答", cfg: { choice: 8, essay: 6 } },
+    { key: "20c", label: "20 选择", cfg: { choice: 20 } },
+  ],
   curSel: {},       // Session 表单章节多选
   sessions: [],     // 课程管理缓存（周→节）
   videos: [],
@@ -340,22 +346,48 @@ const Teacher = {
     const sel = Object.keys(this.pubSel).filter(k => this.pubSel[k]);
     const drafts = quizzes.filter(q => q.status === "draft").map(q => `<div class="card sm" style="border-color:var(--indigo)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-weight:700">${esc(q.title)}</div><span class="badge na">草稿待确认</span></div>
-      <div class="muted" style="font-size:12px;margin-bottom:8px">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')} · v${q.version}</div>
+      <div class="muted" style="font-size:12px;margin-bottom:8px">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')} · v${q.version} · ${q.total_points} 分</div>
       <div style="display:flex;gap:8px"><button class="btn teacher sm" style="flex:1" onclick="Teacher.publish('${q.id}')">确认发布</button><button class="mini-btn danger" onclick="Teacher.dropQuiz('${q.id}')">放弃</button></div></div>`).join('');
     const published = quizzes.filter(q => q.status === "published").map(q => `<div class="card sm" style="display:flex;justify-content:space-between;align-items:center">
-      <div><div style="font-weight:700">${q.version > 1 ? `<span class="badge ver">v${q.version}</span> ` : ''}${esc(q.title)}</div><div class="muted">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div></div>
+      <div><div style="font-weight:700">${q.version > 1 ? `<span class="badge ver">v${q.version}</span> ` : ''}${esc(q.title)}</div><div class="muted">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')} · ${q.total_points} 分</div></div>
       <span class="mini-btn teacher" onclick="Teacher.revise('${q.id}')">重出</span></div>`).join('');
-    return appbar('出题 / 发布', '选章 → 生成草稿 → 确认发布') + `<div class="content">
-      <div class="card"><div style="font-weight:700;margin-bottom:6px">① 选择覆盖章节</div>${chks}
-        <button class="btn teacher" style="margin-top:12px" onclick="Teacher.draft(${JSON.stringify(sel)})">生成草稿（${sel.length} 章）</button></div>
+    const cfg = this.quizConfig || {};
+    const presetHtml = this.QUIZ_PRESETS.map(p => {
+      const on = (cfg.choice || 0) === (p.cfg.choice || 0) && (cfg.bool || 0) === (p.cfg.bool || 0) && (cfg.essay || 0) === (p.cfg.essay || 0);
+      return `<span class="pill ${on ? 'active' : ''}" style="cursor:pointer" onclick="Teacher.setQuizPreset('${p.key}')">${p.label}</span>`;
+    }).join('');
+    const total = (cfg.choice || 0) * 5 + (cfg.bool || 0) * 5 + (cfg.essay || 0) * 10;
+    return appbar('出题 / 发布', '选章 → 100 分组合 → 生成草稿 → 确认发布') + `<div class="content">
+      <div class="card"><div style="font-weight:700;margin-bottom:6px">① 选择覆盖章节</div>${chks}</div>
+      <div class="card"><div style="font-weight:700;margin-bottom:6px">② 选择 100 分组合</div>
+        <div class="pill-wrap" style="margin-bottom:8px">${presetHtml}</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input class="mini-input" id="cfgChoice" placeholder="选择" style="flex:1" value="${cfg.choice || ''}"/>
+          <input class="mini-input" id="cfgBool" placeholder="是非" style="flex:1" value="${cfg.bool || ''}"/>
+          <input class="mini-input" id="cfgEssay" placeholder="问答" style="flex:1" value="${cfg.essay || ''}"/>
+          <span class="mini-btn" onclick="Teacher.applyCustomConfig()">自定义</span>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:6px">当前组合：${total} 分（${total === 100 ? '✓ 有效' : '须为 100'})</div>
+        <button class="btn teacher" style="margin-top:12px" onclick="Teacher.draft()">生成草稿（${sel.length} 章）</button></div>
       ${drafts ? `<div style="font-weight:700;font-size:14px;margin:12px 0 8px">待确认草稿</div>${drafts}` : ''}
       <div style="font-weight:700;font-size:15px;margin:14px 0 10px">已发布的测评</div>${published || '<div class="muted">暂无</div>'}
     </div>` + tabbar();
   },
-  async draft(sel) {
-    const chapter_ids = (sel || []).filter(Boolean);
+  setQuizPreset(key) {
+    const p = this.QUIZ_PRESETS.find(x => x.key === key);
+    if (p) { this.quizConfig = Object.assign({}, p.cfg); render(); }
+  },
+  applyCustomConfig() {
+    const n = (id) => { const v = document.getElementById(id).value.trim(); return v === "" ? 0 : (parseInt(v) || 0); };
+    const cfg = { choice: n("cfgChoice"), bool: n("cfgBool"), essay: n("cfgEssay") };
+    const total = (cfg.choice || 0) * 5 + (cfg.bool || 0) * 5 + (cfg.essay || 0) * 10;
+    if (total !== 100) { toast("自定义组合合计须为 100 分"); return; }
+    this.quizConfig = cfg; render();
+  },
+  async draft() {
+    const chapter_ids = Object.keys(this.pubSel || {}).filter(k => this.pubSel[k]);
     if (!chapter_ids.length) { toast("请至少选择一章"); return; }
-    try { await API.post("/api/quizzes/draft", { chapter_ids }); this.pubSel = {}; toast("已生成草稿，请预览后确认发布"); render(); }
+    try { await API.post("/api/quizzes/draft", { chapter_ids, config: this.quizConfig || {} }); this.pubSel = {}; toast("已生成草稿，请预览后确认发布"); render(); }
     catch (e) { toast(e.message); }
   },
   async publish(id) { try { await API.post(`/api/quizzes/${id}/publish`, {}); toast("已发布，全班可见相同题目"); render(); } catch (e) { toast(e.message); } },
@@ -367,7 +399,8 @@ const Teacher = {
     let overview = { students: [], common_weak_chapters: [] };
     try { overview = await API.get("/api/teacher/overview"); } catch (e) {}
     const cards = (overview.students || []).map(s => `<div class="card"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-      <div class="av" style="width:38px;height:38px;border-radius:11px">${esc((s.display_name || '?').charAt(0))}</div><div style="font-weight:700">${esc(s.display_name)}</div></div>
+      <div class="av" style="width:38px;height:38px;border-radius:11px">${esc((s.display_name || '?').charAt(0))}</div><div style="font-weight:700">${esc(s.display_name)}</div>
+      <span class="mini-btn teacher" style="margin-left:auto" onclick="Teacher.openReview('${s.id}')">测评覆核</span></div>
       <div class="stat-row" style="margin:0"><div class="stat"><div class="v" style="color:var(--green);font-size:18px">${s.counts.master}</div><div class="k">已掌握</div></div>
       <div class="stat"><div class="v" style="color:var(--amber);font-size:18px">${s.counts.progress}</div><div class="k">进行中</div></div>
       <div class="stat"><div class="v" style="color:var(--red);font-size:18px">${s.counts.weak}</div><div class="k">薄弱</div></div></div>
@@ -376,6 +409,38 @@ const Teacher = {
       <div class="card"><div style="font-weight:700;margin-bottom:8px">共性薄弱章节</div>
         ${(overview.common_weak_chapters || []).map(c => `<div class="weak"><span class="badge weak">${esc(c)}</span><div class="muted" style="font-size:12.5px">多名同学待补强</div></div>`).join('') || '<div class="muted">暂无共性薄弱 🎉</div>'}</div>
       ${cards}</div>` + tabbar();
+  },
+
+  /* ===== 测评覆核改分（QUIZ-009）===== */
+  async openReview(studentId) {
+    let d = null;
+    try { d = await API.get(`/api/teacher/students/${studentId}/quizzes`); }
+    catch (e) { toast(e.message); return; }
+    const name = (d.student && d.student.display_name) || '';
+    const subs = (d.attempts || []).map(s => {
+      const qs = (s.details || []).map(q => `
+        <div style="padding:8px 0;border-bottom:1px solid var(--line,#eee)">
+          <div style="font-size:12.5px">${esc(q.content)}<span class="badge ${q.type === 'essay' ? 'prog' : 'na'}" style="margin-left:6px">${q.type === 'essay' ? '问答' : '选择/是非'} · ${q.points} 分</span></div>
+          <div class="muted" style="font-size:12px;margin-top:4px">AI 评分：${q.is_reviewed ? `<s>${q.score}</s> → 已覆核 <b>${q.reviewed_score}</b>` : q.score}</div>
+          <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+            <input class="mini-input" id="rv_${q.id}" placeholder="0~${q.points}" style="flex:1"/>
+            <span class="mini-btn teacher" onclick="Teacher.saveReview('${q.id}')">保存</span>
+          </div>
+        </div>`).join('');
+      return `<div style="margin:10px 0;border:1px solid var(--line,#ddd);border-radius:10px;padding:10px">
+        <div style="font-weight:700;font-size:13px">${esc(s.title)} · v${s.version}</div>
+        <div class="muted" style="font-size:12px;margin-bottom:4px">得分率 ${s.score}%</div>${qs}</div>`;
+    }).join('') || '<div class="muted">该生暂无作答记录</div>';
+    openSheet(`<div class="row" style="font-weight:700;cursor:default">测评覆核改分 · ${esc(name)}</div>
+      <div style="max-height:62vh;overflow:auto;padding:0 16px">${subs}</div>
+      <div class="row cancel" onclick="closeSheet()">关闭</div>`);
+  },
+  async saveReview(attemptId) {
+    const el = document.getElementById("rv_" + attemptId);
+    const v = el ? el.value.trim() : "";
+    if (v === "") { toast("请输入覆核分数"); return; }
+    try { await API.put(`/api/attempts/${attemptId}/review`, { score: Number(v) }); toast("已保存覆核分数"); }
+    catch (e) { toast(e.message); }
   },
 
   /* ===== 全班周报 ===== */

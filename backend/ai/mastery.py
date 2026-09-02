@@ -1,6 +1,6 @@
 """掌握度 M 与四态（Design Spec §3.5，PROG-007/008，F3 数据正确性）。
 
-M = Σ(wᵢ·correctᵢ)/Σ(wᵢ)，wᵢ=0.5^间隔周数；
+百分制 M = Σ(wᵢ·score_earnedᵢ)/Σ(wᵢ·points_possibleᵢ)×100，wᵢ=0.5^间隔周数；
 仅聚合该章「最新已发布 version」的 attempts（F3，避免重出题污染）。
 """
 import json
@@ -26,6 +26,13 @@ def _weight(iso: str) -> float:
     return 0.5 ** _weeks_since(iso)
 
 
+def effective_score(row) -> float:
+    """教师覆核后以 reviewed_score 为准，否则取 AI 实际得分（QUIZ-009）。"""
+    if row["is_reviewed"] and row["reviewed_score"] is not None:
+        return float(row["reviewed_score"])
+    return float(row["score"]) if row["score"] is not None else 0.0
+
+
 def latest_version_for_chapter(con, chapter_id: str) -> int:
     """该章已发布测评的最新 version（无则 0）。"""
     rows = con.execute(
@@ -48,20 +55,22 @@ def compute_mastery(con, user_id: str, chapter_id: str) -> dict:
     if latest <= 0:
         return {"m": None, "attempts": 0, "latest_version": 0}
     rows = con.execute(
-        "SELECT score, correct, created_at FROM attempts"
-        " WHERE user_id=? AND chapter_id=? AND quiz_version=?",
+        "SELECT a.score, a.correct, a.created_at, a.is_reviewed, a.reviewed_score,"
+        " q.points AS points"
+        " FROM attempts a JOIN questions q ON q.id=a.question_id"
+        " WHERE a.user_id=? AND a.chapter_id=? AND a.quiz_version=?",
         (user_id, chapter_id, latest),
     ).fetchall()
     if not rows:
         return {"m": None, "attempts": 0, "latest_version": latest}
     total_w = 0.0
-    total = 0.0
+    earned_w = 0.0
     for r in rows:
         w = _weight(r["created_at"])
-        correct = float(r["score"]) if r["score"] is not None else float(r["correct"])
-        total += w * correct
-        total_w += w
-    m = round(total / total_w * 100, 1) if total_w > 0 else None
+        pts = float(r["points"]) if r["points"] else 0.0
+        earned_w += w * effective_score(r)
+        total_w += w * pts
+    m = round(earned_w / total_w * 100, 1) if total_w > 0 else None
     return {"m": m, "attempts": len(rows), "latest_version": latest}
 
 

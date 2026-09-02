@@ -21,6 +21,8 @@ def _quiz_dict(row, with_status=False) -> dict:
         "version": row["version"],
         "status": row["status"],
         "published_at": row["published_at"],
+        "total_points": row["total_points"],
+        "config": _parse_ids(row["config_json"]),
     }
     if with_status:
         d["created_at"] = row["created_at"]
@@ -63,12 +65,14 @@ def list_quizzes():
             ).fetchone()
             if latest["t"]:
                 agg = con.execute(
-                    "SELECT AVG(score) AS s, COUNT(*) AS c FROM attempts"
-                    " WHERE user_id=? AND quiz_id=? AND quiz_version=? AND created_at=?",
+                    "SELECT SUM(COALESCE(CASE WHEN a.is_reviewed=1 THEN a.reviewed_score"
+                    " ELSE a.score END, 0)) AS earned, SUM(q.points) AS possible"
+                    " FROM attempts a JOIN questions q ON q.id=a.question_id"
+                    " WHERE a.user_id=? AND a.quiz_id=? AND a.quiz_version=? AND a.created_at=?",
                     (g.user_id, r["id"], r["version"], latest["t"]),
                 ).fetchone()
                 d["taken"] = True
-                d["score"] = round(agg["s"] * 100, 1) if agg["c"] else None
+                d["score"] = round(agg["earned"] / agg["possible"] * 100, 1) if agg["possible"] else None
             else:
                 d["taken"] = False
                 d["score"] = None
@@ -81,7 +85,7 @@ def list_quizzes():
 @role_required("teacher")
 @rate_limit(limit=60)
 def create_draft():
-    """生成草稿（QUIZ-001）：选章 → QUIZZER 出题 → status=draft。"""
+    """生成草稿（QUIZ-001/005）：选章 + 100 分组合 → QUIZZER 出题 → status=draft。"""
     data = request.get_json(silent=True) or {}
     chapter_ids = data.get("chapter_ids") or []
     if not isinstance(chapter_ids, list) or not chapter_ids:
@@ -95,30 +99,42 @@ def create_draft():
         if con.execute("SELECT 1 FROM chapters WHERE id=?", (cid,)).fetchone() is None:
             return e_not_found(f"章节不存在：{cid}")
 
+    # 100 分组合（QUIZ-005）：可选预设 key 或自定义 dict；缺省用默认预设
+    config = quizzer.validate_config(data.get("config"))
+    if not config:
+        config = quizzer.default_config()
+    total_points = quizzer.config_total(config)
+    if total_points != 100:
+        return e_input(f"题目组合合计须为 100 分（当前 {total_points}）")
+
     raw_qs = quizzer.generate_questions(
         chapter_ids,
         sub_concepts=data.get("sub_concepts", ""),
         spec=data.get("spec", ""),
+        config=config,
     )
     quiz_id = models.new_id()
     now = models.utcnow()
     con.execute(
-        "INSERT INTO quizzes (id, title, chapter_ids, version, teacher_id, status, created_at)"
-        " VALUES (?, ?, ?, 1, ?, 'draft', ?)",
-        (quiz_id, title, json.dumps(chapter_ids, ensure_ascii=False), g.user_id, now),
+        "INSERT INTO quizzes (id, title, chapter_ids, version, teacher_id, status,"
+        " total_points, config_json, created_at)"
+        " VALUES (?, ?, ?, 1, ?, 'draft', ?, ?, ?)",
+        (quiz_id, title, json.dumps(chapter_ids, ensure_ascii=False), g.user_id,
+         total_points, json.dumps(config, ensure_ascii=False), now),
     )
     # 每个章节至少一题：按顺序把题目轮转分配到所选章节
     for i, raw in enumerate(raw_qs):
         cid = chapter_ids[i % len(chapter_ids)]
         q = quizzer.norm_question(raw, cid)
         con.execute(
-            "INSERT INTO questions (id, quiz_id, chapter_id, sub_concept, type, content, options, answer_key, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO questions (id, quiz_id, chapter_id, sub_concept, type, content,"
+            " options, answer_key, points, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (models.new_id(), quiz_id, cid, q["sub_concept"], q["type"], q["content"],
-             q["options"], q["answer_key"], now),
+             q["options"], q["answer_key"], q["points"], now),
         )
     con.commit()
-    return ok({"id": quiz_id, "question_count": len(raw_qs)})
+    return ok({"id": quiz_id, "question_count": len(raw_qs), "total_points": total_points})
 
 
 @quizzes_bp.route("/<quiz_id>/publish", methods=["POST"])
@@ -135,13 +151,19 @@ def publish_quiz(quiz_id):
     count = con.execute("SELECT COUNT(*) AS c FROM questions WHERE quiz_id=?", (quiz_id,)).fetchone()
     if count["c"] == 0:
         return e_input("草稿无题目，无法发布")
+    # 发布前校验题目合计分值=100（QUIZ-005）
+    pts = con.execute("SELECT SUM(points) AS s FROM questions WHERE quiz_id=?", (quiz_id,)).fetchone()
+    total_points = round(pts["s"] or 0, 1)
+    if abs(total_points - 100) > 0.01:
+        return e_input(f"题目合计分值须为 100 分（当前 {total_points}）")
     now = models.utcnow()
     con.execute(
-        "UPDATE quizzes SET status='published', published_at=?, confirmed_at=? WHERE id=?",
-        (now, now, quiz_id),
+        "UPDATE quizzes SET status='published', published_at=?, confirmed_at=?, total_points=?"
+        " WHERE id=?",
+        (now, now, total_points, quiz_id),
     )
     con.commit()
-    return ok({"id": quiz_id, "status": "published"})
+    return ok({"id": quiz_id, "status": "published", "total_points": total_points})
 
 
 @quizzes_bp.route("/<quiz_id>/revision", methods=["POST"])
@@ -158,23 +180,27 @@ def revision_quiz(quiz_id):
         return e_input("仅已发布测评可重出")
     new_version = old["version"] + 1
     chapter_ids = _parse_ids(old["chapter_ids"])
-    raw_qs = quizzer.generate_questions(chapter_ids)
+    config = quizzer.validate_config(_parse_ids(old["config_json"])) or quizzer.default_config()
+    total_points = quizzer.config_total(config)
+    raw_qs = quizzer.generate_questions(chapter_ids, config=config)
     new_id = models.new_id()
     now = models.utcnow()
     con.execute(
-        "INSERT INTO quizzes (id, title, chapter_ids, version, teacher_id, status, created_at)"
-        " VALUES (?, ?, ?, ?, ?, 'draft', ?)",
+        "INSERT INTO quizzes (id, title, chapter_ids, version, teacher_id, status,"
+        " total_points, config_json, created_at)"
+        " VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?)",
         (new_id, f"{old['title']} · v{new_version}", json.dumps(chapter_ids, ensure_ascii=False),
-         new_version, g.user_id, now),
+         new_version, g.user_id, total_points, json.dumps(config, ensure_ascii=False), now),
     )
     for i, raw in enumerate(raw_qs):
         cid = chapter_ids[i % len(chapter_ids)]
         q = quizzer.norm_question(raw, cid)
         con.execute(
-            "INSERT INTO questions (id, quiz_id, chapter_id, sub_concept, type, content, options, answer_key, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO questions (id, quiz_id, chapter_id, sub_concept, type, content,"
+            " options, answer_key, points, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (models.new_id(), new_id, cid, q["sub_concept"], q["type"], q["content"],
-             q["options"], q["answer_key"], now),
+             q["options"], q["answer_key"], q["points"], now),
         )
     con.execute("UPDATE quizzes SET status='superseded' WHERE id=?", (quiz_id,))
     con.commit()
@@ -191,7 +217,7 @@ def get_quiz(quiz_id):
     if g.role == "student" and row["status"] != "published":
         return e_role("该测评尚未发布")
     questions = con.execute(
-        "SELECT id, chapter_id, sub_concept, type, content, options FROM questions"
+        "SELECT id, chapter_id, sub_concept, type, content, options, points FROM questions"
         " WHERE quiz_id=? ORDER BY rowid", (quiz_id,)
     ).fetchall()
     # 学生不可见 answer_key（作答前）；教师可见

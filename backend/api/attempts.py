@@ -1,4 +1,8 @@
-"""作答 Blueprint（REQ-QUIZ-002/003/004）：学生作答 + GRADER 批改 + 测评报告。"""
+"""作答 Blueprint（REQ-QUIZ-002/003/004）：学生作答 + GRADER 批改 + 测评报告。
+
+评分权双轨（QUIZ-003/009）：客观题确定性判分，问答题 AI 评 0–10；
+教师可经 `PUT /api/attempts/:id/review` 覆核改分。
+"""
 
 from ai import grader
 from auth.jwt_utils import jwt_required, role_required
@@ -9,6 +13,7 @@ from middleware.errors import e_input, e_not_found, ok
 from middleware.rate_limit import rate_limit
 
 attempts_bp = Blueprint("attempts_bp", __name__, url_prefix="/api/quizzes")
+attempts_review_bp = Blueprint("attempts_review_bp", __name__, url_prefix="/api/attempts")
 
 
 def _latest_submission(con, user_id, quiz_id, version):
@@ -42,7 +47,8 @@ def submit_attempt(quiz_id):
     now = models.utcnow()
     details = []
     correct_cnt = 0
-    total_score = 0.0
+    earned = 0.0
+    possible = 0.0
     total = 0
     for item in answers:
         qid = item.get("question_id")
@@ -56,16 +62,18 @@ def submit_attempt(quiz_id):
                 "content": q["content"],
                 "options": q["options"],
                 "answer_key": q["answer_key"],
+                "points": q["points"],
             },
             ans,
         )
         total += 1
         correct_cnt += result["correct"]
-        total_score += result["score"]
+        earned += result["score"]
+        possible += float(q["points"]) if q["points"] else 0.0
         con.execute(
             "INSERT INTO attempts (id, user_id, quiz_id, question_id, chapter_id, quiz_version,"
-            " correct, score, answer, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " correct, score, graded_by, is_reviewed, answer, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ai', 0, ?, ?)",
             (models.new_id(), g.user_id, quiz_id, qid, q["chapter_id"], quiz["version"],
              result["correct"], result["score"], ans, now),
         )
@@ -73,12 +81,20 @@ def submit_attempt(quiz_id):
             "question_id": qid,
             "correct": result["correct"],
             "score": result["score"],
+            "points": float(q["points"]) if q["points"] else 0.0,
             "reason": result["reason"],
         })
     con.commit()
 
-    score = round(total_score / total * 100, 1) if total else 0.0
-    return ok({"score": score, "correct": correct_cnt, "total": total, "details": details})
+    score = round(earned / possible * 100, 1) if possible else 0.0
+    return ok({
+        "score": score,
+        "correct": correct_cnt,
+        "total": total,
+        "earned": round(earned, 1),
+        "total_points": round(possible, 1),
+        "details": details,
+    })
 
 
 @attempts_bp.route("/<quiz_id>/report", methods=["GET"])
@@ -95,14 +111,17 @@ def quiz_report(quiz_id):
         return ok({"taken": False, "score": None, "wrong": []})
     rows = con.execute(
         "SELECT a.*, q.content AS q_content, q.type AS q_type, q.options AS q_options,"
-        " q.answer_key AS q_answer_key, q.sub_concept AS q_sub_concept"
+        " q.answer_key AS q_answer_key, q.sub_concept AS q_sub_concept, q.points AS q_points"
         " FROM attempts a JOIN questions q ON q.id=a.question_id"
         " WHERE a.user_id=? AND a.quiz_id=? AND a.quiz_version=? AND a.created_at=?",
         (g.user_id, quiz_id, quiz["version"], t),
     ).fetchall()
     total = len(rows)
     correct = sum(1 for r in rows if r["correct"])
-    score = round(sum(r["score"] for r in rows) / total * 100, 1) if total else 0.0
+    earned = sum(r["reviewed_score"] if r["is_reviewed"] and r["reviewed_score"] is not None
+                 else r["score"] for r in rows)
+    possible = sum(float(r["q_points"]) if r["q_points"] else 0.0 for r in rows)
+    score = round(earned / possible * 100, 1) if possible else 0.0
     wrong = []
     for r in rows:
         if not r["correct"]:
@@ -112,11 +131,50 @@ def quiz_report(quiz_id):
                 "your_answer": r["answer"],
                 "answer_key": r["q_answer_key"],
                 "sub_concept": r["q_sub_concept"],
+                "points": r["q_points"],
+                "score": r["reviewed_score"] if r["is_reviewed"] else r["score"],
             })
     return ok({
         "taken": True,
         "score": score,
         "correct": correct,
         "total": total,
+        "earned": round(earned, 1),
+        "total_points": round(possible, 1),
         "wrong": wrong,
+    })
+
+
+@attempts_review_bp.route("/<attempt_id>/review", methods=["PUT"])
+@jwt_required
+@role_required("teacher")
+def review_attempt(attempt_id):
+    """教师覆核改分（QUIZ-009）：写 reviewed_score + graded_by='teacher' + is_reviewed=1。"""
+    data = request.get_json(silent=True) or {}
+    if "score" not in data:
+        return e_input("缺少 score")
+    try:
+        new_score = float(data["score"])
+    except (TypeError, ValueError):
+        return e_input("score 必须为数字")
+
+    con = get_db()
+    attempt = con.execute("SELECT * FROM attempts WHERE id=?", (attempt_id,)).fetchone()
+    if attempt is None:
+        return e_not_found("作答记录不存在")
+    q = con.execute("SELECT points FROM questions WHERE id=?", (attempt["question_id"],)).fetchone()
+    max_pts = float(q["points"]) if q and q["points"] else 0.0
+    if new_score < 0 or new_score > max_pts:
+        return e_input(f"分数须在 0~{max_pts} 之间")
+
+    con.execute(
+        "UPDATE attempts SET reviewed_score=?, graded_by='teacher', is_reviewed=1 WHERE id=?",
+        (new_score, attempt_id),
+    )
+    con.commit()
+    return ok({
+        "id": attempt_id,
+        "reviewed_score": new_score,
+        "graded_by": "teacher",
+        "is_reviewed": 1,
     })

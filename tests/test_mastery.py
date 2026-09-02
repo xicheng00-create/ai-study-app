@@ -35,11 +35,12 @@ def _seed_quiz(con, chapter_ids, version=1, status="published"):
         (qid, f"q v{version}", json.dumps(chapter_ids, ensure_ascii=False), version,
          status, models.utcnow(), models.utcnow()),
     )
-    # 建一道真实题目（attempts 外键需要）
+    # 建一道真实题目（attempts 外键需要；选择题满分 5 分）
     for cid in chapter_ids:
         con.execute(
-            "INSERT INTO questions (id, quiz_id, chapter_id, sub_concept, type, content, options, answer_key, created_at)"
-            " VALUES (?, ?, ?, '', 'choice', '题', '[]', '0', ?)",
+            "INSERT INTO questions (id, quiz_id, chapter_id, sub_concept, type, content,"
+            " options, answer_key, points, created_at)"
+            " VALUES (?, ?, ?, '', 'choice', '题', '[]', '0', 5, ?)",
             (models.new_id(), qid, cid, models.utcnow()),
         )
     return qid
@@ -58,7 +59,7 @@ def _seed_attempt(con, user_id, chapter_id, quiz_version, score, days_ago=0):
         " correct, score, answer, created_at)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?)",
         (models.new_id(), user_id, quiz["id"], qst["id"], chapter_id, quiz_version,
-         1 if score >= 1 else 0, score, created),
+         1 if score >= 5 else 0, score, created),
     )
 
 
@@ -77,7 +78,7 @@ def test_compute_mastery_weighted(client):
         cid = _seed_chapter(con)
         uid = _seed_user(con, 'alice')
         _seed_quiz(con, [cid], version=1)
-        _seed_attempt(con, uid, cid, 1, score=1.0, days_ago=0)
+        _seed_attempt(con, uid, cid, 1, score=5.0, days_ago=0)
         _seed_attempt(con, uid, cid, 1, score=0.0, days_ago=28)
         m = mastery.compute_mastery(con, uid, cid)
         # 权重 1 与 0.5^4=0.0625 → M≈94.1
@@ -107,7 +108,7 @@ def test_f3_latest_version_only(client):
         _seed_attempt(con, uid, cid, 1, score=0.0, days_ago=1)
         # 重出 v2，最新 version=2，全对
         _seed_quiz(con, [cid], version=2)
-        _seed_attempt(con, uid, cid, 2, score=1.0, days_ago=0)
+        _seed_attempt(con, uid, cid, 2, score=5.0, days_ago=0)
         assert mastery.latest_version_for_chapter(con, cid) == 2
         m = mastery.compute_mastery(con, uid, cid)
         assert m["m"] == 100.0

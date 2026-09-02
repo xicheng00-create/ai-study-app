@@ -57,3 +57,51 @@ def test_revision_creates_new_version(client, teacher_headers):
     qs = resp.get_json()["data"]["quizzes"]
     assert any(q["id"] == qid and q["status"] == "superseded" for q in qs)
     assert any(q["version"] == 2 and q["status"] == "draft" for q in qs)
+
+
+def test_draft_config_must_sum_100(client, teacher_headers):
+    cid = _chapter(client, teacher_headers)
+    # 自定义组合合计非 100 → 400
+    resp = client.post("/api/quizzes/draft", json={"chapter_ids": [cid], "config": {"choice": 1}},
+                       headers=teacher_headers)
+    assert resp.status_code == 400
+
+
+def test_draft_preset_is_100_points(client, teacher_headers):
+    cid = _chapter(client, teacher_headers)
+    resp = client.post("/api/quizzes/draft",
+                       json={"chapter_ids": [cid], "config": {"choice": 10, "essay": 5}},
+                       headers=teacher_headers)
+    assert resp.status_code == 200, resp.get_json()
+    qid = resp.get_json()["data"]["id"]
+    detail = client.get(f"/api/quizzes/{qid}", headers=teacher_headers).get_json()["data"]
+    assert detail["quiz"]["total_points"] == 100
+    assert sum(q["points"] for q in detail["questions"]) == 100
+
+
+def test_teacher_review_attempt(client, teacher_headers):
+    cid = _chapter(client, teacher_headers)
+    qid = _draft_and_publish(client, teacher_headers, cid)
+    sid = make_student(client, teacher_headers, "alice")
+    alice = login(client, "alice", "student123")
+    h = {"Authorization": f"Bearer {alice}"}
+    detail = client.get(f"/api/quizzes/{qid}", headers=h).get_json()["data"]
+    qs = detail["questions"]
+    # 全答错
+    answers = [{"question_id": q["id"], "answer": ""} for q in qs]
+    client.post(f"/api/quizzes/{qid}/attempts", json={"answers": answers}, headers=h)
+    # 教师取该学生测评详情，拿到 attempt id
+    resp = client.get(f"/api/teacher/students/{sid}/quizzes", headers=teacher_headers)
+    attempts = resp.get_json()["data"]["attempts"]
+    assert attempts and attempts[0]["details"]
+    first = attempts[0]["details"][0]
+    # 覆核改分：给该题满分
+    resp = client.put(f"/api/attempts/{first['id']}/review",
+                      json={"score": first["points"]}, headers=teacher_headers)
+    assert resp.status_code == 200, resp.get_json()
+    assert resp.get_json()["data"]["graded_by"] == "teacher"
+    assert resp.get_json()["data"]["is_reviewed"] == 1
+    # 越界分数被拒
+    resp = client.put(f"/api/attempts/{first['id']}/review",
+                      json={"score": first["points"] + 1}, headers=teacher_headers)
+    assert resp.status_code == 400

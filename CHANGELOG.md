@@ -2,6 +2,15 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.3.0] - 2026-09-02
+
+### Added
+- **测评百分制评分模型（QUIZ-005/003/009，Design-Spec §12.4）**：`quizzes` 增 `total_points(DEFAULT 100)` + `config_json`；`questions` 增 `points`（选择/是非 5、问答 10）；`attempts` 增 `graded_by('ai'/'teacher')`、`is_reviewed`、`reviewed_score`，`score` 改存实际得分点。SQLite 幂等迁移：存量题按题型补默认分、存量二元 `score(0/1)` 按对应题满分一次性换算为得分点（不破坏掌握度）。
+- **100 分组合（QUIZ-005）**：教师可选预设（10 选择+5 问答 / 8 选择+6 问答 / 20 选择）或自定义并校验合计=100；QUIZZER 默认规格由「3 道题」改为 100 分组合，且按 config 补齐/裁剪保证恰好 100 分。
+- **评分权双轨 + 教师覆核改分（QUIZ-009）**：客观题系统确定性判分（0 或满分）；问答题 AI(GRADER) 评 0–10；新增 `PUT /api/attempts/:id/review`（教师覆核，写 `reviewed_score`+`graded_by='teacher'`+`is_reviewed=1`，覆核后不可逆回 ai）。
+- **M 公式百分制（PROG-007）**：`M = Σ(wᵢ·score_earnedᵢ)/Σ(wᵢ·points_possibleᵢ)×100`，教师覆核分优先于 AI 分（effective score）。
+- **展示层**：测评报告/进度/周报改显百分制得分率；教师后台「全班进度」增「测评覆核」入口（逐题改分）。
+
 ## [1.2.0] - 2026-09-02
 
 ### Added

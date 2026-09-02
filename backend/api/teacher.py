@@ -94,21 +94,45 @@ def student_quizzes(student_id):
     u = con.execute("SELECT * FROM users WHERE id=? AND role='student'", (student_id,)).fetchone()
     if u is None:
         return e_not_found("学生不存在")
-    rows = con.execute(
-        "SELECT quiz_id, quiz_version, created_at, AVG(score) AS s, COUNT(*) AS c"
-        " FROM attempts WHERE user_id=?"
-        " GROUP BY quiz_id, quiz_version, created_at ORDER BY created_at DESC",
+    subs = con.execute(
+        "SELECT a.quiz_id, a.quiz_version, a.created_at,"
+        " SUM(COALESCE(CASE WHEN a.is_reviewed=1 THEN a.reviewed_score ELSE a.score END, 0)) AS earned,"
+        " SUM(q.points) AS possible"
+        " FROM attempts a JOIN questions q ON q.id=a.question_id"
+        " WHERE a.user_id=?"
+        " GROUP BY a.quiz_id, a.quiz_version, a.created_at ORDER BY a.created_at DESC",
         (student_id,),
     ).fetchall()
     out = []
-    for r in rows:
+    for r in subs:
         quiz = con.execute("SELECT title FROM quizzes WHERE id=?", (r["quiz_id"],)).fetchone()
+        det_rows = con.execute(
+            "SELECT a.id, a.answer, a.score, a.correct, a.is_reviewed, a.reviewed_score,"
+            " a.graded_by, q.content, q.type, q.points, q.answer_key"
+            " FROM attempts a JOIN questions q ON q.id=a.question_id"
+            " WHERE a.user_id=? AND a.quiz_id=? AND a.quiz_version=? AND a.created_at=?"
+            " ORDER BY q.rowid",
+            (student_id, r["quiz_id"], r["quiz_version"], r["created_at"]),
+        ).fetchall()
         out.append({
             "quiz_id": r["quiz_id"],
             "title": quiz["title"] if quiz else r["quiz_id"],
             "version": r["quiz_version"],
-            "score": round(r["s"] * 100, 1),
+            "score": round(r["earned"] / r["possible"] * 100, 1) if r["possible"] else 0.0,
             "at": r["created_at"],
+            "details": [{
+                "id": d["id"],
+                "content": d["content"],
+                "type": d["type"],
+                "points": d["points"],
+                "answer": d["answer"],
+                "answer_key": d["answer_key"],
+                "score": d["score"],
+                "correct": d["correct"],
+                "graded_by": d["graded_by"],
+                "is_reviewed": d["is_reviewed"],
+                "reviewed_score": d["reviewed_score"],
+            } for d in det_rows],
         })
     return ok({"student": {"id": student_id, "display_name": u["display_name"]}, "attempts": out})
 

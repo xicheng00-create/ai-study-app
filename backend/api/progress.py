@@ -188,11 +188,13 @@ def complete_review(item_id):
     if row is None:
         return e_forbidden("只能访问本人复习计划")
     payload = json.loads(row["payload"] or "{}")
+    qtype = payload.get("type", "essay")
     result = grader.grade_question({
-        "type": payload.get("type", "essay"),
+        "type": qtype,
         "content": payload.get("content", ""),
         "options": json.dumps(payload.get("options", [])),
         "answer_key": payload.get("answer_key", ""),
+        "points": grader.points_for(qtype),
     }, answer)
 
     correct = bool(result["correct"])
@@ -223,17 +225,21 @@ def trend():
     """成绩趋势折线（PROG-003）：按提交时间聚合每次测评得分。"""
     con = get_db()
     rows = con.execute(
-        "SELECT quiz_id, quiz_version, created_at, AVG(score) AS s"
-        " FROM attempts WHERE user_id=?"
-        " GROUP BY quiz_id, quiz_version, created_at ORDER BY created_at ASC",
+        "SELECT a.quiz_id, a.quiz_version, a.created_at,"
+        " SUM(COALESCE(CASE WHEN a.is_reviewed=1 THEN a.reviewed_score ELSE a.score END, 0)) AS earned,"
+        " SUM(q.points) AS possible"
+        " FROM attempts a JOIN questions q ON q.id=a.question_id"
+        " WHERE a.user_id=?"
+        " GROUP BY a.quiz_id, a.quiz_version, a.created_at ORDER BY a.created_at ASC",
         (g.user_id,),
     ).fetchall()
     out = []
     for r in rows:
         quiz = con.execute("SELECT title FROM quizzes WHERE id=?", (r["quiz_id"],)).fetchone()
+        score = round(r["earned"] / r["possible"] * 100, 1) if r["possible"] else 0.0
         out.append({
             "label": (quiz["title"] if quiz else r["quiz_id"])[:16],
-            "score": round(r["s"] * 100, 1),
+            "score": score,
             "at": r["created_at"],
         })
     return ok({"trend": out})

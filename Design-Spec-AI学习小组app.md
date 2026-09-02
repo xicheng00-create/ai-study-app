@@ -454,14 +454,14 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 
 **偏离登记**：RAG 由「ChromaDB 纯向量 + all-MiniLM-L6-v2」降维为「SQLite chunks 关键词/章节匹配」，不引入本地嵌入模型；检索无命中/LLM 不可用/越界时降级到固定引导语池（两层 Fallback L1→L2），L3 固定答案不做。
 
-### 12.4 待实现（测评百分制评分模型，2026-09-02 设计增补，v2.1）
+### 12.4 已实现（测评百分制评分模型，2026-09-02 设计增补，v2.1 → v1.3.0）
 
-> 以下为 v2.1 新增设计，**尚未编码**，作为原子变更交由 Hermes 依据本规格实现（§三/§五/§七/§九/§十二 已含全部字段、接口与公式，无需另开 CR）：
-> - **QUIZ-005 提 P1**：教师可选 100 分组合（预设：10 选择+5 问答 / 8 选择+6 问答 / 20 选择；或自定义并校验合计=100）；QUIZZER 默认规格由「3 道题」改为 100 分组合。
-> - **数据模型（DM-004/005/006）**：`quizzes.total_points=100` + `config_json`；`questions.points`（选择/是非 5、问答 10）；`attempts.score` 改存实际得分点、`graded_by('ai'/'teacher')`、`is_reviewed`、`reviewed_score`。
-> - **评分权双轨（QUIZ-003/009）**：客观题系统确定性判分；问答题 AI(GRADER) 评 0–10；新增 `PUT /api/attempts/:id/review` 教师覆核改分。
-> - **M 公式（PROG-007）**：由对错二元改为百分制得分率 `Σ(score)/Σ(points)×100`。
-> - **展示层**：测评报告/进度/周报改显百分制总分与得分率；教师后台加覆核改分入口。
+> 以下 v2.1 新增设计已按本规格实现并落地（§三/§五/§七/§九/§十二 已含全部字段、接口与公式）：
+> - **QUIZ-005 提 P1**：教师可选 100 分组合（预设：10 选择+5 问答 / 8 选择+6 问答 / 20 选择；或自定义并校验合计=100）；QUIZZER 默认规格由「3 道题」改为 100 分组合（✅）。
+> - **数据模型（DM-004/005/006）**：`quizzes.total_points=100` + `config_json`；`questions.points`（选择/是非 5、问答 10）；`attempts.score` 改存实际得分点、`graded_by('ai'/'teacher')`、`is_reviewed`、`reviewed_score`；SQLite 幂等迁移（存量题按题型补分、存量二元 score 一次性换算）已落地（✅）。
+> - **评分权双轨（QUIZ-003/009）**：客观题系统确定性判分；问答题 AI(GRADER) 评 0–10；新增 `PUT /api/attempts/:id/review` 教师覆核改分（✅）。
+> - **M 公式（PROG-007）**：由对错二元改为百分制得分率 `Σ(score)/Σ(points)×100`（✅）。
+> - **展示层**：测评报告/进度/周报改显百分制总分与得分率；教师后台加覆核改分入口（✅）。
 
 ---
 
@@ -515,13 +515,13 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 - [ ] AUTH-004 + MAT-007 + **F9**：学生看不见他人对话；学生上传接口 403；**学生 A 读学生 B → 403/空 集成测试通过**
 - [ ] MAT-002/003 + CHAT-004(F5)：教师传 PDF→学生引导式对话（不直接给答案、≤12 轮、TUTOR 输出门控生效）
 - [ ] QUIZ-001/008：草稿→确认两步；`draft` 不可作答
-- [ ] QUIZ-002/003 + **F3**：完成测评→见百分制得分；`attempts.quiz_version` 与 `attempts.score`(实际得分) 落地
+- [x] QUIZ-002/003 + **F3**：完成测评→见百分制得分；`attempts.quiz_version` 与 `attempts.score`(实际得分) 落地
 - [ ] DEP-001/005/006(F1)：手机加主屏、离线启 Shell；**LaunchDaemon 开机自启（非 LaunchAgent）**
 - [ ] DEP-003(F6)：production 下无 Werkzeug debugger；waitress 单进程/4 线程
 
 **P1 阶段二**
-- [ ] PROG-001/004 + **F3**：进度仅本人；教师概览聚合 3 人；M 按最新 version 聚合（百分制得分率）
-- [ ] **QUIZ-005/009 + 百分制**：教师可选 100 分组合；AI 评分+教师覆核改分；questions.points/attempts.score 落地
+- [x] PROG-001/004 + **F3**：进度仅本人；教师概览聚合 3 人；M 按最新 version 聚合（百分制得分率）
+- [x] **QUIZ-005/009 + 百分制**：教师可选 100 分组合；AI 评分+教师覆核改分；questions.points/attempts.score 落地
 - [ ] RPT-001~003：周报含统计+AI 建议
 - [ ] NFR-006：单用户超额 429
 - [ ] **F7**：资料删除走软删+二次确认+7 天窗口

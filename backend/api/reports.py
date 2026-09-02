@@ -63,8 +63,14 @@ def weekly():
         "SELECT created_at FROM messages WHERE conversation_id IN"
         " (SELECT id FROM conversations WHERE user_id=?)", (g.user_id,)
     ).fetchall()
-    att_rows = con.execute(
-        "SELECT created_at, score FROM attempts WHERE user_id=?", (g.user_id,)
+    att_subs = con.execute(
+        "SELECT a.created_at,"
+        " SUM(COALESCE(CASE WHEN a.is_reviewed=1 THEN a.reviewed_score ELSE a.score END, 0)) AS earned,"
+        " SUM(q.points) AS possible"
+        " FROM attempts a JOIN questions q ON q.id=a.question_id"
+        " WHERE a.user_id=?"
+        " GROUP BY a.quiz_id, a.quiz_version, a.created_at",
+        (g.user_id,),
     ).fetchall()
     days = set()
     conv_days = set()
@@ -78,7 +84,7 @@ def weekly():
             conv_days.add(t.date().isoformat())
     quiz_days = set()
     scores = []
-    for r in att_rows:
+    for r in att_subs:
         try:
             t = datetime.fromisoformat(r["created_at"])
         except ValueError:
@@ -86,7 +92,8 @@ def weekly():
         if start <= t < end:
             days.add(t.date().isoformat())
             quiz_days.add(t.date().isoformat())
-            scores.append(r["score"])
+            if r["possible"]:
+                scores.append(r["earned"] / r["possible"] * 100)
 
     # 薄弱点（本周数据源可少，取全量掌握度）
     chapters = con.execute("SELECT * FROM chapters ORDER BY folder, order_no").fetchall()
@@ -102,8 +109,8 @@ def weekly():
         "quiz_days": len(quiz_days),
         "conversations": len(conv_days),
         "quizzes": len(quiz_days),
-        "avg_score": round(sum(scores) / len(scores) * 100, 1) if scores else None,
-        "max_score": round(max(scores) * 100, 1) if scores else None,
+        "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
+        "max_score": round(max(scores), 1) if scores else None,
     }
     advice = _advice(con, g.user_id, stats, weak_names)
     return ok({

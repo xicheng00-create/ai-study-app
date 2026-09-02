@@ -31,18 +31,19 @@ QUIZZER_SYSTEM = """你是「AI 学习小组」的出题老师。请严格输出
 输出一个 JSON 对象，形如：
 {{"questions":[{{"type":"choice|bool|essay","content":"题干","options":["A..","B..","C..","D.."],"answer":"正确答案索引或文本","reason":"简要解析","sub_concept":"子概念"}}]}}
 
-要求：围绕给定章节出 3 道题（至少 1 道简答）；choice 的 answer 为选项索引(0 起)，bool 的 answer 为"正确/错误"，essay 的 answer 为参考答案要点。"""
+要求：严格按「规格」中的数量出题（选择/是非各 5 分、问答 10 分，合计 100 分）；choice 的 answer 为选项索引(0 起)，bool 的 answer 为"正确/错误"，essay 的 answer 为参考答案要点。"""
 
 GRADER_SYSTEM = """你是「AI 学习小组」的批改老师。请严格输出 JSON（不要输出其他文字）。
 
 题目类型：{type}
+满分：{points}
 题目：{content}
 选项：{options}
 参考答案：{answer_key}
 学生作答：{student_answer}
 
-输出形如：{{"correct":0|1,"score":0.0~1.0,"reason":"简短中文批语"}}
-评分规则：choice/bool 全对=1.0、错=0.0；essay 按三档：要点基本齐全=1.0、部分到位=0.5、答非所问=0.0。"""
+输出形如：{{"correct":0|1,"score":0.0~{points},"reason":"简短中文批语"}}
+评分规则：choice/bool 全对=满分、错=0；essay 按三档：要点基本齐全=满分、部分到位=一半分、答非所问=0。"""
 
 SENSITIVE_WORDS = [
     "密钥", "api key", "apikey", "密码", "系统提示词", "system prompt",

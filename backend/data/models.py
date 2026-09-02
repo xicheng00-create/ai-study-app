@@ -90,6 +90,8 @@ CREATE TABLE IF NOT EXISTS quizzes (
     status       TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published','superseded')),
     published_at TEXT,
     confirmed_at TEXT,
+    total_points REAL NOT NULL DEFAULT 100,
+    config_json  TEXT NOT NULL DEFAULT '{}',
     created_at   TEXT NOT NULL
 );
 
@@ -102,20 +104,24 @@ CREATE TABLE IF NOT EXISTS questions (
     content     TEXT NOT NULL,
     options     TEXT NOT NULL DEFAULT '[]',
     answer_key  TEXT NOT NULL DEFAULT '',
+    points      REAL NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS attempts (
-    id           TEXT PRIMARY KEY,
-    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    quiz_id      TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
-    question_id  TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
-    chapter_id   TEXT NOT NULL,
-    quiz_version INTEGER NOT NULL,
-    correct      INTEGER NOT NULL DEFAULT 0,
-    score        REAL NOT NULL DEFAULT 0,
-    answer       TEXT DEFAULT '',
-    created_at   TEXT NOT NULL
+    id             TEXT PRIMARY KEY,
+    user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    quiz_id        TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    question_id    TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+    chapter_id     TEXT NOT NULL,
+    quiz_version   INTEGER NOT NULL,
+    correct        INTEGER NOT NULL DEFAULT 0,
+    score          REAL NOT NULL DEFAULT 0,
+    graded_by      TEXT NOT NULL DEFAULT 'ai' CHECK (graded_by IN ('ai','teacher')),
+    is_reviewed    INTEGER NOT NULL DEFAULT 0,
+    reviewed_score REAL,
+    answer         TEXT DEFAULT '',
+    created_at     TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS review_items (
@@ -181,12 +187,40 @@ CREATE INDEX IF NOT EXISTS idx_videos_ws ON video_resources(week_no, session_no)
 """
 
 
+def _add_column(con, table: str, column: str, ddl: str) -> bool:
+    """补列并返回是否新增（True=首次迁移，供一次性数据回填判断）。"""
+    cols = {row["name"] for row in con.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column in cols:
+        return False
+    con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    return True
+
+
 def migrate(con) -> None:
-    """幂等迁移：老库补 status 列（默认 published，不破坏现状，REQ-CURR）。"""
+    """幂等迁移：老库补 status / 百分制评分模型列（DM-004/005/006）。"""
     for table in ("chapters", "materials"):
-        cols = {row["name"] for row in con.execute(f"PRAGMA table_info({table})").fetchall()}
-        if "status" not in cols:
-            con.execute(
-                f"ALTER TABLE {table} ADD COLUMN status TEXT NOT NULL DEFAULT 'published'"
-            )
+        _add_column(con, table, "status", "TEXT NOT NULL DEFAULT 'published'")
+
+    # 百分制评分模型（v1.3.0）：quizzes/questions/attempts 增量列
+    _add_column(con, "quizzes", "total_points", "REAL NOT NULL DEFAULT 100")
+    _add_column(con, "quizzes", "config_json", "TEXT NOT NULL DEFAULT '{}'")
+    _add_column(con, "questions", "points", "REAL NOT NULL DEFAULT 0")
+    added_graded_by = _add_column(con, "attempts", "graded_by", "TEXT NOT NULL DEFAULT 'ai'")
+    _add_column(con, "attempts", "is_reviewed", "INTEGER NOT NULL DEFAULT 0")
+    _add_column(con, "attempts", "reviewed_score", "REAL")
+
+    # 存量题按题型补默认分（选择/是非 5、问答 10）
+    con.execute(
+        "UPDATE questions SET points = CASE type WHEN 'essay' THEN 10 ELSE 5 END"
+        " WHERE points = 0"
+    )
+
+    # 存量二元 score(0/1) → 实际得分点（仅首次新增 graded_by 时执行一次）
+    if added_graded_by:
+        con.execute(
+            "UPDATE attempts SET score = CASE WHEN score > 0 THEN"
+            " COALESCE((SELECT points FROM questions WHERE questions.id = attempts.question_id), 0)"
+            " ELSE 0 END"
+            " WHERE graded_by = 'ai'"
+        )
     con.commit()

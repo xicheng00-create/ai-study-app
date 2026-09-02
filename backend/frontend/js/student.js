@@ -154,14 +154,14 @@ const Student = {
   viewQuizTake() {
     const q = this.quiz.quiz;
     const qs = (this.quiz.questions || []).map((item, i) => {
-      if (item.type === "essay") return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}</span></div><textarea id="ans_${item.id}" placeholder="输入你的回答…"></textarea></div>`;
+      if (item.type === "essay") return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}<b class="pts">${item.points} 分</b></span></div><textarea id="ans_${item.id}" placeholder="输入你的回答…"></textarea></div>`;
       // bool 是非题：无 options，固定渲染「正确 / 错误」两个按钮
       if (item.type === "bool") {
         const boolOpts = ['正确', '错误'].map(v => `<div class="opt" id="opt_${item.id}_${v}" onclick="Student.pick('${item.id}','${v}')"><span class="dot"></span>${v}</div>`).join('');
-        return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}</span></div>${boolOpts}</div>`;
+        return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}<b class="pts">${item.points} 分</b></span></div>${boolOpts}</div>`;
       }
       const opts = (item.options || []).map((o, oi) => `<div class="opt" id="opt_${item.id}_${oi}" onclick="Student.pick('${item.id}',${oi})"><span class="dot"></span>${esc(o)}</div>`).join('');
-      return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}</span></div>${opts}</div>`;
+      return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}<b class="pts">${item.points} 分</b></span></div>${opts}</div>`;
     }).join('');
     return appbar('测评', esc(q.title)) +
     `<div class="content"><div class="card sm" style="margin-bottom:12px">覆盖章节：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(c => `<span class="pill" style="margin-right:6px">${esc(c)}</span>`).join('')}</div>
