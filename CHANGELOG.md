@@ -2,6 +2,13 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.4.3] - 2026-09-02
+
+### Fixed
+- **管理后台卡片头部改为两行布局**：标题（含副标题）独占一行、`flex:1` 完整显示；「上传/编辑/删除」按钮移到标题下方单独一行、右对齐——彻底解决长标题被按钮挤压成竖排/wrap 的问题（用户要求：按钮不必与标题同排）。
+- **资料文件名完整显示不省略**：去掉 `text-overflow:ellipsis;white-space:nowrap`，改 `word-break:break-word` + `flex:1;min-width:0`，长文件名（如「1-智泊AI大模型解决方案专家课-2026.4.2-灵玑.pptx」）完整显示、必要时换行，不再被省略号截断。
+- **PWA 缓存强制失效**：Service Worker `CACHE` 从 `v5` bump 到 `v6`，确保用户手机端能拉到本次 UI 修复后的 `teacher.js`。
+
 ## [1.4.2] - 2026-09-02
 
 ### Fixed
