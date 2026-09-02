@@ -5,6 +5,7 @@
 ## [1.1.0] - 2026-09-02
 
 ### Fixed
+- **顶部标题栏不固定**：`.appbar` 从 `position:sticky` 改为 `position:fixed`（居中 max-width:520px，与底部对称）。此前整个 App shell（appbar+内容+tabbar）渲染在 `.screen` 内，`.screen` 是 `flex:1` 嵌在 `min-height:100vh` 的 `#app` 里，内容高时滚动发生在 body 而非 `.screen`，`sticky` 失去吸附上下文而跟着滚走；现 `.screen` 加 `padding-top:68px` 容让，顶部固定死。配套 SW cache bump 到 v3 让客户端立即拿到新 CSS。
 - **底部导航栏不固定**：`.tabbar` 从 `position:sticky` 改为 `position:fixed`（居中 max-width:520px），现在会真正钉在屏幕底部，不再随内容滚动。
 - **GRADER 空答案误给分**（REQ-QUIZ-003）：essay 题空答案也会调 LLM，LLM 可能对空答给分 → 现在空答案一律判「未作答 0 分」，不等 LLM。
 
