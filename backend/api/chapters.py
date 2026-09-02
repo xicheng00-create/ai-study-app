@@ -22,11 +22,16 @@ def _chapter_row(row) -> dict:
 @chapters_bp.route("", methods=["GET"])
 @jwt_required
 def list_chapters():
-    """全班共享只读（MAT-004）。按 folder + order_no 排序。"""
+    """全班共享只读（MAT-004）：学生仅 published，教师全部。按 folder + order_no 排序。"""
     con = get_db()
-    rows = con.execute(
-        "SELECT * FROM chapters ORDER BY folder, order_no, name"
-    ).fetchall()
+    if g.role == "teacher":
+        rows = con.execute(
+            "SELECT * FROM chapters ORDER BY folder, order_no, name"
+        ).fetchall()
+    else:
+        rows = con.execute(
+            "SELECT * FROM chapters WHERE status='published' ORDER BY folder, order_no, name"
+        ).fetchall()
     return ok({"chapters": [_chapter_row(r) for r in rows]})
 
 

@@ -2,6 +2,18 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.2.0] - 2026-09-02
+
+### Added
+- **学习路径（8 周）集成 + 发布状态机（REQ-CURR-001~003）**：新增 `sessions` 表（week_no/session_no/title/goal/chapter_ids/concept_tags/status）与发布机制；`chapters`/`materials` 加 `status` 列（迁移，现有数据默认 `published`）。session 是发布源——发布时其下章节/资料/视频 `status` 同步 `published`（学生立即可见），取消发布回 `draft`；学生 `GET /api/curriculum` 只见 published session，`GET /api/chapters`、`GET /api/materials` 同样只返回 `status='published'`（教师见全部）。
+- **视频课挂载（REQ-VIDEO-001~003）**：新增 `video_resources` 表（结构化元数据，**不进 RAG/chunks/embedding**）；新建 `curriculum_bp`（`/api/curriculum`）提供 Session CRUD + 发布/取消发布 + 视频课 CRUD + 总览。
+- **TUTOR 视频融合（CHAT-010）**：新建 `ai/video_link.py`（纯 SQL + 标签匹配的确定性召回，**禁 import `ai.rag`、不触达 `chunks`**）；`TUTOR_SYSTEM` 增 `{{related_videos}}` 占位 + 推荐指令（仅标题/平台/URL，不内联视频内容）；对话响应透传 `related_videos` 供前端「相关视频课」面板渲染。
+- **前端**：学生新增「路径」tab（周→节手风琴：资料 + 视频外链 + 去提问）；教师新增「课程管理」tab（Session/视频 CRUD + 发布/取消发布按钮）；对话页渲染 `related_videos` chips。
+- **测试**：新增 `test_curriculum.py` / `test_video_link.py` / `test_tutor.py`，扩展 `test_isolation.py`（视频共享无 user_id 泄漏）。
+
+### Note
+- `seed_curriculum()` 仅留接口空实现（**不灌真实课件数据**）；8 周课件由 Hermes 后续注入。
+
 ## [1.1.1] - 2026-09-02
 
 ### Fixed

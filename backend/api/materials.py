@@ -46,18 +46,29 @@ def _save_original(uid: str, ext: str, blob: bytes) -> str:
 @materials_bp.route("", methods=["GET"])
 @jwt_required
 def list_materials():
-    """全班共享只读（MAT-004），软删除的不返回。"""
+    """全班共享只读（MAT-004）：学生仅 published 且未软删，教师全部。"""
     chapter_id = request.args.get("chapter_id")
     con = get_db()
-    if chapter_id:
-        rows = con.execute(
-            "SELECT * FROM materials WHERE chapter_id=? AND is_deleted=0 ORDER BY created_at",
-            (chapter_id,),
-        ).fetchall()
+    if g.role == "teacher":
+        if chapter_id:
+            rows = con.execute(
+                "SELECT * FROM materials WHERE chapter_id=? AND is_deleted=0 ORDER BY created_at",
+                (chapter_id,),
+            ).fetchall()
+        else:
+            rows = con.execute(
+                "SELECT * FROM materials WHERE is_deleted=0 ORDER BY created_at"
+            ).fetchall()
     else:
-        rows = con.execute(
-            "SELECT * FROM materials WHERE is_deleted=0 ORDER BY created_at"
-        ).fetchall()
+        if chapter_id:
+            rows = con.execute(
+                "SELECT * FROM materials WHERE chapter_id=? AND is_deleted=0 AND status='published' ORDER BY created_at",
+                (chapter_id,),
+            ).fetchall()
+        else:
+            rows = con.execute(
+                "SELECT * FROM materials WHERE is_deleted=0 AND status='published' ORDER BY created_at"
+            ).fetchall()
     return ok({"materials": [_material_dict(r) for r in rows]})
 
 

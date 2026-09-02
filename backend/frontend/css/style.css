@@ -128,3 +128,15 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text)}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--coral);border-radius:50%;animation:rot .7s linear infinite;vertical-align:-2px}
 @keyframes rot{to{transform:rotate(360deg)}}
 .loading{text-align:center;color:var(--text-2);font-size:13px;padding:24px}
+/* 学习路径（周→节手风琴）与视频课 */
+.week-title{font-size:13px;font-weight:800;color:var(--text-2);letter-spacing:.5px;margin:14px 0 8px}
+.acc{background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:10px;overflow:hidden}
+.acc summary{list-style:none;cursor:pointer;padding:13px 15px}
+.acc summary::-webkit-details-marker{display:none}
+.acc-t{display:flex;flex-direction:column;gap:2px}
+.acc-t b{font-size:12px;color:var(--coral-strong);font-weight:700}
+.acc-t span{font-size:14.5px;font-weight:700}
+.acc-body{padding:0 15px 14px}
+.video-chip{display:flex;align-items:center;gap:6px;color:var(--indigo);font-size:13px;font-weight:600;text-decoration:none;padding:7px 0;border-bottom:1px dashed var(--border)}
+.video-chip:last-child{border-bottom:none}
+.mat{font-size:13px;color:var(--text);padding:5px 0}

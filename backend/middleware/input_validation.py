@@ -14,6 +14,11 @@ _LIMITS = {
     "title": 128,
     "content": 4000,
     "answer": 4000,
+    "url": 2048,
+    "goal": 500,
+    "description": 2000,
+    "platform": 32,
+    "milestone": 200,
 }
 
 

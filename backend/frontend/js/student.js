@@ -6,6 +6,9 @@ const Student = {
   quiz: null,
   answers: {},
   result: null,
+  relatedVideos: [],   // 最近一次对话返回的相关视频课（CHAT-010）
+  askCtx: null,        // 从「路径」进入提问时携带的 chapter_ids/concept_tags
+  curriculum: null,
 
   async render() {
     const h = App.state.hash;
@@ -14,6 +17,7 @@ const Student = {
       if (this.quiz) return this.viewQuizTake();
       return await this.viewQuizList();
     }
+    if (h === "path") return await this.viewPath();
     if (h === "progress") return await this.viewProgress();
     if (h === "report") return await this.viewReport();
     return await this.viewLearn();
@@ -33,6 +37,10 @@ const Student = {
       + `<span class="pill" style="cursor:pointer" onclick="Student.newConv()">＋ 新对话</span>`;
     const msgs = this.messages.map(m => `<div class="msg ${m.role === 'user' ? 'user' : 'bot'}">${m.role === 'user' ? '' : '<div class="who">TUTOR</div>'}${esc(m.content)}</div>`).join('')
       || `<div class="muted" style="padding:12px 0">从左侧选择章节，开始引导式提问（不会直接给答案）。</div>`;
+    const relatedHtml = (this.relatedVideos || []).length ? `<div class="card sm" style="margin-top:12px">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px">🎬 相关视频课（学员自选观看）</div>
+      ${this.relatedVideos.map(v => `<a class="video-chip" href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">▶ ${esc(v.title)}${v.platform ? ` · ${esc(v.platform)}` : ''}</a>`).join('')}
+      </div>` : '';
 
     return appbar('学习', '引导式辅导 · 不直接给答案') +
     `<div class="content">
@@ -45,6 +53,7 @@ const Student = {
       <div class="pill-wrap" style="margin-bottom:10px">${convChips}</div>
       <div class="pill" style="margin-bottom:10px">🧭 第 ${this.turn} / 12 轮</div>
       <div class="chat">${msgs}</div>
+      ${relatedHtml}
     </div>
     <div class="composer"><input id="chatInput" placeholder="回答引导问题，或追问…" onkeydown="if(event.key==='Enter')Student.send()"/><button class="send" onclick="Student.send()">↑</button></div>` + tabbar();
   },
@@ -66,15 +75,63 @@ const Student = {
     this.messages.push({ role: "user", content });
     render();
     try {
-      const d = await API.post(`/api/conversations/${this.convId}/message`, { content, chapter_id: App.activeChapter });
+      const payload = { content, chapter_id: App.activeChapter };
+      // 从「路径」进入提问时，携带 session 的 chapter_ids/concept_tags 供视频推荐
+      if (this.askCtx) {
+        payload.chapter_ids = this.askCtx.chapter_ids || [];
+        payload.concept_tags = this.askCtx.concept_tags || [];
+      }
+      const d = await API.post(`/api/conversations/${this.convId}/message`, payload);
       this.messages.push({ role: "assistant", content: d.reply });
       this.turn = d.turn;
+      this.relatedVideos = d.related_videos || [];
       render();
     } catch (e) { toast(e.message); render(); }
   },
   async delConv(id) {
     try { await API.del("/api/conversations/" + id); this.convId = null; render(); toast("已删除对话"); }
     catch (e) { toast(e.message); }
+  },
+
+  /* ===== 学习路径（周→节手风琴）===== */
+  async viewPath() {
+    let weeks = [];
+    try { weeks = (await API.get("/api/curriculum")).weeks || []; } catch (e) { weeks = []; }
+    this.curriculum = weeks;
+    const body = weeks.length ? weeks.map(w => {
+      const ss = (w.sessions || []).map(s => {
+        const chaps = (s.chapters || []).map(c => `<span class="pill">${esc(c.name)}</span>`).join('') || '';
+        const mats = (s.materials || []).map(m => `<div class="mat">📄 ${esc(m.original_name || m.filename)}</div>`).join('') || '<div class="muted" style="font-size:12.5px">暂无资料</div>';
+        const vids = (s.videos || []).map(v => `<a class="video-chip" href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">▶ ${esc(v.title)}${v.platform ? ` · ${esc(v.platform)}` : ''}</a>`).join('') || '<div class="muted" style="font-size:12.5px">暂无视频</div>';
+        const tags = (s.concept_tags || []).map(t => `<span class="badge ver">${esc(t)}</span>`).join('') || '';
+        return `<details class="acc">
+          <summary><div class="acc-t"><b>第${w.week_no}周 · 第${s.session_no}节</b><span>${esc(s.title)}</span></div></summary>
+          <div class="acc-body">
+            ${s.goal ? `<div class="muted" style="margin-bottom:8px">🎯 ${esc(s.goal)}</div>` : ''}
+            ${tags ? `<div class="pill-wrap" style="margin-bottom:8px">${tags}</div>` : ''}
+            ${chaps ? `<div class="pill-wrap" style="margin-bottom:8px">${chaps}</div>` : ''}
+            <div style="font-weight:600;font-size:12.5px;margin-bottom:6px">📚 资料</div>${mats}
+            <div style="font-weight:600;font-size:12.5px;margin:10px 0 6px">🎬 视频课（外链，自行观看）</div>${vids}
+            <button class="btn sm" style="margin-top:12px" onclick="Student.askSession('${s.id}')">💬 去提问</button>
+          </div>
+        </details>`;
+      }).join('');
+      return `<div class="week-title">第 ${w.week_no} 周</div>${ss}`;
+    }).join('') : '<div class="note"><div class="big">📖</div>老师尚未发布学习路径</div>';
+    return appbar('学习路径', '8 周 · 周/节进度') + `<div class="content">${body}</div>` + tabbar();
+  },
+
+  askSession(sessionId) {
+    const weeks = this.curriculum || [];
+    let s = null;
+    for (const w of weeks) for (const x of (w.sessions || [])) if (x.id === sessionId) { s = x; break; }
+    const chapter_ids = (s && s.chapter_ids) || [];
+    this.askCtx = { chapter_ids, concept_tags: (s && s.concept_tags) || [] };
+    App.activeChapter = chapter_ids[0] || null;
+    this.relatedVideos = [];
+    App.state.hash = "learn";
+    render();
+    toast("已进入该节提问，输入你的问题吧");
   },
 
   /* ===== 测评 ===== */

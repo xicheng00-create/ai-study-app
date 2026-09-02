@@ -63,3 +63,30 @@ def test_teacher_overview_only_teacher(client, teacher_headers):
     assert resp.status_code == 200
     data = resp.get_json()["data"]
     assert data["student_count"] == 2
+
+
+def test_videos_shared_no_user_leak(client, teacher_headers):
+    """视频/路径为共享资源：不同学生看到同一份，响应不含 user_id 泄漏。"""
+    import json
+    resp = client.post("/api/chapters", json={"name": "共享章"}, headers=teacher_headers)
+    cid = resp.get_json()["data"]["id"]
+    resp = client.post("/api/curriculum/sessions", json={
+        "week_no": 1, "session_no": 1, "title": "S", "chapter_ids": [cid],
+    }, headers=teacher_headers)
+    sid = resp.get_json()["data"]["id"]
+    client.post("/api/curriculum/videos", json={
+        "title": "共享视频", "url": "https://x/v", "week_no": 1, "session_no": 1,
+    }, headers=teacher_headers)
+    client.post(f"/api/curriculum/sessions/{sid}/publish", headers=teacher_headers)
+
+    make_student(client, teacher_headers, "alice")
+    make_student(client, teacher_headers, "bob")
+    alice = login(client, "alice", "student123")
+    bob = login(client, "bob", "student123")
+    for token in (alice, bob):
+        resp = client.get("/api/curriculum/videos", headers={"Authorization": f"Bearer {token}"})
+        vids = resp.get_json()["data"]["videos"]
+        assert len(vids) == 1
+        assert vids[0]["title"] == "共享视频"
+        assert "user_id" not in json.dumps(vids[0])
+        assert "created_by" not in json.dumps(vids[0])

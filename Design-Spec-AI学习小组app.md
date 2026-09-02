@@ -1,6 +1,6 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.0（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1）  
+> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1**）  
 > 日期：2026-09-02  
 > 状态：设计评审  
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）  
@@ -23,6 +23,7 @@
 | 数据正确性 | 重出题不污染掌握度 | `attempts.quiz_version`，M 按 `(chapter_id, 最新 published version)` 聚合 | DM-006, PROG-007, F3 |
 | 安全护栏 | 越权防护 | `@user_scope` + `@role_required` + 越权读 403 集成测试 | AUTH-004, MAT-007, F9 |
 | 护栏兜底 | 不静默错答 | TUTOR 输出门控 + 三层降级（两层落地） | CHAT-004, F5 |
+| 测评评分 | 百分制（选择/是非 5 分、问答 10 分，合计 100） | AI(GRADER) 评客观分 + 教师可覆核改分；questions.points + attempts.score 改存实际得分 | QUIZ-003/005/009 |
 | 可恢复性 | 防误删 | 资料 `is_deleted` 软删除 + 7 天硬删窗口 + 二次确认 | MAT-005, F7 |
 
 ### 0.2 REQ ID 编码规则
@@ -38,6 +39,8 @@
 | PROG | 进度/掌握度/巩固 | PRD 功能 4 |
 | RPT | 周报 | PRD 功能 5 |
 | ADMIN | 教师管理后台 | PRD 功能 6 |
+| CURR | 学习路径结构 | CR-2026-0902-LPATH |
+| VIDEO | 视频资源 | CR-2026-0902-LPATH |
 | DEP | 部署与运维 | PRD §2/§9/§14 |
 | DM | 数据模型 | PRD §7 |
 | ARCH | 架构/横切 | architecture §二/§四 |
@@ -169,17 +172,20 @@
 | QUIZ-002 | student | P0 | 在线作答，可重做取最近 |
 | QUIZ-003 | student | P0 | GRADER 三档自动批改 |
 | QUIZ-004 | student | P1 | 测评报告（得分/错题/薄弱点） |
-| QUIZ-005 | teacher | P2 | 题型/难度/数量配置 |
+| QUIZ-005 | teacher | P1 | 题型/难度/数量配置（凑满 100 分组合，教师可选预设/自定义）|
 | QUIZ-006 | student | P2 | 错题本 |
 | QUIZ-007 | teacher | P1 | 重出生成新 version |
 | QUIZ-008 | teacher | P1 | 发布态管理（draft/published） |
+| QUIZ-009 | teacher | P1 | AI 评分后教师可覆核/改分（graded_by/is_reviewed）|
 
 **Technical**
-- 路由：`POST /api/quizzes/draft` → `POST /api/quizzes/:id/publish`、`POST /api/quizzes/:id/attempts`、`GET /api/quizzes/:id/report`、`POST /api/quizzes/:id/revision`(P1)、`GET /api/quizzes?status=published`。
+- **百分制评分模型（QUIZ-003/005）**：每题按题型赋分——选择题 5 分、是非题 5 分、问答题 10 分；`questions.points` 按题型写入，`quizzes.total_points=100`（题目组合须恰好 100 分，由 QUIZZER 按 QUIZ-005 配置生成）。学生单题得分 `attempts.score∈[0,points]`。
+- **评分权双轨（QUIZ-003 + QUIZ-009）**：① 客观题（选择/是非）由**系统确定性判分**（答案比对，0 或满分，零延迟零成本）；② 问答题由 **AI(GRADER)** 评 `score∈[0,10]` 并给 `reason`，`attempts.graded_by='ai'`；③ 教师可对任一题**覆核改分**（`PUT /api/attempts/:id/review` → 写 `reviewed_score`+`graded_by='teacher'`+`is_reviewed=1`）。教师默认不评分，仅在 AI 判分争议时介入。
+- 路由：`POST /api/quizzes/draft`(含 `config` 预设) → `POST /api/quizzes/:id/publish`、`POST /api/quizzes/:id/attempts`、`GET /api/quizzes/:id/report`、`PUT /api/attempts/:id/review`(QUIZ-009)、`POST /api/quizzes/:id/revision`(P1)、`GET /api/quizzes?status=published`。
 - 轻量审核状态机（architecture §5.3）：`draft ─[教师确认]─► published`；`published ─[重出]─► superseded`（旧版保留，新 version 走 draft→published）。
-- GRADER：QUIZZER 出题（结构化 JSON，含 `answer_key`/`sub_concept`/`chapter_id`）→ 学生作答 → GRADER 三档 `{correct, score, reason}` 写 attempts。
+- GRADER：QUIZZER 出题（结构化 JSON，含 `answer_key`/`sub_concept`/`chapter_id`/`points`）→ 学生作答 → 客观题系统判分 + 问答题 GRADER 评 `{correct, score, reason}` 写 attempts。
 - **F3 数据正确性**：`attempts` 必须带 `quiz_version`（DM-006），M 聚合仅取该章**最新 published version** 成绩（PROG-007），避免重出题污染掌握度。
-- 角色门禁：`quizzes_bp` 发布需 `@role_required("teacher")`；学生作答需 `@user_scope`。
+- 角色门禁：`quizzes_bp` 发布需 `@role_required("teacher")`；学生作答需 `@user_scope`；覆核改分需 `@role_required("teacher")`。
 
 ### 3.5 进度/掌握度/巩固 — `progress_bp` + `review_sched`（L3，REQ-PROG，AI: QUIZZER）
 **Functional**
@@ -195,7 +201,7 @@
 | PROG-008 | 全部 | P1 | 四态映射阈值 |
 
 **Technical**
-- M 公式（architecture/PRD）：`M = Σ(wᵢ·correctᵢ)/Σ(wᵢ)`，`wᵢ=0.5^间隔周数`，仅聚合该章**最新 published version**（F3）；四态：已掌握 M≥80 且有效作答≥2；进行中 50≤M<80 或 M≥80 但<2 次；薄弱 M<50；未评估 从未测验（不计入薄弱）。
+- M 公式（百分制）：`M = Σ(wᵢ·score_earnedᵢ) / Σ(wᵢ·points_possibleᵢ) × 100`，`wᵢ=0.5^间隔周数`，`points_possibleᵢ` 取 `questions.points`（选择/是非 5、问答 10），仅聚合该章**最新 published version**（F3）；M 为 0–100 百分比。四态：已掌握 M≥80 且有效作答≥2；进行中 50≤M<80 或 M≥80 但<2 次；薄弱 M<50；未评估 从未测验（不计入薄弱）。
 - 间隔复习状态机（architecture §5.4）：`review_items` `pending ─[到期+完成]─► done`；答对 `interval_days *=3`(1→3→7)，答错重置为 1。调度复用 launchd 每日扫描（不引入 Celery/Redis）。
 - 数据：attempts(DM-006, 含 quiz_version)、review_items(DM-007)、questions(DM-005)。
 - 薄弱点：章节级 + 知识点级(P2)，每条附 `attempts` 错题依据（拒绝凭空定性，PROG-005）。
@@ -285,9 +291,9 @@ users ─< reports
 | chapters | id, folder, name, order_no, created_by | DM-002 | 文件夹→章节两级 |
 | materials | +uploaded_by, +chapter_id, +is_deleted(软删,F7) | DM-003 | 归属章节 |
 | conversations | +user_id, ±chapter_id | DM-009 | 按学生隔离 |
-| quizzes | -user_id, +chapter_ids, +version, +teacher_id, +published_at, +title, +status, +confirmed_at | DM-004 | 教师发布实体；状态机 |
-| questions | id, quiz_id, chapter_id, sub_concept, type, content, answer_key | DM-005 | 掌握度溯源 |
-| attempts | id, user_id, quiz_id, question_id, chapter_id, **+quiz_version(F3)**, correct, score, created_at | DM-006 | M 唯一数据源 |
+| quizzes | -user_id, +chapter_ids, +version, +teacher_id, +published_at, +title, +status, +confirmed_at, +total_points(DEFAULT 100), +config_json | DM-004 | 教师发布实体；状态机；百分制总分 |
+| questions | id, quiz_id, chapter_id, sub_concept, type, content, answer_key, +points(选择/是非5·问答10) | DM-005 | 掌握度溯源；单题满分 |
+| attempts | id, user_id, quiz_id, question_id, chapter_id, **+quiz_version(F3)**, correct, score(实际得分点), +graded_by('ai'/'teacher'), +is_reviewed, +reviewed_score, created_at | DM-006 | M 唯一数据源；评分权双轨 |
 | review_items | id, user_id, chapter_id, question_id(NULL), next_review_at, interval_days, status | DM-007 | 间隔复习状态机 |
 | reports | +user_id | DM-008 | 周报归属 |
 | ChromaDB | material_chunks +chapter_id | DM-010 | 按章召回 |
@@ -296,6 +302,8 @@ users ─< reports
 - **quiz**：`draft ─[确认]─► published ─[重出]─► superseded`（旧版保留）。
 - **review_items**：`pending ─[到期+完成]─► done`；答对 `interval*=3`，答错重置 `1`。
 - **用户**：`is_active 1⇄0`。
+- **attempts 评分权**：`graded_by 'ai' → 'teacher'(覆核)`；`is_reviewed 0→1`（QUIZ-009，教师覆核改分后不可逆回 ai）。
+- **session（学习路径发布源）**：`draft ─[发布]─► published`，可 `unpublish` 回 draft；其下章节/资料/视频 `status` 随 session 同步（发布时 → published、取消发布 → draft），学生仅见 `published`。
 - **软删除**：`is_deleted 0→1`（软），7 天后硬删（F7）。
 
 ---
@@ -314,6 +322,7 @@ users ─< reports
 | progress_bp | /api/progress | 掌握度/四态/薄弱/巩固 | 学生本人 + 教师聚合 |
 | reports_bp | /api/reports | 周报 | 学生本人 |
 | teacher_bp | /api/teacher | 全班概览/详情 | 教师 |
+| curriculum_bp | /api/curriculum | 学习路径 Session CRUD + 发布/取消发布 + 视频课 CRUD + 总览 | 教师写，全部读（学生仅 published） |
 | health_bp | /health | 探活 | 公开 |
 
 ### 6.2 中间件（横切 A）
@@ -343,7 +352,7 @@ users ─< reports
 ### 7.1 三 Agent 提示词（architecture §5.1）
 - **TUTOR**：注入 `student_grade`/`weak_chapters`/`retrieved_chunks`；规则「不直接给答案，以追问引导；答对或卡住才给点拨」；轮次 `{turn}/12` 护栏。
 - **QUIZZER**：输入 `chapter_ids/sub_concepts/spec`；产出结构化 JSON 题目集（含 `answer_key`/`sub_concept`）。
-- **GRADER**：输入题目+参考答案+学生作答；产出 `{correct, score, reason}`。
+- **GRADER**：输入题目(含 `points`)+参考答案+学生作答；产出 `{correct, score, reason}`，`score∈[0,points]`（问答 0–10、客观题不调用 GRADER 改由系统确定性判分）。
 
 > 决策：提示词即一切，不引入工具注册表；保留 `def tool_x(ctx)->Result` 统一签名，未来 Agent>5 个再升级（§十四）。
 
@@ -376,7 +385,7 @@ users ─< reports
 Student(PWA) → Flask(JWT+人设加载+ChromaDB 召回 chapter_id) → DeepSeek(SSE 逐 token, TUTOR, ≤12 轮) → 写 messages(user_id 隔离)。
 
 ### 9.2 教师发布测评
-Teacher → 选章+规格 → Flask(鉴权+`@role_required`, status=draft, QUIZZER 生成 questions) → 教师预览/微调 → 确认(published, published_at, confirmed_at)。
+Teacher → 选章+QUIZ-005 配置(凑满 100 分组合) → Flask(鉴权+`@role_required`, status=draft, QUIZZER 按配置生成 questions 并赋 `points`) → 教师预览/微调 → 确认(published, published_at, confirmed_at, total_points=100)。
 
 ### 9.3 巩固练习闭环
 Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT review_items(interval=1) → 作答+GRADER 批改 → 写 attempts(含 quiz_version) + 算新 M → review_items 答对 interval*3 / 错重置 1；每日 launchd 扫描到期项。
@@ -427,7 +436,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 > - **AUTH-001~008**：JWT 12h + 登录/注册/改密/me/refresh 已实现（✅）
 > - **MAT-001~005/007**：章节 CRUD + 资料上传解析（pdfplumber/python-pptx/python-docx，MD/TXT 直读）+ 软删除（F7）已实现（✅）；MAT-006 批量上传 P2 未做
 > - **CHAT-001~006/008**：引导式对话（TUTOR 苏格拉底、≤12 轮护栏、仅本人可见、多对话）已实现；**RAG 降维**为 SQLite `chunks` 表 + `retrieve(query, chapter_id)` 关键词/章节匹配 top-k=5（替代 ChromaDB，MAT-003/ARCH-RAG 降维实现）（✅）；CHAT-007 SSE、CHAT-009 引用标注 P2 未做
-> - **QUIZ-001~003/007/008**：草稿→确认发布、学生作答、GRADER 三档批改、重出新 version、`attempts.quiz_version` 落地（F3）已实现（✅）；QUIZ-005 题型配置、QUIZ-006 错题本 P2 未做
+> - **QUIZ-001~003/007/008**：草稿→确认发布、学生作答、GRADER 三档批改、重出新 version、`attempts.quiz_version` 落地（F3）已实现（✅，注：当前为对错二元计分，百分制得分模型见 §12.4 待实现）；QUIZ-005 题型配置（百分制组合，P1 redesign）待做、QUIZ-006 错题本 P2 未做
 > - **PROG-001/004/005/006/007/008**：掌握度 M 四态（时间衰减 + 最新 version 聚合）+ 间隔复习 1→3→7 + 薄弱点带错题依据已实现（✅）
 > - **RPT-001~003**：学生周报（概况/成绩/AI 建议）已实现（✅）；RPT-004 教师全班周报降维为聚合概览、RPT-005 导出 P2 未做
 > - **ADMIN-001~003**：学生账号管理（创建/重置/停用）+ 资料管理 + 全班概览已实现（✅）
@@ -444,6 +453,15 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 > - **QUIZ-002/003 bool 是非题作答修复（前端 bug）**：`viewQuizTake()` 原本 bool 与 choice 走同一 `options` 分支，bool 的 `options` 为空数组 → 只显示题干、无作答控件。现为 bool 题单独渲染「正确 / 错误」按钮；`pick()` 兼容 choice 索引与 bool 文本；`openReview()` 巩固练习同补 bool 按钮，并对复习项 `options`（后端 JSON 字符串）做 `JSON.parse` 归一化，修复 choice/essay 复习题打不开的同类渲染 bug（✅）。后端 `grader._deterministic`（bool 按 `answer_key` 字符串比对）无需改动。
 
 **偏离登记**：RAG 由「ChromaDB 纯向量 + all-MiniLM-L6-v2」降维为「SQLite chunks 关键词/章节匹配」，不引入本地嵌入模型；检索无命中/LLM 不可用/越界时降级到固定引导语池（两层 Fallback L1→L2），L3 固定答案不做。
+
+### 12.4 待实现（测评百分制评分模型，2026-09-02 设计增补，v2.1）
+
+> 以下为 v2.1 新增设计，**尚未编码**，作为原子变更交由 Hermes 依据本规格实现（§三/§五/§七/§九/§十二 已含全部字段、接口与公式，无需另开 CR）：
+> - **QUIZ-005 提 P1**：教师可选 100 分组合（预设：10 选择+5 问答 / 8 选择+6 问答 / 20 选择；或自定义并校验合计=100）；QUIZZER 默认规格由「3 道题」改为 100 分组合。
+> - **数据模型（DM-004/005/006）**：`quizzes.total_points=100` + `config_json`；`questions.points`（选择/是非 5、问答 10）；`attempts.score` 改存实际得分点、`graded_by('ai'/'teacher')`、`is_reviewed`、`reviewed_score`。
+> - **评分权双轨（QUIZ-003/009）**：客观题系统确定性判分；问答题 AI(GRADER) 评 0–10；新增 `PUT /api/attempts/:id/review` 教师覆核改分。
+> - **M 公式（PROG-007）**：由对错二元改为百分制得分率 `Σ(score)/Σ(points)×100`。
+> - **展示层**：测评报告/进度/周报改显百分制总分与得分率；教师后台加覆核改分入口。
 
 ---
 
@@ -479,7 +497,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 | 0 账号 | AUTH-001~008 | auth_bp | — | 用户启用态 | P0/P1 |
 | 1 资料章节 | MAT-001~007 | chapters_bp/materials_bp | — | 软删除(F7) | P0/P2 |
 | 2 引导对话 | CHAT-001~009 | conversations_bp | TUTOR | 轮次护栏 | P0/P1/P2 |
-| 3 测评 | QUIZ-001~008 | quizzes_bp/attempts_bp | QUIZZER/GRADER | draft→published→superseded | P0/P1/P2 |
+| 3 测评 | QUIZ-001~009 | quizzes_bp/attempts_bp | QUIZZER/GRADER | draft→published→superseded；评分权 ai→teacher(覆核) | P0/P1/P2 |
 | 4 进度巩固 | PROG-001~008 | progress_bp/review_sched | QUIZZER | 间隔复习 1→3→7 | P1 |
 | 5 周报 | RPT-001~005 | reports_bp | TUTOR | — | P1/P2 |
 | 6 教师后台 | ADMIN-001~003 | teacher_bp | — | — | P1 |
@@ -497,19 +515,27 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 - [ ] AUTH-004 + MAT-007 + **F9**：学生看不见他人对话；学生上传接口 403；**学生 A 读学生 B → 403/空 集成测试通过**
 - [ ] MAT-002/003 + CHAT-004(F5)：教师传 PDF→学生引导式对话（不直接给答案、≤12 轮、TUTOR 输出门控生效）
 - [ ] QUIZ-001/008：草稿→确认两步；`draft` 不可作答
-- [ ] QUIZ-002/003 + **F3**：完成测评→见得分；`attempts.quiz_version` 落地
+- [ ] QUIZ-002/003 + **F3**：完成测评→见百分制得分；`attempts.quiz_version` 与 `attempts.score`(实际得分) 落地
 - [ ] DEP-001/005/006(F1)：手机加主屏、离线启 Shell；**LaunchDaemon 开机自启（非 LaunchAgent）**
 - [ ] DEP-003(F6)：production 下无 Werkzeug debugger；waitress 单进程/4 线程
 
 **P1 阶段二**
-- [ ] PROG-001/004 + **F3**：进度仅本人；教师概览聚合 3 人；M 按最新 version 聚合
+- [ ] PROG-001/004 + **F3**：进度仅本人；教师概览聚合 3 人；M 按最新 version 聚合（百分制得分率）
+- [ ] **QUIZ-005/009 + 百分制**：教师可选 100 分组合；AI 评分+教师覆核改分；questions.points/attempts.score 落地
 - [ ] RPT-001~003：周报含统计+AI 建议
 - [ ] NFR-006：单用户超额 429
 - [ ] **F7**：资料删除走软删+二次确认+7 天窗口
 
 **P2 阶段三**
-- [ ] CHAT-007/009 + QUIZ-005/006：SSE、引用、错题本可用
+- [ ] CHAT-007/009 + QUIZ-006：SSE、引用、错题本可用
 - [ ] DEP-010 + **F2**：备份还原演练通过；备份前 `wal_checkpoint`
+
+**阶段四：学习路径 & 视频课（CURR/VIDEO，v1.2.0）**
+- [ ] CURR-001/002：教师可建/改/删 Session；学生 `GET /api/curriculum` 只见 published session（周→节→资料+视频）
+- [ ] CURR-003：发布 Session → 其下 chapters/materials/video_resources status 同步 published，学生立即可见；取消发布回 draft
+- [ ] VIDEO-001/002：教师增删改视频；学生按 Session 看 published 视频，新标签打开外链
+- [ ] VIDEO-003 + CHAT-010：进 Session 提问，对话响应含 `related_videos`；`ai/video_link` 未 import `ai.rag`（RAG 纯度）
+- [ ] 数据隔离：视频/路径共享，无 user_id 泄漏；学生读仅 published（draft 隐藏）
 
 ---
 

@@ -53,6 +53,7 @@ def init_db(app=None):
     """建表 + 迁移；幂等，启动与测试均可调用。"""
     con = get_db()
     con.executescript(models.SCHEMA)
+    models.migrate(con)
     con.commit()
 
 

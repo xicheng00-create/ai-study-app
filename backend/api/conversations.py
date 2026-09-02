@@ -110,6 +110,10 @@ def post_message(conversation_id):
     if err:
         return err
     chapter_id = (data.get("chapter_id") or "").strip() or None
+    concept_tags = data.get("concept_tags") or []
+    chapter_ids = data.get("chapter_ids") or []
+    if not isinstance(concept_tags, list) or not isinstance(chapter_ids, list):
+        return e_input("concept_tags / chapter_ids 需为数组")
 
     con = get_db()
     conv = _own_conversation(con, conversation_id)
@@ -125,7 +129,8 @@ def post_message(conversation_id):
         (models.new_id(), conversation_id, content, now),
     )
 
-    result = tutor.tutor_orchestrate(con, user_row, conv, content, chapter_id)
+    result = tutor.tutor_orchestrate(con, user_row, conv, content, chapter_id,
+                                     concept_tags=concept_tags, chapter_ids=chapter_ids)
     con.execute(
         "INSERT INTO messages (id, conversation_id, role, content, cite, turn, created_at)"
         " VALUES (?, ?, 'assistant', ?, ?, ?, ?)",
@@ -137,4 +142,5 @@ def post_message(conversation_id):
         "turn": result["turn"] + 1,
         "max_turn": tutor.MAX_TURN,
         "fallback": result["fallback"],
+        "related_videos": result.get("related_videos", []),
     })

@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS chapters (
     folder     TEXT NOT NULL DEFAULT '',
     name       TEXT NOT NULL,
     order_no   INTEGER NOT NULL DEFAULT 0,
+    status     TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft','published')),
     created_by TEXT,
     created_at TEXT NOT NULL
 );
@@ -48,6 +49,7 @@ CREATE TABLE IF NOT EXISTS materials (
     deleted_at   TEXT,
     chunk_count  INTEGER NOT NULL DEFAULT 0,
     parse_status TEXT NOT NULL DEFAULT 'pending',
+    status       TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft','published')),
     created_at   TEXT NOT NULL
 );
 
@@ -137,9 +139,54 @@ CREATE TABLE IF NOT EXISTS reports (
     created_at TEXT NOT NULL
 );
 
+-- 学习路径节点：周/节 → 目标 → 关联章节 → 概念标签（REQ-CURR / DM-011）
+CREATE TABLE IF NOT EXISTS sessions (
+    id           TEXT PRIMARY KEY,
+    week_no      INTEGER NOT NULL,
+    session_no   INTEGER NOT NULL,
+    title        TEXT NOT NULL,
+    goal         TEXT NOT NULL DEFAULT '',
+    chapter_ids  TEXT NOT NULL DEFAULT '[]',   -- JSON 数组，引用 chapters.id
+    concept_tags TEXT NOT NULL DEFAULT '[]',   -- JSON 数组
+    milestone    TEXT DEFAULT '',
+    order_no     INTEGER NOT NULL DEFAULT 0,
+    status       TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+    created_by   TEXT,
+    created_at   TEXT NOT NULL
+);
+
+-- 视频课 = 结构化元数据（不进 RAG/chunks/embedding，RAG 纯度红线）
+CREATE TABLE IF NOT EXISTS video_resources (
+    id           TEXT PRIMARY KEY,
+    title        TEXT NOT NULL,
+    url          TEXT NOT NULL,
+    platform     TEXT NOT NULL DEFAULT '',
+    description  TEXT NOT NULL DEFAULT '',
+    week_no      INTEGER,
+    session_no   INTEGER,                       -- NULL = 整周
+    concept_tags TEXT NOT NULL DEFAULT '[]',
+    order_no     INTEGER NOT NULL DEFAULT 0,
+    status       TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+    created_by   TEXT,
+    created_at   TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_chunks_chapter ON chunks(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_material ON chunks(material_id);
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_attempts_user_chapter ON attempts(user_id, chapter_id);
 CREATE INDEX IF NOT EXISTS idx_review_user ON review_items(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_week ON sessions(week_no, session_no);
+CREATE INDEX IF NOT EXISTS idx_videos_ws ON video_resources(week_no, session_no);
 """
+
+
+def migrate(con) -> None:
+    """幂等迁移：老库补 status 列（默认 published，不破坏现状，REQ-CURR）。"""
+    for table in ("chapters", "materials"):
+        cols = {row["name"] for row in con.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "status" not in cols:
+            con.execute(
+                f"ALTER TABLE {table} ADD COLUMN status TEXT NOT NULL DEFAULT 'published'"
+            )
+    con.commit()

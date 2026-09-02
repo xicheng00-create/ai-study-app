@@ -1,6 +1,7 @@
 /* App shell：boot / hash 路由 / 登录 / tabbar / toast / sheet */
 const ICONS = {
   learn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  path: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.5 8.5L15.5 15.5"/></svg>',
   quiz: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
   progress: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>',
   report: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>',
@@ -48,10 +49,10 @@ function appbar(title, sub) {
 function tabbar() {
   const h = App.state.hash;
   if (App.state.role === 'teacher') {
-    const tabs = [["admin", "管理", ICONS.admin], ["quiz", "测评", ICONS.quiz], ["progress", "进度", ICONS.progress], ["report", "周报", ICONS.report]];
+    const tabs = [["curriculum", "课程", ICONS.path], ["admin", "管理", ICONS.admin], ["quiz", "测评", ICONS.quiz], ["progress", "进度", ICONS.progress], ["report", "周报", ICONS.report]];
     return `<div class="tabbar">${tabs.map(([k, l, ic]) => `<button class="tab teacher ${h === k ? 'active' : ''}" onclick="go('${k}')">${ic}<span>${l}</span></button>`).join('')}</div>`;
   }
-  const tabs = [["learn", "学习", ICONS.learn], ["quiz", "测评", ICONS.quiz], ["progress", "进度", ICONS.progress], ["report", "周报", ICONS.report]];
+  const tabs = [["learn", "学习", ICONS.learn], ["path", "路径", ICONS.path], ["quiz", "测评", ICONS.quiz], ["progress", "进度", ICONS.progress], ["report", "周报", ICONS.report]];
   return `<div class="tabbar">${tabs.map(([k, l, ic]) => `<button class="tab ${h === k ? 'active' : ''}" onclick="go('${k}')">${ic}<span>${l}</span></button>`).join('')}</div>`;
 }
 function go(h) { App.state.hash = h; if (h === "quiz") App.activeQuiz = null; location.hash = h; render(); }
