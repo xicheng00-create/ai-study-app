@@ -2,6 +2,12 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.4.1] - 2026-09-02
+
+### Fixed
+- **按钮尺寸统一对齐**：`.mini-btn` 统一 `height:32px; min-width:64px; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap`，修复「下载/删/上传/编辑/删除」按钮因文字宽不同导致宽高不一、对不齐；学生路径页 `.dl` 下载按钮补样式。
+- **禁止页面缩放（界面不稳）**：viewport 加 `maximum-scale=1.0, user-scalable=no`；`html/body` 加 `touch-action:manipulation` + `text-size-adjust:100%`，修复双指/双击缩放导致布局抖动的「灾难」观感。
+
 ## [1.4.0] - 2026-09-02
 
 ### Added
