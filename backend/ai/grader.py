@@ -42,6 +42,9 @@ def _heuristic_essay(answer_key: str, student_answer: str) -> dict:
 def grade_question(question: dict, student_answer: str) -> dict:
     qtype = question["type"]
     answer_key = question["answer_key"]
+    # 空答案一律判未作答 0 分（不等 LLM，避免 LLM 对空答给分 —— 真实缺陷修复）
+    if not (student_answer or "").strip():
+        return {"correct": 0, "score": 0.0, "reason": "未作答"}
     if qtype in ("choice", "bool"):
         return _deterministic(qtype, answer_key, student_answer)
     # essay：优先 GRADER LLM

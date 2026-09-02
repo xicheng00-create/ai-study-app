@@ -25,8 +25,10 @@ const Teacher = {
         <span class="badge ${m.parse_status === 'parsed' ? 'parse' : 'fail'}">${m.parse_status === 'parsed' ? `已解析 ${m.chunk_count} 块` : '解析失败'}</span>
         <span class="mini-btn danger" style="margin-left:auto;padding:3px 8px" onclick="Teacher.delMaterial('${m.id}')">删</span></div>`).join('') || '<div class="muted" style="font-size:12px;margin-top:4px">暂无资料</div>';
       return `<div class="adm-card" style="flex-direction:column;align-items:stretch">
-        <div style="display:flex;align-items:center;gap:13px"><div class="av">§</div><div class="meta"><div class="nm">${esc(c.name)}</div><div class="st">${mats.length} 份资料</div></div>
-          <span class="mini-btn teacher" onclick="Teacher.uploadForm('${c.id}')">上传</span></div><div style="margin-top:8px;padding-left:0">${matHtml}</div></div>`;
+        <div style="display:flex;align-items:center;gap:13px"><div class="av">§</div><div class="meta"><div class="nm">${esc(c.name)}</div><div class="st">${esc(c.folder || '未分组')} · ${mats.length} 份资料</div></div>
+          <span class="mini-btn teacher" onclick="Teacher.uploadForm('${c.id}')">上传</span>
+          <span class="mini-btn" onclick="Teacher.editChapterForm('${c.id}')">编辑</span>
+          <span class="mini-btn danger" onclick="Teacher.delChapter('${c.id}')">删除</span></div><div style="margin-top:8px;padding-left:0">${matHtml}</div></div>`;
     }).join('')).join('') || '<div class="muted">暂无章节，先新建</div>';
 
     const studentsHtml = students.map(s => `<div class="adm-card"><div class="av">${esc((s.display_name || s.username).charAt(0))}</div>
@@ -57,6 +59,26 @@ const Teacher = {
   },
   async createChapter() {
     try { await API.post("/api/chapters", { folder: document.getElementById("chFolder").value, name: document.getElementById("chName").value }); closeSheet(); await loadChapters(); toast("已创建章节"); render(); }
+    catch (e) { toast(e.message); }
+  },
+  editChapterForm(chapterId) {
+    const c = App.chapters.find(x => x.id === chapterId);
+    openSheet(`<div class="row" style="font-weight:700;cursor:default">编辑章节</div>
+      <div class="row" style="text-align:left;border:none;background:transparent;cursor:default">
+        <input class="mini-input" id="eFolder" placeholder="文件夹（模块）" value="${esc(c ? (c.folder || '') : '')}"/>
+        <input class="mini-input" id="eName" placeholder="章节名" value="${esc(c ? c.name : '')}"/>
+      </div>
+      <div class="row" onclick="Teacher.doEditChapter('${chapterId}')">保存</div>
+      <div class="row cancel" onclick="closeSheet()">取消</div>`);
+  },
+  async doEditChapter(chapterId) {
+    try { await API.put(`/api/chapters/${chapterId}`, { folder: document.getElementById("eFolder").value, name: document.getElementById("eName").value }); closeSheet(); await loadChapters(); toast("已保存"); render(); }
+    catch (e) { toast(e.message); }
+  },
+  async delChapter(chapterId) {
+    const c = App.chapters.find(x => x.id === chapterId);
+    if (!confirm(`确定删除章节「${c ? c.name : ''}」？其下资料需先删除。`)) return;
+    try { await API.del(`/api/chapters/${chapterId}`); await loadChapters(); toast("已删除章节"); render(); }
     catch (e) { toast(e.message); }
   },
   uploadForm(chapterId) {
