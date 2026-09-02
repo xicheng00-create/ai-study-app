@@ -93,6 +93,10 @@ const Student = {
     catch (e) { toast(e.message); }
   },
 
+  async downloadMat(id, filename) {
+    try { await API.download(id, filename); } catch (e) { toast(e.message); }
+  },
+
   /* ===== 学习路径（周→节手风琴）===== */
   async viewPath() {
     let weeks = [];
@@ -101,7 +105,7 @@ const Student = {
     const body = weeks.length ? weeks.map(w => {
       const ss = (w.sessions || []).map(s => {
         const chaps = (s.chapters || []).map(c => `<span class="pill">${esc(c.name)}</span>`).join('') || '';
-        const mats = (s.materials || []).map(m => `<div class="mat">📄 ${esc(m.original_name || m.filename)}</div>`).join('') || '<div class="muted" style="font-size:12.5px">暂无资料</div>';
+        const mats = (s.materials || []).map(m => `<div class="mat">📄 ${esc(m.original_name || m.filename)} <span class="dl" onclick="Student.downloadMat('${m.id}','${esc(m.original_name || m.filename)}')">⬇ 下载</span></div>`).join('') || '<div class="muted" style="font-size:12.5px">暂无资料</div>';
         const vids = (s.videos || []).map(v => `<a class="video-chip" href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">▶ ${esc(v.title)}${v.platform ? ` · ${esc(v.platform)}` : ''}</a>`).join('') || '<div class="muted" style="font-size:12.5px">暂无视频</div>';
         const tags = (s.concept_tags || []).map(t => `<span class="badge ver">${esc(t)}</span>`).join('') || '';
         return `<details class="acc">

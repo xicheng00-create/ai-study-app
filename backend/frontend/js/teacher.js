@@ -8,6 +8,9 @@ const Teacher = {
     { key: "20c", label: "20 选择", cfg: { choice: 20 } },
   ],
   curSel: {},       // Session 表单章节多选
+  async downloadMat(id, filename) {
+    try { await API.download(id, filename); } catch (e) { toast(e.message); }
+  },
   sessions: [],     // 课程管理缓存（周→节）
   videos: [],
 
@@ -33,6 +36,7 @@ const Teacher = {
       const mats = materials.filter(m => m.chapter_id === c.id);
       const matHtml = mats.map(m => `<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px">📄 ${esc(m.original_name)}
         <span class="badge ${m.parse_status === 'parsed' ? 'parse' : 'fail'}">${m.parse_status === 'parsed' ? `已解析 ${m.chunk_count} 块` : '解析失败'}</span>
+        <span class="mini-btn" style="padding:3px 8px" onclick="Teacher.downloadMat('${m.id}','${esc(m.original_name)}')">下载</span>
         <span class="mini-btn danger" style="margin-left:auto;padding:3px 8px" onclick="Teacher.delMaterial('${m.id}')">删</span></div>`).join('') || '<div class="muted" style="font-size:12px;margin-top:4px">暂无资料</div>';
       return `<div class="adm-card" style="flex-direction:column;align-items:stretch">
         <div style="display:flex;align-items:center;gap:13px"><div class="av">§</div><div class="meta"><div class="nm">${esc(c.name)}</div><div class="st">${esc(c.folder || '未分组')} · ${mats.length} 份资料</div></div>

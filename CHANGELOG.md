@@ -2,6 +2,12 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.4.0] - 2026-09-02
+
+### Added
+- **资料下载（方案 B，去重）**：`materials` 新增 `source_path`（源文件绝对路径，指向课件/），新增 `GET /api/materials/:id/download`（`send_file` serve 课件/ 源文件）；学生/教师前端加「⬇ 下载」按钮（学生仅已发布可下，教师全下）。源文件**不复制**进 uploads/（单份存储，避免重复），app 直接 serve 课件/。
+- **W1 课程注入**：注入 W1S1《大模型是什么：概念扫盲》+ W1S2《AI 产品地图》——2 个 Session + 2 章节（一对一）+ 7 份资料（解析出 152 个文本块）+ 5 条视频链接，全部默认 `draft`（学生不可见，教师后台确认发布后学生才可见）。
+
 ## [1.3.0] - 2026-09-02
 
 ### Added

@@ -35,6 +35,24 @@ const API = (() => {
     put: (p, json) => request(p, { method: "PUT", json }),
     del: (p) => request(p, { method: "DELETE" }),
     upload: (p, formData) => request(p, { method: "POST", body: formData }),
+    // 方案B：下载源文件（带 Bearer，blob 触发下载）
+    async download(id, filename) {
+      const token = getToken();
+      const resp = await fetch("/api/materials/" + id + "/download", {
+        headers: token ? { "Authorization": "Bearer " + token } : {},
+      });
+      if (!resp.ok) {
+        let msg = "下载失败";
+        try { const b = await resp.json(); msg = b.msg || msg; } catch (e) { /* ignore */ }
+        throw new Error(msg);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename || "download";
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    },
     getToken, setToken,
   };
 })();

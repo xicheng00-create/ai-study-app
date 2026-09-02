@@ -8,8 +8,8 @@ from ai import parser
 from auth.jwt_utils import jwt_required, role_required
 from data import models
 from data.db import get_db
-from flask import Blueprint, current_app, g, request
-from middleware.errors import e_input, e_not_found, ok
+from flask import Blueprint, current_app, g, request, send_file
+from middleware.errors import e_input, e_not_found, e_role, ok
 from middleware.rate_limit import rate_limit
 
 materials_bp = Blueprint("materials_bp", __name__, url_prefix="/api/materials")
@@ -143,3 +143,19 @@ def delete_material(material_id):
     )
     con.commit()
     return ok({"deleted": 1, "soft": True})
+
+
+@materials_bp.route("/<material_id>/download", methods=["GET"])
+@jwt_required
+def download_material(material_id):
+    """方案B下载：serve 课件/ 源文件。学生仅已发布可下，教师全下。"""
+    con = get_db()
+    row = con.execute("SELECT * FROM materials WHERE id=?", (material_id,)).fetchone()
+    if row is None:
+        return e_not_found("资料不存在")
+    if g.role != "teacher" and row["status"] != "published":
+        return e_role("该资料尚未发布，不可下载")
+    src = row["source_path"]
+    if not src or not os.path.isfile(src):
+        return e_not_found("源文件不存在")
+    return send_file(src, as_attachment=True, download_name=row["original_name"])

@@ -201,6 +201,9 @@ def migrate(con) -> None:
     for table in ("chapters", "materials"):
         _add_column(con, table, "status", "TEXT NOT NULL DEFAULT 'published'")
 
+    # 方案B（v1.4.0）：材料源文件绝对路径（serve 课件/ 源文件供下载）
+    _add_column(con, "materials", "source_path", "TEXT")
+
     # 百分制评分模型（v1.3.0）：quizzes/questions/attempts 增量列
     _add_column(con, "quizzes", "total_points", "REAL NOT NULL DEFAULT 100")
     _add_column(con, "quizzes", "config_json", "TEXT NOT NULL DEFAULT '{}'")
