@@ -16,7 +16,6 @@ def _user_dict(row) -> dict:
         "username": row["username"],
         "role": row["role"],
         "display_name": row["display_name"],
-        "grade": row["grade"],
         "is_active": bool(row["is_active"]),
     }
 
@@ -50,8 +49,9 @@ def register():
         return bad
     username = data["username"].strip()
     display_name = (data.get("display_name") or username).strip()
-    grade = (data.get("grade") or "").strip()
-    for field, val in (("username", username), ("display_name", display_name), ("grade", grade)):
+    # 年级维度已移除（v1.5.0）：不再收集/存储 grade
+    grade = ""
+    for field, val in (("username", username), ("display_name", display_name)):
         err = check_len(field, val)
         if err:
             return err

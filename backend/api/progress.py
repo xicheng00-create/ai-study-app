@@ -14,7 +14,11 @@ progress_bp = Blueprint("progress_bp", __name__, url_prefix="/api/progress")
 
 
 def _all_chapters(con):
-    return con.execute("SELECT * FROM chapters ORDER BY folder, order_no, name").fetchall()
+    """学生可见章节（仅已发布）：未发布 session 的章节不进入进度/掌握度/薄弱点。
+    修复：W1S2 未发布却出现在学生进度里的 bug（发布状态机：章节 status 随 session 同步）。"""
+    return con.execute(
+        "SELECT * FROM chapters WHERE status='published' ORDER BY folder, order_no, name"
+    ).fetchall()
 
 
 def _now():

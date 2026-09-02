@@ -146,7 +146,7 @@
 **Functional**
 | REQ | 角色 | 优先级 | 说明 |
 |-----|------|--------|------|
-| CHAT-001 | student | P0 | 进入对话加载人设（grade+薄弱章） |
+| CHAT-001 | student | P0 | 进入对话加载人设（薄弱章；v1.5.0 起不再含 grade） |
 | CHAT-002 | student | P0 | 选择范围（资料/章/全部） |
 | CHAT-003 | student | P1 | 意图路由（答疑/复习/出题分流） |
 | CHAT-004 | student | P0 | 苏格拉底引导，不直接给答案 |
@@ -287,7 +287,7 @@ users ─< reports
 ### 5.2 关键表字段（增量）
 | 表 | 关键字段 | REQ | 备注 |
 |----|----------|-----|------|
-| users | id, username, password_hash, role, display_name, grade, is_active, created_at | DM-001 | grade 用于引导定位 |
+| users | id, username, password_hash, role, display_name, is_active, created_at | DM-001 | v1.5.0 起 grade 维度移除（列保留但不再使用/返回） |
 | chapters | id, folder, name, order_no, created_by | DM-002 | 文件夹→章节两级 |
 | materials | +uploaded_by, +chapter_id, +is_deleted(软删,F7) | DM-003 | 归属章节 |
 | conversations | +user_id, ±chapter_id | DM-009 | 按学生隔离 |
@@ -350,7 +350,7 @@ users ─< reports
 ## 七、AI 能力架构（三 Agent + 两层 Fallback + 护栏）
 
 ### 7.1 三 Agent 提示词（architecture §5.1）
-- **TUTOR**：注入 `student_grade`/`weak_chapters`/`retrieved_chunks`；规则「不直接给答案，以追问引导；答对或卡住才给点拨」；轮次 `{turn}/12` 护栏。
+- **TUTOR**：注入 `weak_chapters`/`retrieved_chunks`（v1.5.0 起不再注入 `student_grade`）；规则「不直接给答案，以追问引导；答对或卡住才给点拨」；轮次 `{turn}/12` 护栏。
 - **QUIZZER**：输入 `chapter_ids/sub_concepts/spec`；产出结构化 JSON 题目集（含 `answer_key`/`sub_concept`）。
 - **GRADER**：输入题目(含 `points`)+参考答案+学生作答；产出 `{correct, score, reason}`，`score∈[0,points]`（问答 0–10、客观题不调用 GRADER 改由系统确定性判分）。
 
@@ -472,6 +472,8 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 > - **UI 稳定（v1.4.1）**：`.mini-btn`/`.dl` 统一尺寸（height/min-width/inline-flex）修复按钮不对齐；viewport `maximum-scale=1,user-scalable=no` + `touch-action:manipulation` + `text-size-adjust:100%` 禁止页面缩放（✅）。
 > - **UI 修复（v1.4.2）**：管理后台卡片头标题竖排修复——`.adm-card .meta` 改 `flex:1 1 auto; min-width:0` + `.nm` 加 `overflow-wrap/word-break:break-word`（长标题不再被 flex 挤压成单字一行）；卡片头「上传/编辑/删除」打包进 `margin-left:auto; flex-shrink:0` 容器统一靠右同排（修复按钮因标题宽度被 wrap 拆散）；资料行「下载/删」去掉行内 `padding` 覆盖、统一标准 `.mini-btn`（✅）。
 > - **UI 修复（v1.4.3）**：管理后台卡片头改**两行布局**——标题（含副标题）独占一行、`flex:1` 完整显示，「上传/编辑/删除」移到标题下方单独一行右对齐（彻底解决长标题被按钮挤压成竖排/wrap，用户要求按钮不必与标题同排）；资料文件名去掉 `ellipsis` 改 `word-break:break-word` 完整显示不省略；Service Worker `CACHE` bump `v5→v6` 强制手机端缓存失效拉取新版（✅）。
+> - **移除年级维度（v1.5.0）**：学生端学习页删「🧑‍🎓 年级」pill；教师端新建学生表单删「年级（可选）」输入框；后端 `/api/auth/login/register`、`/api/teacher` 列表不再返回/接收 `grade`（DB 保留列但清空）。同步 CHAT-001/TUTOR 不再注入 `grade`（✅）。
+> - **进度可见性修复（v1.5.0）**：`/api/progress/{mastery,weak-points,review-items/generate}` 的 `_all_chapters` 只查询 `status='published'` 章节——未发布 session（如 W1S2 draft）不再进学生进度/掌握度/薄弱点/巩固练习（修复「学生看到两个未测评」）（✅）。
 
 ## 十三、NFR 与已知盲区（融合 PRD §13 + architecture §十三）
 

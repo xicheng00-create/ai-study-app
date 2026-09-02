@@ -2,6 +2,14 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.5.0] - 2026-09-02
+
+### Changed
+- **移除年级（grade）维度（前后端）**：学生端学习页删掉「🧑‍🎓 年级」pill；教师端新建学生表单删掉「年级（可选）」输入框及提交字段；后端 `/api/auth/login`、`/api/auth/register`、`/api/teacher` 列表不再返回/接收 `grade`。DB 保留 `grade` 列（不动 schema、避免迁移风险）但清空存量值。
+
+### Fixed
+- **学生进度页显示未发布章节的测评（bug）**：`/api/progress/mastery`、`/weak-points`、`/review-items/generate` 的 `_all_chapters` 改为只查询 `status='published'` 的章节——未发布 session（如 W1S2 保持 draft）的章节不再出现在学生进度/掌握度/薄弱点/巩固练习里，避免「学生看到两个未测评」的错误（发布状态机：章节 status 随 session 同步）。
+
 ## [1.4.3] - 2026-09-02
 
 ### Fixed

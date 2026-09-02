@@ -49,7 +49,6 @@ def overview():
         students.append({
             "id": sid,
             "display_name": u["display_name"],
-            "grade": u["grade"],
             "counts": counts,
             "weak_chapters": weak_ch,
         })
@@ -67,7 +66,7 @@ def overview():
 def list_students():
     con = get_db()
     rows = con.execute(
-        "SELECT id, username, display_name, grade, is_active, created_at"
+        "SELECT id, username, display_name, is_active, created_at"
         " FROM users WHERE role='student' ORDER BY created_at"
     ).fetchall()
     return ok({"students": [dict(r) for r in rows]})

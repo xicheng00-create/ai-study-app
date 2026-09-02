@@ -45,8 +45,7 @@ const Student = {
     return appbar('学习', '引导式辅导 · 不直接给答案') +
     `<div class="content">
       <div class="pill-wrap" style="margin-bottom:10px">
-        <span class="pill active">🧑‍🎓 ${esc((App.state.user && App.state.user.grade) || '未设置年级')}</span>
-        <span class="pill">🧭 引导式</span>
+        <span class="pill active">🧑‍🎓 引导式</span>
       </div>
       <div class="gate">🛡️ 回答由 AI 生成，请核对资料原文 · 越界内容已拦截</div>
       <div class="card sm" style="margin-bottom:12px"><div style="font-weight:700;font-size:13px;margin-bottom:8px">📚 资料库（点选范围）</div>${chapters || '<div class="muted">暂无章节</div>'}</div>

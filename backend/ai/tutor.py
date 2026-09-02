@@ -52,7 +52,7 @@ def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str
     turn = _current_turn(con, conversation["id"])
     weak = weak_chapter_names(con, user_id)
     weak_txt = "、".join(weak) if weak else "暂无"
-    grade = user_row["grade"] or "未设置"
+    # v1.5.0：年级维度已移除，TUTOR 不再注入 grade
 
     # 视频相关推荐（RAG 纯度：纯 SQL + 标签匹配，与 chunks 召回并行互不干扰）
     video_chapter_ids = chapter_ids or ([chapter_id] if chapter_id else [])
@@ -81,7 +81,6 @@ def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str
                 "cite": "", "turn": turn, "fallback": True, "related_videos": related}
 
     system = TUTOR_SYSTEM.format(
-        student_grade=grade,
         weak_chapters=weak_txt,
         retrieved_chunks=chunk_txt[:4000],
         related_videos=related_txt,

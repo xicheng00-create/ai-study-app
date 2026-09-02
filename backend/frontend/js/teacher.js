@@ -120,7 +120,6 @@ const Teacher = {
       <div class="row" style="text-align:left;border:none;background:transparent;cursor:default">
         <input class="mini-input" id="stUser" placeholder="用户名"/>
         <input class="mini-input" id="stName" placeholder="显示名"/>
-        <input class="mini-input" id="stGrade" placeholder="年级（可选）"/>
         <input class="mini-input" id="stPass" type="password" placeholder="初始密码"/>
       </div>
       <div class="row" onclick="Teacher.createStudent()">创建</div>
@@ -131,7 +130,6 @@ const Teacher = {
       await API.post("/api/auth/register", {
         username: document.getElementById("stUser").value,
         display_name: document.getElementById("stName").value,
-        grade: document.getElementById("stGrade").value,
         password: document.getElementById("stPass").value,
         role: "student",
       });
