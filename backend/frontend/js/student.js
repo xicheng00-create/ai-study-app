@@ -98,6 +98,11 @@ const Student = {
     const q = this.quiz.quiz;
     const qs = (this.quiz.questions || []).map((item, i) => {
       if (item.type === "essay") return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}</span></div><textarea id="ans_${item.id}" placeholder="输入你的回答…"></textarea></div>`;
+      // bool 是非题：无 options，固定渲染「正确 / 错误」两个按钮
+      if (item.type === "bool") {
+        const boolOpts = ['正确', '错误'].map(v => `<div class="opt" id="opt_${item.id}_${v}" onclick="Student.pick('${item.id}','${v}')"><span class="dot"></span>${v}</div>`).join('');
+        return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}</span></div>${boolOpts}</div>`;
+      }
       const opts = (item.options || []).map((o, oi) => `<div class="opt" id="opt_${item.id}_${oi}" onclick="Student.pick('${item.id}',${oi})"><span class="dot"></span>${esc(o)}</div>`).join('');
       return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}</span></div>${opts}</div>`;
     }).join('');
@@ -106,11 +111,12 @@ const Student = {
       ${qs}<button class="btn" onclick="Student.submit()">提交并批改</button>
       <button class="btn ghost" style="margin-top:8px" onclick="App.activeQuiz=null;render()">返回列表</button></div>` + tabbar();
   },
-  pick(qid, oi) {
-    this.answers[qid] = String(oi);
-    const parent = document.getElementById("opt_" + qid + "_" + oi).parentElement;
+  pick(qid, val) {
+    // val：choice 传选项索引、bool 传「正确/错误」文本；统一存字符串供后端比对
+    this.answers[qid] = String(val);
+    const parent = document.getElementById("opt_" + qid + "_" + val).parentElement;
     parent.querySelectorAll(".opt").forEach(o => o.classList.remove("chosen"));
-    document.getElementById("opt_" + qid + "_" + oi).classList.add("chosen");
+    document.getElementById("opt_" + qid + "_" + val).classList.add("chosen");
   },
   async submit() {
     const answers = (this.quiz.questions || []).map(q => {
@@ -175,10 +181,18 @@ const Student = {
     try {
       const d = await API.get("/api/progress/review-items/" + id);
       const q = d.question || {};
-      const opts = (q.options || []).map((o, oi) => `<div class="row" style="text-align:left;border:none;background:transparent;padding:8px 16px" onclick="Student.answerReview('${id}','${oi}')">${String.fromCharCode(65 + oi)}. ${esc(o)}</div>`).join('');
+      // 复习项 options 可能是 JSON 字符串（后端未二次解析），统一转数组
+      let optsArr = q.options;
+      if (typeof optsArr === 'string') { try { optsArr = JSON.parse(optsArr); } catch (e) { optsArr = []; } }
+      optsArr = optsArr || [];
+      const boolOpts = q.type === 'bool'
+        ? ['正确', '错误'].map(v => `<div class="row" style="text-align:left;border:none;background:transparent;padding:8px 16px" onclick="Student.answerReview('${id}','${v}')">${v}</div>`).join('')
+        : '';
+      const opts = optsArr.map((o, oi) => `<div class="row" style="text-align:left;border:none;background:transparent;padding:8px 16px" onclick="Student.answerReview('${id}','${oi}')">${String.fromCharCode(65 + oi)}. ${esc(o)}</div>`).join('');
       const essay = q.type === "essay" ? `<div class="row" style="text-align:left;border:none;background:transparent;cursor:default"><textarea class="mini-input" id="revAns" placeholder="输入回答"></textarea><div class="row" onclick="Student.answerReview('${id}',document.getElementById('revAns').value)">提交</div></div>` : '';
+      const answerArea = q.type === 'essay' ? essay : (q.type === 'bool' ? boolOpts : opts);
       openSheet(`<div class="row" style="font-weight:700;cursor:default">巩固练习 · ${esc(App.chapterName(d.chapter_id))}</div>
-        <div class="row" style="text-align:left;border:none;background:transparent;cursor:default">${esc(q.content)}</div>${essay}${q.type !== 'essay' ? opts : ''}
+        <div class="row" style="text-align:left;border:none;background:transparent;cursor:default">${esc(q.content)}</div>${answerArea}
         <div class="row cancel" onclick="closeSheet()">取消</div>`);
     } catch (e) { toast(e.message); }
   },

@@ -2,6 +2,12 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.1.1] - 2026-09-02
+
+### Fixed
+- **bool 是非题前端无法作答**（REQ-QUIZ-002/003）：`Student.viewQuizTake()` 中 bool 题与 choice 题走同一条 `options` 分支，而 bool 题的 `options` 为空数组，导致只显示题干、无任何作答控件。现为 bool 题单独渲染「正确 / 错误」两个按钮；`Student.pick()` 兼容 choice 索引与 bool 文本，`answerReview()` 复用该值经后端 `grader._deterministic`（bool 用 `answer_key` 字符串比对）正确评分。
+- **巩固练习（openReview）bool/choice 渲染缺失**：复习项 `question.options` 后端存的是 JSON 字符串，前端直接 `.map` 会抛错（choice/essay 复习题整体打不开）；现前端先 `JSON.parse` 归一化为数组，并为 bool 复习题补「正确 / 错误」按钮。
+
 ## [1.1.0] - 2026-09-02
 
 ### Fixed
