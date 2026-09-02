@@ -5,7 +5,8 @@ set -euo pipefail
 
 REPO="/Users/xicheng/WorkBuddy/AI学习小组app"
 VENV="$REPO/.venv"
-cd "$REPO"
+# app 模块在 backend/ 子目录，须 cd 到 backend 才能 `from app import create_app`
+cd "$REPO/backend"
 
 # 加载 .env（生产密钥 + DeepSeek key + 端口）
 if [ -f "$REPO/.env" ]; then
