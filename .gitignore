@@ -31,3 +31,6 @@ logs/
 
 # 内部工作日志（非项目产物）
 .workbuddy/
+
+# 课程原始素材（554MB，走 iCloud Drive 备份，不进 git）
+课件/
