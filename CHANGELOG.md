@@ -2,6 +2,16 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.6.0] - 2026-09-03
+
+### Added
+- **学生端对话/切换添加即时加载反馈（外网慢优化，纯前端）**：外网同学走 Cloudflare 隧道有 ~130ms RTT，点一下要等 1-2 秒像「没反应」。新增两层反馈——
+  1. **全局加载条**（`api.js` 的 `request()` 统一驱动 + `app.js` 的 `loadingOn/loadingOff`）：所有 API 请求期间顶部显示「加载中…」旋转指示，并发计数、首个请求显示、全部结束隐藏。覆盖切章节/发消息/加载课程/下载等所有操作。
+  2. **TUTOR 思考气泡**（`student.js` 的 `pendingReply` flag + `.typing` 三点动画）：发消息等待 DeepSeek 回复期间，对话区立即出现「TUTOR 正在思考」跳动气泡，响应后替换为真实回复；失败时移除气泡。
+
+### Changed
+- **Service Worker CACHE `v6` → `v7`**：强制用户端拉取本次改动的 `api.js/app.js/student.js/style.css`（`network-first` 联网必拿最新）。
+
 ## [1.5.1] - 2026-09-03
 
 ### Changed

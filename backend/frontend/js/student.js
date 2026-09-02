@@ -9,6 +9,7 @@ const Student = {
   relatedVideos: [],   // 最近一次对话返回的相关视频课（CHAT-010）
   askCtx: null,        // 从「路径」进入提问时携带的 chapter_ids/concept_tags
   curriculum: null,
+  pendingReply: false, // 等待 DeepSeek 回复期间驱动思考气泡（避免被 render 重载覆盖）
 
   async render() {
     const h = App.state.hash;
@@ -36,6 +37,7 @@ const Student = {
     const convChips = convs.map(c => `<span class="pill ${this.convId === c.id ? 'active' : ''}" style="cursor:pointer" onclick="Student.selectConv('${c.id}')">${esc(c.title)}</span>`).join('')
       + `<span class="pill" style="cursor:pointer" onclick="Student.newConv()">＋ 新对话</span>`;
     const msgs = this.messages.map(m => `<div class="msg ${m.role === 'user' ? 'user' : 'bot'}">${m.role === 'user' ? '' : '<div class="who">TUTOR</div>'}${esc(m.content)}</div>`).join('')
+      + (this.pendingReply ? `<div class="msg bot"><div class="who">TUTOR</div><span class="typing"><span></span><span></span><span></span></span></div>` : '')
       || `<div class="muted" style="padding:12px 0">从左侧选择章节，开始引导式提问（不会直接给答案）。</div>`;
     const relatedHtml = (this.relatedVideos || []).length ? `<div class="card sm" style="margin-top:12px">
       <div style="font-weight:700;font-size:13px;margin-bottom:8px">🎬 相关视频课（学员自选观看）</div>
@@ -72,6 +74,7 @@ const Student = {
     if (!this.convId) { await this.newConv(); }
     input.value = "";
     this.messages.push({ role: "user", content });
+    this.pendingReply = true;   // 显示思考气泡（即时反馈）
     render();
     try {
       const payload = { content, chapter_id: App.activeChapter };
@@ -84,8 +87,12 @@ const Student = {
       this.messages.push({ role: "assistant", content: d.reply });
       this.turn = d.turn;
       this.relatedVideos = d.related_videos || [];
+      this.pendingReply = false;
       render();
-    } catch (e) { toast(e.message); render(); }
+    } catch (e) {
+      this.pendingReply = false;
+      toast(e.message); render();
+    }
   },
   async delConv(id) {
     try { await API.del("/api/conversations/" + id); this.convId = null; render(); toast("已删除对话"); }

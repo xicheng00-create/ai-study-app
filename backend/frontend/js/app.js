@@ -33,6 +33,27 @@ function toast(m) {
   t.textContent = m; t.classList.add("show");
   setTimeout(() => t.classList.remove("show"), 1800);
 }
+/* 全局请求加载指示器：并发计数，首个请求显示、全部结束隐藏 */
+let _loadingCount = 0, _loadingEl = null, _loadingText = "加载中…";
+function loadingOn(text) {
+  if (text) _loadingText = text;
+  _loadingCount++;
+  if (!_loadingEl) {
+    _loadingEl = document.createElement("div");
+    _loadingEl.className = "global-loading";
+    _loadingEl.innerHTML = '<span class="spin"></span><span class="gl-txt"></span>';
+    document.body.appendChild(_loadingEl);
+  }
+  _loadingEl.querySelector(".gl-txt").textContent = _loadingText;
+  _loadingEl.classList.add("show");
+}
+function loadingOff() {
+  if (_loadingCount > 0) _loadingCount--;
+  if (_loadingCount <= 0) {
+    _loadingCount = 0;
+    if (_loadingEl) _loadingEl.classList.remove("show");
+  }
+}
 function openSheet(html) {
   document.getElementById("sheet").innerHTML = html;
   document.getElementById("sheetMask").classList.add("show");

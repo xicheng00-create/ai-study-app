@@ -10,23 +10,29 @@ const API = (() => {
     if (opts.json !== undefined) headers["Content-Type"] = "application/json";
     const token = getToken();
     if (token) headers["Authorization"] = "Bearer " + token;
-    const resp = await fetch(path, {
-      method: opts.method || "GET",
-      headers,
-      body: opts.json !== undefined ? JSON.stringify(opts.json) : opts.body,
-    });
-    let body = {};
-    try { body = await resp.json(); } catch (e) { /* 非 JSON */ }
-    if (resp.status === 401 && !path.startsWith("/api/auth/login")) {
-      setToken("");
-      if (typeof onUnauthorized === "function") onUnauthorized();
-      throw new Error("登录已过期");
+    // 全局加载指示器（无则静默跳过，兼容 api.js 先于 app.js 加载）
+    if (typeof loadingOn === "function") loadingOn();
+    try {
+      const resp = await fetch(path, {
+        method: opts.method || "GET",
+        headers,
+        body: opts.json !== undefined ? JSON.stringify(opts.json) : opts.body,
+      });
+      let body = {};
+      try { body = await resp.json(); } catch (e) { /* 非 JSON */ }
+      if (resp.status === 401 && !path.startsWith("/api/auth/login")) {
+        setToken("");
+        if (typeof onUnauthorized === "function") onUnauthorized();
+        throw new Error("登录已过期");
+      }
+      if (!resp.ok || (body.code && body.code !== 0)) {
+        const msg = (body && body.msg) || ("请求失败 " + resp.status);
+        throw new Error(msg);
+      }
+      return body.data;
+    } finally {
+      if (typeof loadingOff === "function") loadingOff();
     }
-    if (!resp.ok || (body.code && body.code !== 0)) {
-      const msg = (body && body.msg) || ("请求失败 " + resp.status);
-      throw new Error(msg);
-    }
-    return body.data;
   }
 
   return {
