@@ -2,6 +2,12 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.4.2] - 2026-09-02
+
+### Fixed
+- **管理后台卡片标题竖排（灾难）**：`.adm-card .meta` 改 `flex:1 1 auto; min-width:0` + `.nm` 加 `overflow-wrap/word-break:break-word`，修复长标题（如「第1周·第1节·大模型是什么：概念扫盲」）在 flex 布局中被挤压成单字一行竖排的问题。
+- **卡片头按钮分散不齐**：上传/编辑/删除三个按钮打包进 `display:flex; margin-left:auto; flex-shrink:0` 容器，统一靠右同排，修复因标题宽度不同导致按钮被 wrap 拆分到不同行的参差布局；资料行「下载/删」去掉行内 `padding` 覆盖、统一为标准 `.mini-btn`，长文件名 `flex:1` 可伸缩省略避免挤压。
+
 ## [1.4.1] - 2026-09-02
 
 ### Fixed

@@ -34,15 +34,15 @@ const Teacher = {
     App.chapters.forEach(c => { (grouped[c.folder || '未分组'] = grouped[c.folder || '未分组'] || []).push(c); });
     const lib = Object.keys(grouped).map(f => `<div class="folder">${esc(f)}</div>` + grouped[f].map(c => {
       const mats = materials.filter(m => m.chapter_id === c.id);
-      const matHtml = mats.map(m => `<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px">📄 ${esc(m.original_name)}
-        <span class="badge ${m.parse_status === 'parsed' ? 'parse' : 'fail'}">${m.parse_status === 'parsed' ? `已解析 ${m.chunk_count} 块` : '解析失败'}</span>
-        <span class="mini-btn" style="padding:3px 8px" onclick="Teacher.downloadMat('${m.id}','${esc(m.original_name)}')">下载</span>
-        <span class="mini-btn danger" style="margin-left:auto;padding:3px 8px" onclick="Teacher.delMaterial('${m.id}')">删</span></div>`).join('') || '<div class="muted" style="font-size:12px;margin-top:4px">暂无资料</div>';
+      const matHtml = mats.map(m => `<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:6px"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 ${esc(m.original_name)}</span>
+        <span class="badge ${m.parse_status === 'parsed' ? 'parse' : 'fail'}" style="flex-shrink:0">${m.parse_status === 'parsed' ? `已解析 ${m.chunk_count} 块` : '解析失败'}</span>
+        <span class="mini-btn" style="flex-shrink:0" onclick="Teacher.downloadMat('${m.id}','${esc(m.original_name)}')">下载</span>
+        <span class="mini-btn danger" style="flex-shrink:0" onclick="Teacher.delMaterial('${m.id}')">删</span></div>`).join('') || '<div class="muted" style="font-size:12px;margin-top:4px">暂无资料</div>';
       return `<div class="adm-card" style="flex-direction:column;align-items:stretch">
         <div style="display:flex;align-items:center;gap:13px"><div class="av">§</div><div class="meta"><div class="nm">${esc(c.name)}</div><div class="st">${esc(c.folder || '未分组')} · ${mats.length} 份资料</div></div>
-          <span class="mini-btn teacher" onclick="Teacher.uploadForm('${c.id}')">上传</span>
+          <div style="display:flex;gap:8px;margin-left:auto;flex-shrink:0"><span class="mini-btn teacher" onclick="Teacher.uploadForm('${c.id}')">上传</span>
           <span class="mini-btn" onclick="Teacher.editChapterForm('${c.id}')">编辑</span>
-          <span class="mini-btn danger" onclick="Teacher.delChapter('${c.id}')">删除</span></div><div style="margin-top:8px;padding-left:0">${matHtml}</div></div>`;
+          <span class="mini-btn danger" onclick="Teacher.delChapter('${c.id}')">删除</span></div></div><div style="margin-top:8px;padding-left:0">${matHtml}</div></div>`;
     }).join('')).join('') || '<div class="muted">暂无章节，先新建</div>';
 
     const studentsHtml = students.map(s => `<div class="adm-card"><div class="av">${esc((s.display_name || s.username).charAt(0))}</div>
