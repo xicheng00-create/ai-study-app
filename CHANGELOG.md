@@ -2,6 +2,15 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.5.1] - 2026-09-03
+
+### Changed
+- **TUTOR 对话不再每轮弹"相关视频课"（用户反馈"一直出现"）**：`tutor_orchestrate` 仅当学生提问**主动问及视频课**（含"视频/课程/b站/网课/看视频"等关键词）时才召回 `related_videos`，普通提问返回空数组（前端自然不渲染卡片）；TUTOR 提示词引导规则强化为**优先基于【资料依据】引导、多指向章节资料原文**，只在学生明确问视频时才提一句。（前端 `relatedVideos` 每次取后端返回，后端空则卡片消失。）
+- **服务默认绑定 `0.0.0.0`（网络优化）**：`deploy/run.sh` 的 `HOST` 默认从 `127.0.0.1` 改为 `0.0.0.0`，允许局域网内手机/设备直连 iMac `192.168.50.22:5001`（实测 5ms，远快于 Cloudflare tunnel 的 130ms+，且 QUIC 易断连）。根治"点一下反应半秒"：后端此前只监听 127.0.0.1，手机只能走不稳的 quick tunnel。
+
+### Added
+- **AI 学习小组 app iCloud 定时备份（DEP-008）**：新增 launchd 任务 `com.xicheng.aistudy-icloud-backup`（每天 03:20），调用 `scripts/backup_icloud.sh`（wal_checkpoint 刷盘 + rsync 备份 db/uploads/chroma 到 iCloud Drive，保留 7 天）。此前只有四口之家的备份，本 app 备份脚本存在但未定时触发。
+
 ## [1.5.0] - 2026-09-02
 
 ### Changed

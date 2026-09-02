@@ -27,6 +27,7 @@ def test_tutor_response_contains_related_videos(client, teacher_headers):
     h = {"Authorization": f"Bearer {alice}"}
     conv = client.post("/api/conversations", json={"title": "提问", "chapter_id": cid}, headers=h)
     conv_id = conv.get_json()["data"]["id"]
+    # 普通提问（不含视频关键词）不应返回相关视频（v1.5.1：避免每轮轰炸,优先指向资料）
     resp = client.post(f"/api/conversations/{conv_id}/message", json={
         "content": "transformer 是什么？",
         "chapter_id": cid,
@@ -35,8 +36,18 @@ def test_tutor_response_contains_related_videos(client, teacher_headers):
     }, headers=h)
     assert resp.status_code == 200, resp.get_json()
     data = resp.get_json()["data"]
-    rv = data["related_videos"]
-    assert any(v["title"] == "Transformer 讲解" for v in rv)
-    assert all("url" in v and "platform" in v for v in rv)
+    assert data["related_videos"] == [], f"普通提问不应返回视频，got {data['related_videos']}"
     # 视频 URL 不作为答案内联
     assert "https://example.com" not in data["reply"]
+
+    # 主动问及视频课 → 应返回相关视频
+    resp2 = client.post(f"/api/conversations/{conv_id}/message", json={
+        "content": "有没有相关视频课可以看？",
+        "chapter_id": cid,
+        "chapter_ids": [cid],
+        "concept_tags": ["transformer"],
+    }, headers=h)
+    assert resp2.status_code == 200, resp2.get_json()
+    rv = resp2.get_json()["data"]["related_videos"]
+    assert any(v["title"] == "Transformer 讲解" for v in rv), f"问视频应返回相关视频，got {rv}"
+    assert all("url" in v and "platform" in v for v in rv)

@@ -5,6 +5,14 @@ from ai.prompts import TUTOR_SYSTEM
 MAX_TURN = 12
 
 
+def _user_wants_video(content: str) -> bool:
+    """学生是否主动问及视频课（含关键词才召回相关视频，避免每轮轰炸）。
+    v1.5.1：普通提问不返回 related_videos，改为优先指向资料（用户反馈）。"""
+    kw = ("视频", "视频课", "看视频", "讲解视频", "课程", "up主", "up主", "b站", "bilibili",
+          "网课", "教程", "直播", "录像", "视频链接", "有没有课", "课在哪", "怎么学视频")
+    return any(k in content.lower() for k in kw)
+
+
 def _format_related_videos(related):
     """视频推荐块：仅标题/平台/URL，不内联视频内容。"""
     if not related:
@@ -55,8 +63,9 @@ def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str
     # v1.5.0：年级维度已移除，TUTOR 不再注入 grade
 
     # 视频相关推荐（RAG 纯度：纯 SQL + 标签匹配，与 chunks 召回并行互不干扰）
+    # v1.5.1：仅当学生主动问及视频课才召回，普通提问不返回（避免每轮轰炸,优先指向资料）
     video_chapter_ids = chapter_ids or ([chapter_id] if chapter_id else [])
-    related = video_link.retrieve_related_videos(video_chapter_ids, concept_tags)
+    related = video_link.retrieve_related_videos(video_chapter_ids, concept_tags) if _user_wants_video(content) else []
     related_txt = _format_related_videos(related)
 
     chunks = rag.retrieve(content, chapter_id, top_k=5)

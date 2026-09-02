@@ -14,7 +14,9 @@ if [ -f "$REPO/.env" ]; then
 fi
 
 PORT="${PORT:-5001}"
-HOST="${HOST:-127.0.0.1}"
+# 默认绑定 0.0.0.0：允许局域网内手机/设备直连 iMac 的 192.168.50.22:5001（2ms 极速），
+# 减少对 Cloudflare tunnel（130ms RTT、QUIC 易断）的依赖。tunnel 仍访问 127.0.0.1 不受影响。
+HOST="${HOST:-0.0.0.0}"
 
 export FLASK_ENV="${FLASK_ENV:-production}"
 # 防止 Werkzeug debugger 暴露公网：production 强制 debug=False
