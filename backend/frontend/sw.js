@@ -1,5 +1,6 @@
-/* ServiceWorker：离线 App Shell（HTML/CSS/JS/图标），API 数据走网络 */
-const CACHE = "aistudy-shell-v1";
+/* ServiceWorker：network-first App Shell（联网必拿最新，离线回退缓存） */
+/* v2：修复 cache-first 导致部署后用户永远看到旧版的问题 */
+const CACHE = "aistudy-shell-v2";
 const ASSETS = ["/", "/css/style.css", "/js/api.js", "/js/app.js", "/js/student.js", "/js/teacher.js", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
@@ -14,10 +15,10 @@ self.addEventListener("fetch", (e) => {
   if (url.pathname.startsWith("/api/")) return;
   if (e.request.method !== "GET") return;
   e.respondWith(
-    caches.match(e.request).then((cached) => cached || fetch(e.request).then((resp) => {
+    fetch(e.request).then((resp) => {
       const copy = resp.clone();
       caches.open(CACHE).then((c) => c.put(e.request, copy));
       return resp;
-    }).catch(() => caches.match("/")))
+    }).catch(() => caches.match(e.request).then((c) => c || caches.match("/")))
   );
 });
