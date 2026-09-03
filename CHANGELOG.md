@@ -2,6 +2,18 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.7.0] - 2026-09-03
+
+### Added
+- **新对话标题自动总结对话内容（CHAT-008）**：学生发送首条消息时，后端 `post_message` 自动取首条用户消息前 18 字符（去多余空白）生成有意义的标题，替换默认「新对话」，避免对话 pill 列表一排「新对话」；响应同时返回 `title`。前端对话 pill 标题单行不折行、超出省略（`.pill-t`），修复「新对/话」折行观感。
+- **对话 pill 长按删除（CHAT-008）**：学习页对话 pill 支持长按（~600ms，touchstart/touchend + mousedown/mouseup 双兼容）弹出底部确认层「删除对话/取消」，确认后调 `DELETE /api/conversations/:id` 删除并刷新；与单击切换 `selectConv` 不冲突（长按后抑制补发的 click）。
+- **资料库多章节横向滑动卡片组（CHAT-002）**：章节 ≥2 个时资料库改为 `overflow-x:auto` 横向卡片（固定宽度、隐藏滚动条、可左右滑动），单章保持竖排；卡片仍显示章节名+分组名，点击仍切换 `App.activeChapter`。
+- **下方小字随选中章节动态提示（CHAT-002）**：已选章节显示「已选择：{章节名}，开始提问（不会直接给答案）」，未选则提示「请从上方资料库选择章节，开始提问」。
+
+### Changed
+- **Service Worker CACHE `v7` → `v8`**：强制用户端拉取本次 `student.js/style.css` 改动。
+- **版本 `1.6.0` → `1.7.0`**（新功能）。
+
 ## [1.6.0] - 2026-09-03
 
 ### Added

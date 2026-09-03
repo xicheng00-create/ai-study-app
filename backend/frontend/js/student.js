@@ -10,6 +10,9 @@ const Student = {
   askCtx: null,        // 从「路径」进入提问时携带的 chapter_ids/concept_tags
   curriculum: null,
   pendingReply: false, // 等待 DeepSeek 回复期间驱动思考气泡（避免被 render 重载覆盖）
+  convs: [],          // 学习页对话 pill 列表缓存（长按删除时查标题）
+  _pressTimer: null,  // 长按手势定时器
+  _pressX: 0, _pressY: 0, _touchTs: 0, _suppressClick: false,
 
   async render() {
     const h = App.state.hash;
@@ -28,17 +31,21 @@ const Student = {
   async viewLearn() {
     let convs = [];
     try { convs = (await API.get("/api/conversations")).conversations || []; } catch (e) { convs = []; }
+    this.convs = convs;
     if (!this.convId && convs.length) this.convId = convs[0].id;
     if (this.convId) {
       try { const d = await API.get("/api/conversations/" + this.convId); this.messages = d.messages || []; } catch (e) { this.messages = []; }
     }
-    const chapters = App.chapters.map(c => `<div class="chapter ${App.activeChapter === c.id ? 'active' : ''}" onclick="Student.selectChapter('${c.id}')">
+    const chapterCards = App.chapters.map(c => `<div class="chapter ${App.activeChapter === c.id ? 'active' : ''}" onclick="Student.selectChapter('${c.id}')">
       <div><div class="nm">${esc(c.name)}</div><div class="mt">${esc(c.folder || '未分组')}</div></div></div>`).join('');
-    const convChips = convs.map(c => `<span class="pill ${this.convId === c.id ? 'active' : ''}" style="cursor:pointer" onclick="Student.selectConv('${c.id}')">${esc(c.title)}</span>`).join('')
+    // ≥2 章节时资料库改为横向滑动卡片组（单章保持竖排）
+    const chapters = App.chapters.length >= 2 ? `<div class="chapter-scroll">${chapterCards}</div>` : chapterCards;
+    const convChips = convs.map(c => `<span class="pill ${this.convId === c.id ? 'active' : ''}" style="cursor:pointer" onclick="Student.selectConv('${c.id}')" onmousedown="Student.pressStart(event,'${c.id}')" onmouseup="Student.pressEnd(event)" onmouseleave="Student.pressEnd(event)" ontouchstart="Student.pressStart(event,'${c.id}')" ontouchend="Student.pressEnd(event)" ontouchmove="Student.pressMove(event)" ontouchcancel="Student.pressEnd(event)"><span class="pill-t">${esc(c.title)}</span></span>`).join('')
       + `<span class="pill" style="cursor:pointer" onclick="Student.newConv()">＋ 新对话</span>`;
-    const msgs = this.messages.map(m => `<div class="msg ${m.role === 'user' ? 'user' : 'bot'}">${m.role === 'user' ? '' : '<div class="who">TUTOR</div>'}${esc(m.content)}</div>`).join('')
-      + (this.pendingReply ? `<div class="msg bot"><div class="who">TUTOR</div><span class="typing"><span></span><span></span><span></span></span></div>` : '')
-      || `<div class="muted" style="padding:12px 0">从左侧选择章节，开始引导式提问（不会直接给答案）。</div>`;
+    const msgsHtml = this.messages.map(m => `<div class="msg ${m.role === 'user' ? 'user' : 'bot'}">${m.role === 'user' ? '' : '<div class="who">TUTOR</div>'}${esc(m.content)}</div>`).join('')
+      + (this.pendingReply ? `<div class="msg bot"><div class="who">TUTOR</div><span class="typing"><span></span><span></span><span></span></span></div>` : '');
+    const msgs = msgsHtml
+      || `<div class="muted" style="padding:12px 0">${App.activeChapter ? `已选择：${esc(App.chapterName(App.activeChapter))}，开始提问（不会直接给答案）` : '请从上方资料库选择章节，开始提问'}</div>`;
     const relatedHtml = (this.relatedVideos || []).length ? `<div class="card sm" style="margin-top:12px">
       <div style="font-weight:700;font-size:13px;margin-bottom:8px">🎬 相关视频课（学员自选观看）</div>
       ${this.relatedVideos.map(v => `<a class="video-chip" href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">▶ ${esc(v.title)}${v.platform ? ` · ${esc(v.platform)}` : ''}</a>`).join('')}
@@ -59,7 +66,39 @@ const Student = {
     <div class="composer"><input id="chatInput" placeholder="回答引导问题，或追问…" onkeydown="if(event.key==='Enter')Student.send()"/><button class="send" onclick="Student.send()">↑</button></div>` + tabbar();
   },
   selectChapter(id) { App.activeChapter = id; render(); },
-  selectConv(id) { this.convId = id; render(); },
+  selectConv(id) {
+    // 长按弹删除后浏览器会补发 click，这里抑制以免误切换
+    if (this._suppressClick) { this._suppressClick = false; return; }
+    this.convId = id; render();
+  },
+  /* 对话 pill 长按删除：touchstart/touchend + mousedown/mouseup 双兼容 */
+  pressStart(e, id) {
+    // 忽略 touchend 后浏览器派生的合成 mouse 事件，避免长按后误触发 click
+    if (e.type === "mousedown" && this._touchTs && Date.now() - this._touchTs < 700) return;
+    const p = (e.touches && e.touches[0]) || e;
+    this._pressX = p.clientX; this._pressY = p.clientY;
+    this._suppressClick = false;
+    clearTimeout(this._pressTimer);
+    this._pressTimer = setTimeout(() => { this._suppressClick = true; this.confirmDeleteConv(id); }, 600);
+  },
+  pressMove(e) {
+    const p = e.touches && e.touches[0];
+    if (p && (Math.abs(p.clientX - this._pressX) > 10 || Math.abs(p.clientY - this._pressY) > 10)) {
+      clearTimeout(this._pressTimer);
+    }
+  },
+  pressEnd(e) {
+    if (e.type === "touchend" || e.type === "touchcancel") this._touchTs = Date.now();
+    clearTimeout(this._pressTimer);
+    setTimeout(() => { this._suppressClick = false; }, 400);
+  },
+  confirmDeleteConv(id) {
+    const c = (this.convs || []).find(x => x.id === id);
+    openSheet(`<div class="row" style="font-weight:700">删除对话</div>
+      <div class="row" style="text-align:left;border:none;background:transparent;cursor:default;font-size:13px;color:var(--text-2)">确定删除「${esc(c ? c.title : '该对话')}」？删除后对话记录不可恢复。</div>
+      <div class="row danger" onclick="Student.delConv('${id}')">删除对话</div>
+      <div class="row cancel" onclick="closeSheet()">取消</div>`);
+  },
   async newConv() {
     try {
       const d = await API.post("/api/conversations", { chapter_id: App.activeChapter, title: "新对话" });
@@ -95,8 +134,12 @@ const Student = {
     }
   },
   async delConv(id) {
-    try { await API.del("/api/conversations/" + id); this.convId = null; render(); toast("已删除对话"); }
-    catch (e) { toast(e.message); }
+    closeSheet();
+    try {
+      await API.del("/api/conversations/" + id);
+      this.convId = null; this.messages = []; this.turn = 0;
+      render(); toast("已删除对话");
+    } catch (e) { toast(e.message); }
   },
 
   async downloadMat(id, filename) {

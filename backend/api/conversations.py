@@ -28,6 +28,14 @@ def _own_conversation(con, conversation_id: str):
     return row
 
 
+def _summary_title(content: str) -> str:
+    """取首条用户消息前 18 字符作摘要标题（去多余空白，避免一排「新对话」）。"""
+    text = " ".join(content.split())
+    if len(text) <= 18:
+        return text
+    return text[:18] + "…"
+
+
 @conversations_bp.route("", methods=["GET"])
 @jwt_required
 @role_required("student")
@@ -121,6 +129,14 @@ def post_message(conversation_id):
         return e_forbidden("只能操作本人对话")
     user_row = con.execute("SELECT * FROM users WHERE id=?", (g.user_id,)).fetchone()
 
+    # 首条用户消息 → 用内容摘要生成对话标题（CHAT-008：不再一排「新对话」）
+    is_first = con.execute(
+        "SELECT 1 FROM messages WHERE conversation_id=? LIMIT 1", (conversation_id,)
+    ).fetchone() is None
+    new_title = _summary_title(content) if is_first else conv["title"]
+    if is_first:
+        con.execute("UPDATE conversations SET title=? WHERE id=?", (new_title, conversation_id))
+
     now = models.utcnow()
     # 写用户消息
     con.execute(
@@ -143,4 +159,5 @@ def post_message(conversation_id):
         "max_turn": tutor.MAX_TURN,
         "fallback": result["fallback"],
         "related_videos": result.get("related_videos", []),
+        "title": new_title,
     })
