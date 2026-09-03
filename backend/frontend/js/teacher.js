@@ -349,7 +349,7 @@ const Teacher = {
     const drafts = quizzes.filter(q => q.status === "draft").map(q => `<div class="card sm" style="border-color:var(--indigo)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-weight:700">${esc(q.title)}</div><span class="badge na">草稿待确认</span></div>
       <div class="muted" style="font-size:12px;margin-bottom:8px">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')} · v${q.version} · ${q.total_points} 分</div>
-      <div style="display:flex;gap:8px"><button class="btn teacher sm" style="flex:1" onclick="Teacher.publish('${q.id}')">确认发布</button><button class="mini-btn danger" onclick="Teacher.dropQuiz('${q.id}')">放弃</button></div></div>`).join('');
+      <div style="display:flex;gap:8px"><button class="btn teacher sm" style="flex:1" onclick="Teacher.preview('${q.id}')">👁 预览</button><button class="btn teacher sm" style="flex:1" onclick="Teacher.publish('${q.id}')">确认发布</button><button class="mini-btn danger" onclick="Teacher.dropQuiz('${q.id}')">放弃</button></div></div>`).join('');
     const published = quizzes.filter(q => q.status === "published").map(q => `<div class="card sm" style="display:flex;justify-content:space-between;align-items:center">
       <div><div style="font-weight:700">${q.version > 1 ? `<span class="badge ver">v${q.version}</span> ` : ''}${esc(q.title)}</div><div class="muted">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')} · ${q.total_points} 分</div></div>
       <span class="mini-btn teacher" onclick="Teacher.revise('${q.id}')">重出</span></div>`).join('');
@@ -394,6 +394,31 @@ const Teacher = {
   },
   async publish(id) { try { await API.post(`/api/quizzes/${id}/publish`, {}); toast("已发布，全班可见相同题目"); render(); } catch (e) { toast(e.message); } },
   async dropQuiz(id) { try { await API.del("/api/quizzes/" + id); toast("已放弃草稿"); render(); } catch (e) { toast(e.message); } },
+  async preview(id) {
+    // QUIZ-001 P0「生成草稿→预览微调→确认发布」：草稿卡片点「预览」查看题目+答案，确认无误再发布。
+    let d = null;
+    try { d = await API.get(`/api/quizzes/${id}`); } catch (e) { toast(e.message); return; }
+    const q = d.quiz, qs = d.questions || [];
+    if (!qs.length) { toast("该草稿暂无题目"); return; }
+    const rows = qs.map((item, i) => {
+      const opts = (item.options || []).map((o, oi) =>
+        `<div class="opt" style="cursor:default"><span class="dot"></span>${esc(o)}</div>`).join('');
+      const ans = (item.answer_key != null && item.answer_key !== "") ? (() => {
+        let txt = item.answer_key;
+        if (item.type === "choice") {
+          const idx = parseInt(item.answer_key, 10);
+          txt = (item.options && item.options[idx] != null) ? item.options[idx] : item.answer_key;
+        }
+        return `<div class="muted" style="font-size:12.5px;margin-top:4px">答案：${esc(String(txt))}</div>`;
+      })() : '';
+      return `<div class="q" style="margin-bottom:12px"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}<b class="pts">${item.points} 分</b></span></div>` +
+        (item.type === "essay" ? '' : opts) + ans + '</div>';
+    }).join('');
+    openSheet(`<div class="row" style="font-weight:700;cursor:default">草稿预览 · ${esc(q.title)}</div>
+      <div class="muted" style="font-size:12px;margin-bottom:10px">共 ${qs.length} 题 · ${q.total_points} 分 · 覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div>
+      ${rows}
+      <div style="display:flex;gap:8px;margin-top:12px"><button class="btn teacher" style="flex:1" onclick="closeSheet();Teacher.publish('${q.id}')">确认发布</button><button class="mini-btn" onclick="closeSheet()">关闭</button></div>`);
+  },
   async revise(id) { try { await API.post(`/api/quizzes/${id}/revision`, {}); toast("已重出为新草稿（旧版保留）"); render(); } catch (e) { toast(e.message); } },
 
   /* ===== 全班进度 ===== */
