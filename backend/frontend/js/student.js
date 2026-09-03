@@ -6,6 +6,11 @@ const Student = {
   quiz: null,
   answers: {},
   result: null,
+  practiceView: false,   // 自主练习入口（与教师测评列表并列）
+  practice: null,        // 当前练习会话（含 questions，无 answer_key）
+  practiceResult: null,  // {summary, detail}：批改结果
+  practiceChapters: [],  // 练习选章（可多选）
+  practiceSessions: [],  // 练习历史列表
   relatedVideos: [],   // 最近一次对话返回的相关视频课（CHAT-010）
   askCtx: null,        // 从「路径」进入提问时携带的 chapter_ids/concept_tags
   curriculum: null,
@@ -19,6 +24,9 @@ const Student = {
     if (h === "quiz") {
       if (this.result) return this.viewResult();
       if (this.quiz) return this.viewQuizTake();
+      if (this.practiceResult) return this.viewPracticeResult();
+      if (this.practice) return this.viewPracticeTake();
+      if (this.practiceView) return await this.viewPractice();
       return await this.viewQuizList();
     }
     if (h === "path") return await this.viewPath();
@@ -198,7 +206,10 @@ const Student = {
         <div class="meta"><div class="t">${ver}${esc(q.title)}</div><div class="s">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div></div>
         <div style="text-align:right">${badge}</div></div>`;
     }).join('') || '<div class="muted">老师尚未发布测评</div>';
-    return appbar('测评', '教师发布 · 全班同题') + `<div class="content">${list}</div>` + tabbar();
+    const practiceEntry = `<div class="qcard" style="border-color:var(--coral)" onclick="Student.enterPractice()"><div class="ic">🎯</div>
+      <div class="meta"><div class="t">自主练习</div><div class="s">根据资料 AI 生成 · 难度高于正式测评</div></div>
+      <div style="text-align:right"><span class="badge prog">hard</span></div></div>`;
+    return appbar('测评', '教师发布 · 全班同题') + `<div class="content">${practiceEntry}${list}</div>` + tabbar();
   },
   async openQuiz(id) {
     try { this.quiz = await API.get("/api/quizzes/" + id); this.answers = {}; this.result = null; render(); }
@@ -253,6 +264,119 @@ const Student = {
       <button class="btn sec" onclick="App.activeQuiz=null;Student.quiz=null;Student.result=null;render()">返回测评列表</button></div>` + tabbar();
   },
 
+  /* ===== 自主练习 ===== */
+  enterPractice() {
+    this.practiceView = true;
+    this.practice = null; this.practiceResult = null; this.answers = {};
+    this.practiceChapters = App.activeChapter ? [App.activeChapter] : [];
+    render();
+  },
+  exitPractice() {
+    this.practiceView = false; this.practice = null; this.practiceResult = null;
+    this.practiceSessions = [];
+    render();
+  },
+  togglePracticeChapter(id) {
+    const sel = this.practiceChapters || [];
+    const i = sel.indexOf(id);
+    if (i >= 0) sel.splice(i, 1); else sel.push(id);
+    this.practiceChapters = sel;
+    render();
+  },
+  async viewPractice() {
+    let sessions = [];
+    try { sessions = (await API.get("/api/practice")).sessions || []; } catch (e) { sessions = []; }
+    this.practiceSessions = sessions;
+    const chapters = App.chapters;
+    const sel = this.practiceChapters || [];
+    const chapterSel = chapters.map(c => `<div class="chapter ${sel.includes(c.id) ? 'active' : ''}" onclick="Student.togglePracticeChapter('${c.id}')"><div><div class="nm">${esc(c.name)}</div><div class="mt">${esc(c.folder || '未分组')}</div></div></div>`).join('') || '<div class="muted">暂无章节</div>';
+    const hist = sessions.map(s => {
+      const status = s.completed ? `<span class="badge master">已完成 ${s.score}</span>` : `<span class="badge prog">进行中</span>`;
+      return `<div class="qcard" onclick="Student.openPractice('${s.id}')"><div class="ic">🎯</div>
+        <div class="meta"><div class="t">练习 ${s.question_count} 题 · hard</div><div class="s">覆盖：${(s.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div></div>
+        <div style="text-align:right">${status}</div></div>`;
+    }).join('') || '<div class="muted">暂无练习记录</div>';
+    return appbar('自主练习', 'AI 出题 · hard · 合计 100 分') + `<div class="content">
+      <div class="card sm"><div style="font-weight:700;font-size:13px;margin-bottom:8px">选择章节（可多选）</div>${chapterSel}
+        <button class="btn" style="margin-top:12px" onclick="Student.generatePractice()">🎯 生成练习（hard）</button>
+        <button class="btn ghost" style="margin-top:8px" onclick="Student.exitPractice()">返回测评列表</button></div>
+      <div class="card"><div style="font-weight:700;margin-bottom:8px">练习历史</div>${hist}</div>
+    </div>` + tabbar();
+  },
+  async generatePractice() {
+    const ids = (this.practiceChapters && this.practiceChapters.length) ? this.practiceChapters : [App.activeChapter];
+    if (!ids || !ids.length) { toast("请先选择章节"); return; }
+    try {
+      const d = await API.post("/api/practice/generate", { chapter_ids: ids });
+      this.practice = d; this.practiceResult = null; this.answers = {};
+      render(); toast("已生成 hard 练习");
+    } catch (e) { toast(e.message); }
+  },
+  async openPractice(id) {
+    try {
+      const d = await API.get("/api/practice/" + id);
+      if (d.session && d.session.completed) {
+        const qs = d.questions || [];
+        this.practiceResult = {
+          summary: { score: d.session.score, correct: qs.filter(q => q.correct === 1).length, total: qs.length },
+          detail: d,
+        };
+        this.practice = null;
+      } else {
+        this.practice = { id: d.session.id, chapter_ids: d.session.chapter_ids, questions: d.questions };
+        this.answers = {}; this.practiceResult = null;
+      }
+      render();
+    } catch (e) { toast(e.message); }
+  },
+  viewPracticeTake() {
+    const qs = (this.practice.questions || []).map((item, i) => {
+      if (item.type === "essay") return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}<b class="pts">${item.points} 分</b></span></div><textarea id="ans_${item.id}" placeholder="输入你的回答…"></textarea></div>`;
+      if (item.type === "bool") {
+        const boolOpts = ['正确', '错误'].map(v => `<div class="opt" id="opt_${item.id}_${v}" onclick="Student.pick('${item.id}','${v}')"><span class="dot"></span>${v}</div>`).join('');
+        return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}<b class="pts">${item.points} 分</b></span></div>${boolOpts}</div>`;
+      }
+      const opts = (item.options || []).map((o, oi) => `<div class="opt" id="opt_${item.id}_${oi}" onclick="Student.pick('${item.id}',${oi})"><span class="dot"></span>${esc(o)}</div>`).join('');
+      return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}<b class="pts">${item.points} 分</b></span></div>${opts}</div>`;
+    }).join('');
+    const chaps = (this.practice.chapter_ids || []).map(App.chapterName.bind(App)).map(c => `<span class="pill" style="margin-right:6px">${esc(c)}</span>`).join('');
+    return appbar('自主练习', 'hard · 合计 100 分') + `<div class="content">
+      <div class="card sm" style="margin-bottom:12px">覆盖章节：${chaps || '全部'}</div>
+      ${qs}<button class="btn" onclick="Student.submitPractice()">提交并批改</button>
+      <button class="btn ghost" style="margin-top:8px" onclick="Student.exitPractice()">返回练习列表</button></div>` + tabbar();
+  },
+  async submitPractice() {
+    const answers = (this.practice.questions || []).map(q => {
+      let ans = this.answers[q.id] || "";
+      if (q.type === "essay") ans = document.getElementById("ans_" + q.id).value || "";
+      return { question_id: q.id, answer: ans };
+    });
+    try {
+      const d = await API.post(`/api/practice/${this.practice.id}/submit`, { answers });
+      let detail = { questions: [] };
+      try { detail = await API.get(`/api/practice/${this.practice.id}`); } catch (e) {}
+      this.practiceResult = { summary: d, detail };
+      this.practice = null;
+      render();
+    } catch (e) { toast(e.message); }
+  },
+  viewPracticeResult() {
+    const r = this.practiceResult.summary || {};
+    const qs = (this.practiceResult.detail && this.practiceResult.detail.questions) || [];
+    const rows = qs.map((q, i) => {
+      const ok = q.correct === 1;
+      return `<div class="card sm" style="border-color:${ok ? '#E2F0E6' : '#FAD9D6'}">
+        <div style="font-size:13px"><b>${i + 1}. ${ok ? '✅' : '❌'}</b> ${esc(q.content)} <b class="pts">${q.points} 分</b></div>
+        ${q.user_answer !== undefined ? `<div style="font-size:13px;margin-top:5px"><span style="color:${ok ? 'var(--green)' : 'var(--red)'}">你的答案：${esc(q.user_answer || '未作答')}（得 ${q.score} 分）</span></div>` : ''}
+        <div class="muted" style="margin-top:4px">参考：${esc(q.answer_key || '')}</div>
+      </div>`;
+    }).join('');
+    return appbar('自主练习', '批改完成') + `<div class="content">
+      <div class="result"><div class="score">${r.score}</div><div class="lbl">本次得分 / 100 · 答对 ${r.correct}/${r.total}</div></div>
+      <div class="card"><div style="font-weight:700;margin-bottom:8px">逐题解析（含正确答案）</div>${rows}</div>
+      <button class="btn sec" onclick="Student.exitPractice()">返回练习列表</button></div>` + tabbar();
+  },
+
   /* ===== 进度 ===== */
   async viewProgress() {
     let mastery = { chapters: [], counts: { master: 0, progress: 0, weak: 0, na: 0 } };
@@ -266,8 +390,12 @@ const Student = {
       const st = stateOf(ch.m, ch.attempts);
       return `<div class="chapter"><div><div class="nm">${esc(ch.name)}</div><div class="mt">掌握度 ${ch.m == null ? '—' : ch.m + '%'} · 作答 ${ch.attempts} 次</div></div><span class="badge ${st.cls}">${st.label}</span></div>`;
     }).join('') || '<div class="muted">暂无章节</div>';
-    const weakHtml = (weak.weak_points || []).map(w => `<div class="weak"><span class="badge weak" style="flex-shrink:0">${esc(w.name)}</span><div><div style="font-weight:600;font-size:13.5px">M=${w.m}%</div>
-      ${(w.evidence || []).slice(0, 2).map(e => `<div class="ev">• ${esc(e.question)}</div>`).join('')}</div></div>`).join('') || '<div class="muted">暂无薄弱章节 🎉</div>';
+    const weakHtml = (weak.weak_points || []).map(w => {
+      const mLabel = w.m == null ? '未测评' : `M=${w.m}%`;
+      const tag = w.from_practice ? '<span class="badge prog" style="margin-left:6px">练习错题</span>' : '';
+      return `<div class="weak"><span class="badge weak" style="flex-shrink:0">${esc(w.name)}</span><div><div style="font-weight:600;font-size:13.5px">${mLabel}${tag}</div>
+      ${(w.evidence || []).slice(0, 2).map(e => `<div class="ev">• ${esc(e.question)}${e.source === 'practice' ? '（练习）' : ''}</div>`).join('')}</div></div>`;
+    }).join('') || '<div class="muted">暂无薄弱章节 🎉</div>';
     const revHtml = (reviews.review_items || []).map(r => `<div class="rev-item ${r.status === 'done' ? 'done' : ''}">
       <span class="badge ${r.status === 'done' ? 'master' : 'weak'}">${esc(App.chapterName(r.chapter_id))}</span>
       <div style="flex:1;font-size:13px">${r.status === 'done' ? '已完成' : (r.due ? '已到期，可作答' : '下次复习 ' + r.interval_days + ' 天后')}</div>

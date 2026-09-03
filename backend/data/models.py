@@ -145,6 +145,34 @@ CREATE TABLE IF NOT EXISTS reports (
     created_at TEXT NOT NULL
 );
 
+-- 自主练习：学生个人即席生成，不进教师发布状态机（防污染测评掌握度 M）
+CREATE TABLE IF NOT EXISTS practice_sessions (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    chapter_ids  TEXT NOT NULL DEFAULT '[]',   -- JSON 数组，练习覆盖章节
+    difficulty   TEXT NOT NULL DEFAULT 'hard', -- 练习固定 hard，高于教师测评 normal
+    total_points REAL NOT NULL DEFAULT 100,
+    config_json  TEXT NOT NULL DEFAULT '{}',   -- 记录 AI 自主题型组合
+    created_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS practice_questions (
+    id          TEXT PRIMARY KEY,
+    session_id  TEXT NOT NULL REFERENCES practice_sessions(id) ON DELETE CASCADE,
+    chapter_id  TEXT NOT NULL,
+    sub_concept TEXT DEFAULT '',
+    type        TEXT NOT NULL DEFAULT 'choice' CHECK (type IN ('choice','bool','essay')),
+    content     TEXT NOT NULL,
+    options     TEXT NOT NULL DEFAULT '[]',
+    answer_key  TEXT NOT NULL DEFAULT '',
+    points      REAL NOT NULL DEFAULT 0,
+    correct     INTEGER,              -- 学生作答结果（未作答前 NULL）
+    user_answer TEXT DEFAULT '',
+    score       REAL,                 -- 实际得分点（未作答前 NULL）
+    reason      TEXT DEFAULT '',
+    answered_at TEXT
+);
+
 -- 学习路径节点：周/节 → 目标 → 关联章节 → 概念标签（REQ-CURR / DM-011）
 CREATE TABLE IF NOT EXISTS sessions (
     id           TEXT PRIMARY KEY,
@@ -184,6 +212,9 @@ CREATE INDEX IF NOT EXISTS idx_attempts_user_chapter ON attempts(user_id, chapte
 CREATE INDEX IF NOT EXISTS idx_review_user ON review_items(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_week ON sessions(week_no, session_no);
 CREATE INDEX IF NOT EXISTS idx_videos_ws ON video_resources(week_no, session_no);
+CREATE INDEX IF NOT EXISTS idx_practice_sessions_user ON practice_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_practice_questions_session ON practice_questions(session_id);
+CREATE INDEX IF NOT EXISTS idx_practice_questions_chapter ON practice_questions(chapter_id);
 """
 
 

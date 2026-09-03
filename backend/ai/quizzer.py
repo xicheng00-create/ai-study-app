@@ -187,8 +187,126 @@ def fallback_questions(chapter_ids: list[str], config: dict | None = None) -> li
     return _enforce_config([], cfg)
 
 
+# 练习自由组合：目标 20 个 5 分单位（恰好 100 分）
+_TARGET_UNITS = 20
+
+
+def _q_units(raw: dict) -> int:
+    """单题占用 5 分单位数（choice/bool=1、essay=2），非法题型按 choice 计。"""
+    qtype = raw.get("type", "choice")
+    if qtype not in POINTS:
+        qtype = "choice"
+    return POINTS[qtype] // 5
+
+
+def _norm_practice(raw: dict) -> dict:
+    """练习题目原始 dict 归一化：确保 type 合法、options/answer 为预期结构。"""
+    qtype = raw.get("type", "choice")
+    if qtype not in POINTS:
+        qtype = "choice"
+    options = raw.get("options") or []
+    if isinstance(options, str):
+        options = [options]
+    answer = raw.get("answer", raw.get("answer_key", ""))
+    if isinstance(answer, (int, float)):
+        answer = str(answer)
+    return {
+        "type": qtype,
+        "content": raw.get("content", ""),
+        "options": [str(o) for o in options],
+        "answer": str(answer),
+        "reason": raw.get("reason", ""),
+        "sub_concept": raw.get("sub_concept", ""),
+    }
+
+
+def _practice_total(qs: list[dict]) -> int:
+    """练习题目集总分（按题型赋分求和）。"""
+    return sum(POINTS[q["type"]] for q in qs)
+
+
+def _trim_to_100(qs: list[dict]) -> list[dict]:
+    """AI 出题超 100 分时，按原顺序贪心保留恰好 20 单位（5 分一单位）。"""
+    out = []
+    units = 0
+    for q in qs:
+        u = _q_units(q)
+        if units + u <= _TARGET_UNITS:
+            out.append(q)
+            units += u
+    return out
+
+
+def _fill_to_100(qs: list[dict]) -> list[dict]:
+    """AI 出题不足 100 分时，用模板按 idx 轮转补足到 20 单位（优先 essay 吃满 2 单位）。"""
+    out = list(qs)
+    units = _practice_total(out) // 5
+    i = len(out)
+    while units < _TARGET_UNITS:
+        # 剩余 2 单位以上优先补 essay（2 单位），只剩 1 单位补 choice
+        if _TARGET_UNITS - units >= 2:
+            out.append(_template("essay", i))
+            units += 2
+        else:
+            out.append(_template("choice", i))
+            units += 1
+        i += 1
+    return out
+
+
+def _practice_system(chapter_ids: list[str], sub_concepts: str, chunk_txt: str) -> str:
+    spec = "自由组合：题型与数量由你自主决定，但所有题目分值合计必须恰好 100 分（选择/是非各 5 分、问答 10 分）"
+    return QUIZZER_SYSTEM.format(
+        chapter_ids=",".join(chapter_ids),
+        sub_concepts=sub_concepts or "不限",
+        spec=spec,
+        retrieved_chunks=chunk_txt[:4000],
+        difficulty="hard",
+    )
+
+
+def generate_practice_questions(chapter_ids: list[str], sub_concepts: str = "") -> list[dict]:
+    """自主练习出题（difficulty=hard，AI 自主题量，后端强制合计=100）。"""
+    query = (sub_concepts or "").strip()
+    chunk_txt = _chunk_text(_retrieve_chunks(chapter_ids, query))
+    qs = [_norm_practice(q) for q in (agents.quizzer_generate(_practice_system(chapter_ids, sub_concepts, chunk_txt)) or [])]
+    if not qs:
+        return fallback_practice_questions(chapter_ids)
+
+    total = _practice_total(qs)
+    if total > 100:
+        qs = _trim_to_100(qs)
+        total = _practice_total(qs)
+    if total < 100:
+        # 先向 DeepSeek 补发一次补足缺口；仍不足用模板兜底
+        missing_units = _TARGET_UNITS - total // 5
+        fill_system = QUIZZER_SYSTEM.format(
+            chapter_ids=",".join(chapter_ids),
+            sub_concepts=sub_concepts or "不限",
+            spec=f"请补充题目，使其分值合计 {missing_units * 5} 分（选择/是非各 5 分、问答 10 分）",
+            retrieved_chunks=chunk_txt[:4000],
+            difficulty="hard",
+        )
+        extra = [_norm_practice(q) for q in (agents.quizzer_generate(fill_system) or [])]
+        if extra:
+            for q in extra:
+                if _practice_total(qs) + POINTS[q["type"]] <= 100:
+                    qs.append(q)
+        qs = _fill_to_100(qs)
+
+    # 最终兜底校验：任何情况都保证恰好 100 分
+    if _practice_total(qs) != 100:
+        qs = _fill_to_100(_trim_to_100(qs))
+    return qs
+
+
+def fallback_practice_questions(chapter_ids: list[str]) -> list[dict]:
+    """无 LLM 时的练习兜底：10 选择 + 5 问答（合计 100 分）。"""
+    return [_norm_practice(q) for q in _enforce_config([], {"choice": 10, "essay": 5})]
+
+
 def generate_questions(chapter_ids: list[str], sub_concepts: str = "", spec: str = "",
-                       config: dict | None = None) -> list[dict]:
+                       config: dict | None = None, difficulty: str = "normal") -> list[dict]:
     cfg = config or default_config()
     spec_text = spec or _spec_text(cfg)
     # 出题前 RAG 检索章节资料正文，注入提示词（题目基于资料难度出题，根因①）
@@ -200,6 +318,7 @@ def generate_questions(chapter_ids: list[str], sub_concepts: str = "", spec: str
         sub_concepts=sub_concepts or "不限",
         spec=spec_text,
         retrieved_chunks=chunk_txt[:4000],
+        difficulty=difficulty,
     )
     qs = agents.quizzer_generate(system)
     if not qs:
@@ -214,6 +333,7 @@ def generate_questions(chapter_ids: list[str], sub_concepts: str = "", spec: str
             sub_concepts=sub_concepts or "不限",
             spec=fill_spec,
             retrieved_chunks=chunk_txt[:4000],
+            difficulty=difficulty,
         )
         extra = agents.quizzer_generate(fill_system)
         if extra:

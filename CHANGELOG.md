@@ -2,6 +2,22 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.8.0] - 2026-09-03
+
+### Added
+- **学生端自主练习（REQ-PRACTICE-001~003）**：学生在「测评」tab 可像老师一样**根据资料生成练习**（选章 → AI 出题 → 立刻做 → 立刻批改 → 立刻看答案），不进入老师发布状态机。
+  1. **题型与数量由 AI 自主决定**：练习出题走独立入口 `quizzer.generate_practice_questions()`（difficulty=hard、AI 自由组合 choice/bool/essay），后端按题型分值强制校验合计恰好 100 分——超 100 裁剪、不足 100 先补发后模板兜底，任何情况保证 100 分（选择/是非 5 分、问答 10 分）。
+  2. **难度 hard**：`QUIZZER_SYSTEM` 新增 `{difficulty}` 槽位与难度指示（normal 基础题 / hard 综合运用·多步推理·概念辨析·跨知识点）；老师测评默认 normal 不变，练习固定传 hard。
+  3. **复用 GRADER 批改**：客观题确定性判分、问答题 AI/启发式三档，与测评完全一致；提交返回每题得分 + 正确答案（answer_key），作答前不露答案。
+  4. **错题联动薄弱点/巩固（PROG-005/006）**：练习错题（correct=0 或 score<points）进入 `_practice_wrong`，作为薄弱点列表 `from_practice` 依据与「一键巩固练习」的来源章/聚焦子概念；**不改变测评掌握度 M**（M 仍只聚合 published quizzes）。
+- **独立数据层（防污染）**：新增 `practice_sessions`（user_id/chapter_ids/difficulty/total_points/config_json）+ `practice_questions`（session_id/chapter_id/sub_concept/type/content/options/answer_key/points/correct/user_answer/score/reason/answered_at），均 `CREATE TABLE IF NOT EXISTS` 幂等建表，不塞进 quizzes/questions/attempts。
+- **新增 API**：`GET /api/practice`（历史列表）、`POST /api/practice/generate`、`GET /api/practice/:id`、`POST /api/practice/:id/submit`（学生本人，越权 403）。
+- **前端入口**：`viewQuizList()` 顶部新增「🎯 自主练习」卡片；练习视图支持多选章、生成、作答（复用 choice/bool/essay 渲染）、提交批改、逐题解析；进度页薄弱点标注「练习错题」。
+
+### Changed
+- **Service Worker CACHE `v9` → `v10`**：强制用户端拉取本次 `student.js` 改动。
+- **版本 `1.7.2` → `1.8.0`**（新功能）。
+
 ## [1.7.2] - 2026-09-03
 
 ### Fixed

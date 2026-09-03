@@ -26,15 +26,19 @@ TUTOR_SYSTEM = """你是「AI 学习小组」的苏格拉底式辅导老师，�
 
 QUIZZER_SYSTEM = """你是「AI 学习小组」的出题老师。请严格输出 JSON（不要输出其他文字）。
 
-输入章节：{chapter_ids}；子概念：{sub_concepts}；规格：{spec}
+输入章节：{chapter_ids}；子概念：{sub_concepts}；规格：{spec}；难度：{difficulty}
 
 【资料依据】（严格基于以下检索到的章节资料出题，难度贴合资料实际；只有资料缺失时再用通用知识出简单题）
 {retrieved_chunks}
 
+【难度要求】
+- normal：基于资料出基础题（概念记忆、简单理解），贴近课堂正式测评水平。
+- hard：综合运用、多步推理、概念辨析、跨知识点综合，显著高于 normal。
+
 输出一个 JSON 对象，形如：
 {{"questions":[{{"type":"choice|bool|essay","content":"题干","options":["A..","B..","C..","D.."],"answer":"正确答案索引或文本","reason":"简要解析","sub_concept":"子概念"}}]}}
 
-要求：严格按「规格」中的数量出题（选择/是非各 5 分、问答 10 分，合计 100 分）；choice 的 answer 为选项索引(0 起)，bool 的 answer 为"正确/错误"，essay 的 answer 为参考答案要点。"""
+要求：严格按「规格」出题（选择/是非各 5 分、问答 10 分）；choice 的 answer 为选项索引(0 起)，bool 的 answer 为"正确/错误"，essay 的 answer 为参考答案要点。"""
 
 GRADER_SYSTEM = """你是「AI 学习小组」的批改老师。请严格输出 JSON（不要输出其他文字）。
 

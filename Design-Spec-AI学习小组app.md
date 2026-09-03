@@ -188,6 +188,22 @@
 - **F3 数据正确性**：`attempts` 必须带 `quiz_version`（DM-006），M 聚合仅取该章**最新 published version** 成绩（PROG-007），避免重出题污染掌握度。
 - 角色门禁：`quizzes_bp` 发布需 `@role_required("teacher")`；学生作答需 `@user_scope`；覆核改分需 `@role_required("teacher")`。
 
+### 3.4.1 学生自主练习 — `practice_bp`（L3，REQ-PRACTICE，AI: QUIZZER/GRADER）
+**Functional**
+| REQ | 角色 | 优先级 | 说明 |
+|-----|------|--------|------|
+| PRACTICE-001 | student | P1 | 选章 → AI 生成练习（difficulty=hard、题型/数量由 AI 自主决定、合计恰 100 分）|
+| PRACTICE-002 | student | P0 | 在线作答 + GRADER 批改 + 提供正确答案 |
+| PRACTICE-003 | student | P1 | 练习错题进入薄弱点/巩固练习依据（不改测评掌握度 M）|
+
+**Technical**
+- **独立数据层（防污染）**：`practice_sessions`（user_id/chapter_ids/difficulty/total_points/config_json）+ `practice_questions`（session_id/chapter_id/sub_concept/type/content/options/answer_key/points/correct/user_answer/score/reason/answered_at）。练习是学生**个人即席生成**，**不进老师 draft→publish 状态机**，不写 quizzes/questions/attempts，因此**不污染测评掌握度 M**（M 仅聚合 published quizzes，F3）。
+- **AI 自主题量 + 100 分硬约束**：`quizzer.generate_practice_questions()` 让 QUIZZER 自由组合 choice/bool/essay，后端按题型分值（选择/是非 5、问答 10）校验合计=100——超 100 按序裁剪、不足 100 先向 DeepSeek 补发一次再模板兜底，最终任何情况合计恰 100。
+- **难度 hard**：`QUIZZER_SYSTEM` 注入 `{difficulty}`（normal/hard 指示）；练习固定 `difficulty='hard'`（综合运用/多步推理/概念辨析/跨知识点），老师测评默认 `normal` 不受影响。
+- **批改复用 GRADER**：与测评一致（客观题确定性、essay AI 三档/启发式）；`practice_questions` 写 `correct/score/user_answer/reason/answered_at`。
+- **错题联动（PROG-005/006）**：`progress_bp._practice_wrong` 读取本人练习错题（correct=0 或 score<points）作为薄弱点依据（`from_practice`）与巩固练习来源章/聚焦子概念；不改 M。
+- 路由：`GET /api/practice`、`POST /api/practice/generate`、`GET /api/practice/:id`、`POST /api/practice/:id/submit`（学生本人，越权 403）。
+
 ### 3.5 进度/掌握度/巩固 — `progress_bp` + `review_sched`（L3，REQ-PROG，AI: QUIZZER）
 **Functional**
 | REQ | 角色 | 优先级 | 说明 |
@@ -205,7 +221,7 @@
 - M 公式（百分制）：`M = Σ(wᵢ·score_earnedᵢ) / Σ(wᵢ·points_possibleᵢ) × 100`，`wᵢ=0.5^间隔周数`，`points_possibleᵢ` 取 `questions.points`（选择/是非 5、问答 10），仅聚合该章**最新 published version**（F3）；M 为 0–100 百分比。四态：已掌握 M≥80 且有效作答≥2；进行中 50≤M<80 或 M≥80 但<2 次；薄弱 M<50；未评估 从未测验（不计入薄弱）。
 - 间隔复习状态机（architecture §5.4）：`review_items` `pending ─[到期+完成]─► done`；答对 `interval_days *=3`(1→3→7)，答错重置为 1。调度复用 launchd 每日扫描（不引入 Celery/Redis）。
 - 数据：attempts(DM-006, 含 quiz_version)、review_items(DM-007)、questions(DM-005)。
-- 薄弱点：章节级 + 知识点级(P2)，每条附 `attempts` 错题依据（拒绝凭空定性，PROG-005）。
+- 薄弱点：章节级 + 知识点级(P2)，每条附 `attempts` 错题依据（拒绝凭空定性，PROG-005）；v1.8.0 起同时纳入**自主练习错题**（`practice_questions`，不改 M）作为薄弱点/巩固练习输入（REQ-PRACTICE-003）。
 
 ### 3.6 周报 — `reports_bp`（L3，REQ-RPT，AI: TUTOR 建议）
 **Functional**
@@ -283,6 +299,7 @@ chapters ─< materials ─(向量)─► ChromaDB material_chunks(chapter_id)
 chapters ─< quizzes ─< questions ─< attempts >─ users
 users ─< review_items >─ chapters
 users ─< reports
+users ─< practice_sessions ─< practice_questions >─ chapters   (自主练习，独立于测评)
 ```
 
 ### 5.2 关键表字段（增量）
@@ -296,6 +313,8 @@ users ─< reports
 | questions | id, quiz_id, chapter_id, sub_concept, type, content, answer_key, +points(选择/是非5·问答10) | DM-005 | 掌握度溯源；单题满分 |
 | attempts | id, user_id, quiz_id, question_id, chapter_id, **+quiz_version(F3)**, correct, score(实际得分点), +graded_by('ai'/'teacher'), +is_reviewed, +reviewed_score, created_at | DM-006 | M 唯一数据源；评分权双轨 |
 | review_items | id, user_id, chapter_id, question_id(NULL), next_review_at, interval_days, status | DM-007 | 间隔复习状态机 |
+| practice_sessions | id, user_id, chapter_ids(JSON), difficulty('hard'), total_points(DEFAULT 100), config_json | REQ-PRACTICE-001 | 学生个人即席生成；不进发布状态机，不污染 M |
+| practice_questions | id, session_id, chapter_id, sub_concept, type, content, options, answer_key, points, correct(可空), user_answer, score(可空), reason, answered_at | REQ-PRACTICE-001/002 | 作答结果留痕；错题供薄弱点/巩固 |
 | reports | +user_id | DM-008 | 周报归属 |
 | ChromaDB | material_chunks +chapter_id | DM-010 | 按章召回 |
 
@@ -320,6 +339,7 @@ users ─< reports
 | conversations_bp | /api/conversations | 对话 CRUD + 引导问答(SSE 占位) | 学生本人 |
 | quizzes_bp | /api/quizzes | 草稿/发布/版本 | 教师发布，学生作答 |
 | attempts_bp | /api/attempts | 作答记录 | 学生本人 |
+| practice_bp | /api/practice | 自主练习生成/作答/批改/历史 | 学生本人 |
 | progress_bp | /api/progress | 掌握度/四态/薄弱/巩固 | 学生本人 + 教师聚合 |
 | reports_bp | /api/reports | 周报 | 学生本人 |
 | teacher_bp | /api/teacher | 全班概览/详情 | 教师 |
@@ -341,6 +361,8 @@ users ─< reports
 | CHAT-003 | POST /api/conversations/:id/message | student | @jwt_required, @user_scope |
 | QUIZ-001 | POST /api/quizzes/draft → :id/publish | teacher | @role_required |
 | QUIZ-002 | POST /api/quizzes/:id/attempts | student | @jwt_required, @user_scope |
+| PRACTICE-001 | POST /api/practice/generate | student | @jwt_required, @role_required |
+| PRACTICE-002 | POST /api/practice/:id/submit | student | @jwt_required, @role_required |
 | PROG-001 | GET /api/progress/mastery | student | @user_scope |
 | PROG-006 | POST /api/review-items/generate | student | @user_scope |
 | ADMIN-003 | GET /api/teacher/overview | teacher | @role_required |

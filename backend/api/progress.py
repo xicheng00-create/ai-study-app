@@ -54,40 +54,77 @@ def my_mastery():
 @jwt_required
 @role_required("student")
 def weak_points():
-    """薄弱点列表（附错题依据，PROG-005）。"""
+    """薄弱点列表（附错题依据，PROG-005）：测评薄弱 + 练习错题都纳入。"""
     con = get_db()
     chapters = _all_chapters(con)
     weak = []
+    seen = set()
     for ch in chapters:
         m = mastery.compute_mastery(con, g.user_id, ch["id"])
         if mastery.mastery_state(m["m"], m["attempts"]) != "weak":
             continue
-        evidence = _wrong_evidence(con, g.user_id, ch["id"])
+        seen.add(ch["id"])
         weak.append({
             "chapter_id": ch["id"],
             "name": ch["name"],
             "m": m["m"],
-            "evidence": evidence,
+            "evidence": _wrong_evidence(con, g.user_id, ch["id"]),
         })
+    # 练习错题独立作为薄弱依据（不改变测评掌握度 M，仅补充分支）
+    for ch in chapters:
+        if ch["id"] in seen:
+            continue
+        ev = _practice_wrong(con, g.user_id, ch["id"])
+        if ev:
+            m = mastery.compute_mastery(con, g.user_id, ch["id"])
+            weak.append({
+                "chapter_id": ch["id"],
+                "name": ch["name"],
+                "m": m["m"],
+                "evidence": ev,
+                "from_practice": True,
+            })
     return ok({"weak_points": weak})
 
 
 def _wrong_evidence(con, user_id, chapter_id, limit=5):
-    """该章最新 version 下的错题依据（拒绝凭空定性）。"""
+    """该章最新 version 错题 + 自主练习错题依据（拒绝凭空定性）。"""
+    out = []
     latest = mastery.latest_version_for_chapter(con, chapter_id)
-    if latest <= 0:
-        return []
+    if latest > 0:
+        rows = con.execute(
+            "SELECT a.answer, a.score, q.content AS q_content, q.answer_key AS q_answer_key"
+            " FROM attempts a JOIN questions q ON q.id=a.question_id"
+            " WHERE a.user_id=? AND a.chapter_id=? AND a.quiz_version=? AND a.correct=0"
+            " ORDER BY a.created_at DESC LIMIT ?",
+            (user_id, chapter_id, latest, limit),
+        ).fetchall()
+        out.extend([{
+            "question": r["q_content"],
+            "your_answer": r["answer"],
+            "answer_key": r["q_answer_key"],
+            "source": "quiz",
+        } for r in rows])
+    out.extend(_practice_wrong(con, user_id, chapter_id, limit))
+    return out[:limit]
+
+
+def _practice_wrong(con, user_id, chapter_id, limit=5):
+    """该章自主练习错题（correct=0 或部分得分），作为薄弱依据之一。"""
     rows = con.execute(
-        "SELECT a.answer, a.score, q.content AS q_content, q.answer_key AS q_answer_key"
-        " FROM attempts a JOIN questions q ON q.id=a.question_id"
-        " WHERE a.user_id=? AND a.chapter_id=? AND a.quiz_version=? AND a.correct=0"
-        " ORDER BY a.created_at DESC LIMIT ?",
-        (user_id, chapter_id, latest, limit),
+        "SELECT pq.user_answer, pq.score, pq.content, pq.answer_key, pq.sub_concept"
+        " FROM practice_questions pq JOIN practice_sessions ps ON ps.id=pq.session_id"
+        " WHERE ps.user_id=? AND pq.chapter_id=? AND pq.answered_at IS NOT NULL"
+        " AND (pq.correct=0 OR pq.score < pq.points)"
+        " ORDER BY pq.answered_at DESC LIMIT ?",
+        (user_id, chapter_id, limit),
     ).fetchall()
     return [{
-        "question": r["q_content"],
-        "your_answer": r["answer"],
-        "answer_key": r["q_answer_key"],
+        "question": r["content"],
+        "your_answer": r["user_answer"],
+        "answer_key": r["answer_key"],
+        "sub_concept": r["sub_concept"],
+        "source": "practice",
     } for r in rows]
 
 
@@ -121,20 +158,29 @@ def list_review_items():
 @role_required("student")
 @rate_limit(limit=60)
 def generate_review():
-    """一键生成巩固练习：薄弱章 → review_items(interval=1)（PROG-006）。"""
+    """一键生成巩固练习：薄弱章 + 练习错题章 → review_items(interval=1)（PROG-006）。"""
     con = get_db()
     chapters = _all_chapters(con)
     weak_ids = []
+    focus = {}  # chapter_id -> 练习错题子概念（供巩固出题聚焦）
     for ch in chapters:
         m = mastery.compute_mastery(con, g.user_id, ch["id"])
         if mastery.mastery_state(m["m"], m["attempts"]) == "weak":
             weak_ids.append(ch["id"])
+        ev = _practice_wrong(con, g.user_id, ch["id"])
+        if ev:
+            if ch["id"] not in weak_ids:
+                weak_ids.append(ch["id"])
+            subs = [e["sub_concept"] for e in ev if e.get("sub_concept")]
+            if subs:
+                focus[ch["id"]] = ",".join(subs)
     if not weak_ids:
         return ok({"created": 0, "review_items": []})
 
     created = []
     for cid in weak_ids:
-        qs = quizzer.generate_questions([cid])
+        # 有练习错题子概念时，聚焦该知识点出题，巩固更精准
+        qs = quizzer.generate_questions([cid], sub_concepts=focus.get(cid, ""))
         raw = qs[0] if qs else quizzer.fallback_questions([cid])[0]
         q = quizzer.norm_question(raw, cid)
         payload = json.dumps({
