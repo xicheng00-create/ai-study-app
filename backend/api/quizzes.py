@@ -217,7 +217,7 @@ def get_quiz(quiz_id):
     if g.role == "student" and row["status"] != "published":
         return e_role("该测评尚未发布")
     questions = con.execute(
-        "SELECT id, chapter_id, sub_concept, type, content, options, points FROM questions"
+        "SELECT id, chapter_id, sub_concept, type, content, options, answer_key, points FROM questions"
         " WHERE quiz_id=? ORDER BY rowid", (quiz_id,)
     ).fetchall()
     # 学生不可见 answer_key（作答前）；教师可见
