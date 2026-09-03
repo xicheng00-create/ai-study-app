@@ -63,6 +63,24 @@ def _seed_attempt(con, user_id, chapter_id, quiz_version, score, days_ago=0):
     )
 
 
+def _seed_practice(con, user_id, chapter_id, score, days_ago=0):
+    """建一条已作答的自主练习（选择题满分 5 分）。"""
+    answered = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+    sid = models.new_id()
+    con.execute(
+        "INSERT INTO practice_sessions (id, user_id, chapter_ids, difficulty, total_points,"
+        " config_json, created_at) VALUES (?, ?, ?, 'hard', 100, '{}', ?)",
+        (sid, user_id, json.dumps([chapter_id], ensure_ascii=False), models.utcnow()),
+    )
+    con.execute(
+        "INSERT INTO practice_questions (id, session_id, chapter_id, sub_concept, type, content,"
+        " options, answer_key, points, correct, user_answer, score, reason, answered_at)"
+        " VALUES (?, ?, ?, '', 'choice', '题', '[]', '0', 5, ?, '', ?, '', ?)",
+        (models.new_id(), sid, chapter_id, 1 if score >= 5 else 0, score, answered),
+    )
+    return sid
+
+
 def test_four_states_mapping():
     assert mastery.mastery_state(None, 0) == "na"
     assert mastery.mastery_state(30, 3) == "weak"
@@ -112,3 +130,33 @@ def test_f3_latest_version_only(client):
         assert mastery.latest_version_for_chapter(con, cid) == 2
         m = mastery.compute_mastery(con, uid, cid)
         assert m["m"] == 100.0
+
+
+def test_practice_only_computes_mastery(client):
+    """某章只有练习无测评，M 仍可由练习计算（不因 latest<=0 返回 None，定义 A）。"""
+    from data.db import get_db
+    with _db(client):
+        con = get_db()
+        cid = _seed_chapter(con)
+        uid = _seed_user(con, 'alice')
+        _seed_practice(con, uid, cid, score=5.0)
+        m = mastery.compute_mastery(con, uid, cid)
+        assert m["m"] == 100.0
+        assert m["attempts"] == 1
+        assert m["latest_version"] == 0
+
+
+def test_compute_mastery_combines_quiz_and_practice(client):
+    """测评与练习同权重聚合（定义 A）。"""
+    from data.db import get_db
+    with _db(client):
+        con = get_db()
+        cid = _seed_chapter(con)
+        uid = _seed_user(con, 'carol')
+        _seed_quiz(con, [cid], version=1)
+        _seed_attempt(con, uid, cid, 1, score=5.0, days_ago=0)
+        _seed_practice(con, uid, cid, score=0.0, days_ago=0)
+        m = mastery.compute_mastery(con, uid, cid)
+        # 测评 5/5 + 练习 0/5 → M=50%，作答次数=2
+        assert m["m"] == 50.0
+        assert m["attempts"] == 2

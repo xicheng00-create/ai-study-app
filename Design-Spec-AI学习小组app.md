@@ -92,7 +92,8 @@
 | CHAT | `conversations_bp` | L3 | TUTOR | conversations/messages | 轮次护栏 |
 | QUIZ | `quizzes_bp` + `attempts_bp` | L3 | QUIZZER/GRADER | quizzes/questions/attempts | draft→published→superseded |
 | PROG | `progress_bp` + `review_sched` | L3 | QUIZZER(巩固) | attempts/review_items | 间隔复习 1→3→7 |
-| RPT | `reports_bp` | L3 | TUTOR(建议) | reports | — |
+| RPT | `reports_bp`（v1.9.0 废弃） | L3 | TUTOR(建议) | reports/daily_advice | — |
+| CLASS | `class_bp` | L3 | — | users/attempts/practice_questions/messages | — |
 | ADMIN | `teacher_bp` | L3 | — | users/materials/quizzes | — |
 | DEP | — | L2/L3/L5 | — | db/chroma/uploads | 备份状态 |
 | 全局 | `health_bp` + 中间件 | L3/横切 | — | — | — |
@@ -185,7 +186,7 @@
 - 路由：`POST /api/quizzes/draft`(含 `config` 预设) → `POST /api/quizzes/:id/publish`、`POST /api/quizzes/:id/attempts`、`GET /api/quizzes/:id/report`、`PUT /api/attempts/:id/review`(QUIZ-009)、`POST /api/quizzes/:id/revision`(P1)、`GET /api/quizzes?status=published`。
 - 轻量审核状态机（architecture §5.3）：`draft ─[教师确认]─► published`；`published ─[重出]─► superseded`（旧版保留，新 version 走 draft→published）。
 - GRADER：QUIZZER 出题（结构化 JSON，含 `answer_key`/`sub_concept`/`chapter_id`/`points`）→ 学生作答 → 客观题系统判分 + 问答题 GRADER 评 `{correct, score, reason}` 写 attempts。
-- **F3 数据正确性**：`attempts` 必须带 `quiz_version`（DM-006），M 聚合仅取该章**最新 published version** 成绩（PROG-007），避免重出题污染掌握度。
+- **F3 数据正确性**：`attempts` 必须带 `quiz_version`（DM-006），M 聚合取该章**最新 published version** 成绩（PROG-007），避免重出题污染掌握度；**v1.9.0 起 M 额外聚合该章自主练习 `practice_questions`（已作答，同权重，见 §3.5）**。
 - 角色门禁：`quizzes_bp` 发布需 `@role_required("teacher")`；学生作答需 `@user_scope`；覆核改分需 `@role_required("teacher")`。
 
 ### 3.4.1 学生自主练习 — `practice_bp`（L3，REQ-PRACTICE，AI: QUIZZER/GRADER）
@@ -194,14 +195,14 @@
 |-----|------|--------|------|
 | PRACTICE-001 | student | P1 | 选章 → AI 生成练习（difficulty=hard、题型/数量由 AI 自主决定、合计恰 100 分）|
 | PRACTICE-002 | student | P0 | 在线作答 + GRADER 批改 + 提供正确答案 |
-| PRACTICE-003 | student | P1 | 练习错题进入薄弱点/巩固练习依据（不改测评掌握度 M）|
+| PRACTICE-003 | student | P1 | 练习错题进入薄弱点/巩固练习依据（v1.9.0 起练习同时计入掌握度 M）|
 
 **Technical**
-- **独立数据层（防污染）**：`practice_sessions`（user_id/chapter_ids/difficulty/total_points/config_json）+ `practice_questions`（session_id/chapter_id/sub_concept/type/content/options/answer_key/points/correct/user_answer/score/reason/answered_at）。练习是学生**个人即席生成**，**不进老师 draft→publish 状态机**，不写 quizzes/questions/attempts，因此**不污染测评掌握度 M**（M 仅聚合 published quizzes，F3）。
+- **独立数据层**：`practice_sessions`（user_id/chapter_ids/difficulty/total_points/config_json）+ `practice_questions`（session_id/chapter_id/sub_concept/type/content/options/answer_key/points/correct/user_answer/score/reason/answered_at）。练习是学生**个人即席生成**，**不进老师 draft→publish 状态机**，不写 quizzes/questions/attempts；**v1.9.0 起练习（已作答）与测评同权重计入掌握度 M（任务书定义 A），不再是「不污染 M」**。
 - **AI 自主题量 + 100 分硬约束**：`quizzer.generate_practice_questions()` 让 QUIZZER 自由组合 choice/bool/essay，后端按题型分值（选择/是非 5、问答 10）校验合计=100——超 100 按序裁剪、不足 100 先向 DeepSeek 补发一次再模板兜底，最终任何情况合计恰 100。
 - **难度 hard**：`QUIZZER_SYSTEM` 注入 `{difficulty}`（normal/hard 指示）；练习固定 `difficulty='hard'`（综合运用/多步推理/概念辨析/跨知识点），老师测评默认 `normal` 不受影响。
 - **批改复用 GRADER**：与测评一致（客观题确定性、essay AI 三档/启发式）；`practice_questions` 写 `correct/score/user_answer/reason/answered_at`。
-- **错题联动（PROG-005/006）**：`progress_bp._practice_wrong` 读取本人练习错题（correct=0 或 score<points）作为薄弱点依据（`from_practice`）与巩固练习来源章/聚焦子概念；不改 M。
+- **错题联动（PROG-005/006）**：`progress_bp._practice_wrong` 读取本人练习错题（correct=0 或 score<points）作为薄弱点依据（`from_practice`）与巩固练习来源章/聚焦子概念；v1.9.0 起练习同时计入 M（全错→M 下降→薄弱），错题联动逻辑保留。
 - 路由：`GET /api/practice`、`POST /api/practice/generate`、`GET /api/practice/:id`、`POST /api/practice/:id/submit`（学生本人，越权 403）。
 
 ### 3.5 进度/掌握度/巩固 — `progress_bp` + `review_sched`（L3，REQ-PROG，AI: QUIZZER）
@@ -218,24 +219,37 @@
 | PROG-008 | 全部 | P1 | 四态映射阈值 |
 
 **Technical**
-- M 公式（百分制）：`M = Σ(wᵢ·score_earnedᵢ) / Σ(wᵢ·points_possibleᵢ) × 100`，`wᵢ=0.5^间隔周数`，`points_possibleᵢ` 取 `questions.points`（选择/是非 5、问答 10），仅聚合该章**最新 published version**（F3）；M 为 0–100 百分比。四态：已掌握 M≥80 且有效作答≥2；进行中 50≤M<80 或 M≥80 但<2 次；薄弱 M<50；未评估 从未测验（不计入薄弱）。
+- M 公式（百分制）：`M = Σ(wᵢ·score_earnedᵢ) / Σ(wᵢ·points_possibleᵢ) × 100`，`wᵢ=0.5^间隔周数`，`points_possibleᵢ` 取 `questions.points`（选择/是非 5、问答 10）；**v1.9.0 起聚合两部分——①该章最新 published version 的测评 attempts（F3），②该章自主练习 `practice_questions`（answered_at 非空，earned=score、possible=points），同一条加权公式、按章聚合、带时间衰减**；仅当两者皆无作答时才返回 `m=None`（未评估）。M 为 0–100 百分比。四态：已掌握 M≥80 且有效作答≥2；进行中 50≤M<80 或 M≥80 但<2 次；薄弱 M<50；未评估 从未测验/练习（不计入薄弱）。作答次数 = quiz attempt 行数 + 已作答 practice_questions 行数。
 - 间隔复习状态机（architecture §5.4）：`review_items` `pending ─[到期+完成]─► done`；答对 `interval_days *=3`(1→3→7)，答错重置为 1。调度复用 launchd 每日扫描（不引入 Celery/Redis）。
 - 数据：attempts(DM-006, 含 quiz_version)、review_items(DM-007)、questions(DM-005)。
 - 薄弱点：章节级 + 知识点级(P2)，每条附 `attempts` 错题依据（拒绝凭空定性，PROG-005）；v1.8.0 起同时纳入**自主练习错题**（`practice_questions`，不改 M）作为薄弱点/巩固练习输入（REQ-PRACTICE-003）。
 
-### 3.6 周报 — `reports_bp`（L3，REQ-RPT，AI: TUTOR 建议）
+### 3.6 周报（已废弃 → 拆分迁移）— `reports_bp`（L3，REQ-RPT，AI: TUTOR 建议）
 **Functional**
 | REQ | 角色 | 优先级 | 说明 |
 |-----|------|--------|------|
-| RPT-001 | student | P1 | 本周概况（天数/对话/测评） |
-| RPT-002 | student | P1 | 成绩分析（平均/最高/薄弱） |
-| RPT-003 | student | P1 | AI 学习建议（下周计划） |
-| RPT-004 | teacher | P2 | 教师全班周报 |
-| RPT-005 | 全部 | P2 | 导出 Markdown/PDF |
+| RPT-001 | student | P1 | 本周概况（天数/对话/测评）→ **v1.9.0 迁移至进度页**（`GET /api/progress/weekly-stats`） |
+| RPT-002 | student | P1 | 成绩分析（平均/最高/薄弱）→ **v1.9.0 迁移至进度页** |
+| RPT-003 | student | P1 | AI 学习建议 → **v1.9.0 改「每日」生成**（`daily_advice` 表 + `GET /api/progress/advice` + launchd 每日脚本） |
+| RPT-004 | teacher | P2 | 教师全班周报 → **v1.9.0 改为「班级活动」**（`/api/class/leaderboard` + 共性薄弱） |
+| RPT-005 | 全部 | P2 | 导出 Markdown/PDF → **v1.9.0 移除**（周报整体废弃） |
 
-**Technical**：聚合本人数据 → TUTOR 生成建议；周报可经 launchd 周任务自动生成（architecture §十四）；数据 reports(+user_id, DM-008)。
+**Technical**：周报功能整体废弃，`reports_bp` 保留但不再被前端引用；原内容拆分到「进度页」与「班级」。
 
-### 3.7 教师管理后台 — `teacher_bp`（L3，REQ-ADMIN）
+### 3.7 班级 — `class_bp`（L3，REQ-CLASS，无 AI）
+**Functional**
+| REQ | 角色 | 优先级 | 说明 |
+|-----|------|--------|------|
+| CLASS-001 | 全部 | P1 | 班级归属：所有 active 学生（除 `Hermestest` 测试账号）同属一个班级，实名展示 |
+| CLASS-002 | 全部 | P1 | 累计对话轮次 / 累计练习次数排行 |
+| CLASS-003 | 全部 | P1 | 今日对话轮次 / 今日对话次数排行（今天 UTC+8） |
+| CLASS-004 | 全部 | P1 | 每次测评的分数排名历史（未参加标注「未参加」，附「已发布测评列表」） |
+| CLASS-005 | 全部 | P1 | 掌握度排行（平均 M = 已评估章节 compute_mastery().m 的均值，可附「已掌握 X 章」） |
+| CLASS-006 | teacher | P1 | 共性薄弱章节 + 「＋布置巩固测评」入口（跳转出题页） |
+
+**Technical**：`GET /api/class/leaderboard`（student/teacher 均可访问）；student 限定同班集合（即除测试号外的 active 学生）、teacher 无需 `@user_scope` 可看完整排名；`Hermestest` 绝不出现。掌握度排行「平均 M」未评估章节不计入、不当 0。
+
+### 3.8 教师管理后台 — `teacher_bp`（L3，REQ-ADMIN）
 **Functional**
 | REQ | 角色 | 优先级 | 说明 |
 |-----|------|--------|------|
@@ -245,10 +259,10 @@
 
 **Technical**：`@role_required("teacher")`；聚合走 `/api/teacher/*` **独立路由，不**经 `@user_scope` 过滤（architecture §九 数据隔离硬约束）；`GET /api/teacher/overview`、`GET /api/teacher/students/:id/progress|quizzes`。
 
-### 3.8 部署与运维（横切 B + L2，REQ-DEP）
+### 3.9 部署与运维（横切 B + L2，REQ-DEP）
 **Functional / Technical 合一**（见 §四）。
 
-### 3.9 横切安全护栏（横切 A，REQ-ARCH）
+### 3.10 横切安全护栏（横切 A，REQ-ARCH）
 - `@jwt_required` / `@role_required` / `@rate_limit(60/day)` / `@validate_json(schema)` / `@user_scope`。
 - 错误码契约：`E_AUTH_*` / `E_ROLE_*` / `E_RATE` / `E_NOT_FOUND` / `E_INVALID_INPUT` / `E_AI_FALLBACK` / `E_INTERNAL`。
 - **数据隔离硬约束**：所有读操作经 `@user_scope` 自动 `WHERE user_id=g.user_id`；教师聚合走 `/api/teacher/*`；**集成测试必须含「学生 A 读学生 B → 403/空」（F9）**。
@@ -311,11 +325,12 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 | conversations | +user_id, ±chapter_id | DM-009 | 按学生隔离 |
 | quizzes | -user_id, +chapter_ids, +version, +teacher_id, +published_at, +title, +status, +confirmed_at, +total_points(DEFAULT 100), +config_json | DM-004 | 教师发布实体；状态机；百分制总分 |
 | questions | id, quiz_id, chapter_id, sub_concept, type, content, answer_key, +points(选择/是非5·问答10) | DM-005 | 掌握度溯源；单题满分 |
-| attempts | id, user_id, quiz_id, question_id, chapter_id, **+quiz_version(F3)**, correct, score(实际得分点), +graded_by('ai'/'teacher'), +is_reviewed, +reviewed_score, created_at | DM-006 | M 唯一数据源；评分权双轨 |
+| attempts | id, user_id, quiz_id, question_id, chapter_id, **+quiz_version(F3)**, correct, score(实际得分点), +graded_by('ai'/'teacher'), +is_reviewed, +reviewed_score, created_at | DM-006 | M 数据源之一；评分权双轨 |
 | review_items | id, user_id, chapter_id, question_id(NULL), next_review_at, interval_days, status | DM-007 | 间隔复习状态机 |
-| practice_sessions | id, user_id, chapter_ids(JSON), difficulty('hard'), total_points(DEFAULT 100), config_json | REQ-PRACTICE-001 | 学生个人即席生成；不进发布状态机，不污染 M |
-| practice_questions | id, session_id, chapter_id, sub_concept, type, content, options, answer_key, points, correct(可空), user_answer, score(可空), reason, answered_at | REQ-PRACTICE-001/002 | 作答结果留痕；错题供薄弱点/巩固 |
-| reports | +user_id | DM-008 | 周报归属 |
+| practice_sessions | id, user_id, chapter_ids(JSON), difficulty('hard', v1.9.0 隐藏不展示), total_points(DEFAULT 100), config_json | REQ-PRACTICE-001 | 学生个人即席生成；v1.9.0 起已作答计入 M |
+| practice_questions | id, session_id, chapter_id, sub_concept, type, content, options, answer_key, points, correct(可空), user_answer, score(可空), reason, answered_at | REQ-PRACTICE-001/002 | 作答结果留痕；v1.9.0 起已作答计入 M；错题供薄弱点/巩固 |
+| reports | +user_id | DM-008 | 周报归属（v1.9.0 废弃，表保留） |
+| daily_advice | id, user_id, advice_date(UTC+8 日历日), stats(JSON), advice, created_at, UNIQUE(user_id, advice_date) | RPT-003(改每日) | 每日建议，每人每天一条 |
 | ChromaDB | material_chunks +chapter_id | DM-010 | 按章召回 |
 
 ### 5.3 状态机
@@ -340,8 +355,9 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 | quizzes_bp | /api/quizzes | 草稿/发布/版本 | 教师发布，学生作答 |
 | attempts_bp | /api/attempts | 作答记录 | 学生本人 |
 | practice_bp | /api/practice | 自主练习生成/作答/批改/历史 | 学生本人 |
-| progress_bp | /api/progress | 掌握度/四态/薄弱/巩固 | 学生本人 + 教师聚合 |
-| reports_bp | /api/reports | 周报 | 学生本人 |
+| progress_bp | /api/progress | 掌握度/四态/薄弱/巩固 + 每周概况/成绩 + 每日建议 | 学生本人 + 教师聚合 |
+| reports_bp | /api/reports | 周报（v1.9.0 起废弃，保留不引用） | 学生本人 |
+| class_bp | /api/class | 班级排行榜 6 类 + 共性薄弱 | 学生/教师 |
 | teacher_bp | /api/teacher | 全班概览/详情 | 教师 |
 | curriculum_bp | /api/curriculum | 学习路径 Session CRUD + 发布/取消发布 + 视频课 CRUD + 总览 | 教师写，全部读（学生仅 published） |
 | health_bp | /health | 探活 | 公开 |
@@ -507,6 +523,16 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 > - **CHAT-008 强化（对话 pill 长按删除）**：学习页对话 pill 支持长按（~600ms，touchstart/touchend + mousedown/mouseup 双兼容，抑制长按后补发的 click）弹出底部确认层「删除对话/取消」，确认后调既有 `DELETE /api/conversations/:id` 删除并刷新列表（✅）。
 > - **CHAT-002 强化（资料库横滑卡片组 + 动态提示）**：章节 ≥2 个时资料库改为 `overflow-x:auto` 横向卡片（固定宽度、隐藏滚动条、可左右滑动），单章保持竖排；下方小字随 `App.activeChapter` 动态提示（已选显示章节名，未选提示从上方资料库选择）（✅）。
 
+### 12.7 实现状态回写（v1.9.0，2026-09-03）
+
+> - **练习计入掌握度 M（任务书定义 A，推翻旧 F3）**：`compute_mastery()` 额外聚合该章自主练习 `practice_questions`（answered_at 非空），与测评同一条加权公式（w=0.5^间隔周数、按章聚合、earned=score、possible=points），并计入「已掌握≥2 次」作答次数；仅当该章既无测评 attempt 也无练习作答时才返回 m=None（✅）。练习错题进薄弱点/巩固练习（PROG-005/006）保留。
+> - **移除难度标注（全 App）**：`practice_sessions.difficulty` 字段保留但前端不再展示 hard/难度；清理 student.js 练习入口/卡片/生成/批改页全部难度文案与 hard badge（✅）。
+> - **班级功能（REQ-CLASS-001~006）**：新建 `class_bp`（`/api/class/leaderboard`）返回 6 类排行榜；周报 tab 改为「班级」（学生）/「班级活动」（教师），`viewReport` 整体替换为 `viewClass()`/`viewClassActivity()`（✅）。`Hermestest` 绝不出现。
+> - **AI 建议改每日（RPT-003）**：新增 `daily_advice` 表 + `GET /api/progress/advice` + 每日生成脚本 `backend/scripts/daily_advice_gen.py` + launchd plist（✅）。
+> - **周报迁移（RPT-001/002）**：本周概况/成绩分析迁移至进度页（`GET /api/progress/weekly-stats`），进度页结构为「四态 → AI 建议 → 本周概况/成绩 → 各章节 → 薄弱点 → 巩固闭环」（✅）。
+> - **对话输入框固定**：`.composer` 改 `position:fixed;bottom:78px` 钉在 tabbar 之上，`visualViewport` 脚本写 `--kb` 补偿键盘高度（✅）。
+> - **今日/今天统一 UTC+8**：新增 `data/timeutil.py`（Asia/Shanghai），班级今日榜单与每日建议日期按 UTC+8 日历日判定（✅）。
+
 ## 十三、NFR 与已知盲区（融合 PRD §13 + architecture §十三）
 
 ### 13.1 NFR（REQ-NFR）
@@ -541,7 +567,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 | 2 引导对话 | CHAT-001~009 | conversations_bp | TUTOR | 轮次护栏 | P0/P1/P2 |
 | 3 测评 | QUIZ-001~009 | quizzes_bp/attempts_bp | QUIZZER/GRADER | draft→published→superseded；评分权 ai→teacher(覆核) | P0/P1/P2 |
 | 4 进度巩固 | PROG-001~008 | progress_bp/review_sched | QUIZZER | 间隔复习 1→3→7 | P1 |
-| 5 周报 | RPT-001~005 | reports_bp | TUTOR | — | P1/P2 |
+| 5 周报→班级 | RPT-001~003(迁移/改每日) / CLASS-001~006 | progress_bp/class_bp（reports_bp 废弃） | TUTOR(建议) | — | P1/P2 |
 | 6 教师后台 | ADMIN-001~003 | teacher_bp | — | — | P1 |
 | 部署运维 | DEP-001~010 | — | — | 备份状态 | P0/P1 |
 | 数据模型 | DM-001~010 | — | — | 见 §5.3 | P0/P1 |

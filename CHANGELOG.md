@@ -2,6 +2,29 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.9.0] - 2026-09-03
+
+### Added
+- **班级功能（REQ-CLASS-001~006）**：新建 `class_bp`（`/api/class`），全部 active 学生（除 `Hermestest` 测试账号）同属一个班级，用实名展示。`GET /api/class/leaderboard` 一次返回 6 类排行榜：
+  1. 累计对话轮次（累计 user 消息数）
+  2. 累计练习次数（practice_sessions 数）
+  3. 今日对话轮次（今天 UTC+8 的 user 消息数）
+  4. 今日对话次数（今天 UTC+8 发起的对话会话数）
+  5. 每次测评的分数排名历史（列出该次测评全体学生分数与排名，未参加标注「未参加」，另附「已发布测评列表」供选择）
+  6. 掌握度排行（各学生已评估章节 `compute_mastery().m` 的均值「平均 M」排序，可附「已掌握 X 章」；未评估章节不计入、不当 0）
+  - 学生/教师均可访问；`Hermestest` 绝不出现；教师视角额外返回共性薄弱章节（≥2 人）。
+- **AI 学习建议改每日（RPT-003 改每日）**：新增 `daily_advice` 表（`UNIQUE(user_id, advice_date)` 幂等）；`GET /api/progress/advice` 返回最近一条（优先今天 UTC+8）。新增脚本 `backend/scripts/daily_advice_gen.py`（遍历 active 学生，按当天 UTC+8 对话/练习/测评数据生成建议，复用 `agents.tutor_reply`，失败模板兜底）+ launchd plist 模板 `deploy/com.aistudy.daily-advice.plist`（每天本地 22:00 触发，仅写脚本与 plist，不安装）。
+
+### Changed
+- **练习计入掌握度 M（推翻旧 F3）**：`compute_mastery()` 除聚合该章最新 published version 的 attempts 外，**额外聚合该章自主练习 `practice_questions`（answered_at 非空）**，同一条加权公式（w=0.5^间隔周数、按章聚合、earned=score、possible=points），并计入「已掌握≥2 次」作答次数；仅当该章既无测评 attempt 也无练习作答时才返回 `m=None`（未评估）。练习错题仍进薄弱点/巩固练习（PROG-005/006 保留）。
+- **移除难度标注（全 App 显示层）**：`practice_sessions.difficulty` 字段保留在库中但**前端不再展示** hard/难度；清理 student.js 练习入口/卡片/生成按钮/批改页的「难度高于正式测评」「hard · 合计 100 分」「生成练习（hard）」「· hard」等文案与 hard badge。教师端无难度展示，无需改动。
+- **周报废弃 → 班级**：学生底部 tab「周报」改为「班级」（`ICONS.class` 人物图标，tab key `report`→`class`），教师底部 tab「周报」改为「班级活动」；`viewReport` 整体替换为 `viewClass()`/`viewClassActivity()`。周报原「本周概况（RPT-001）/成绩分析（RPT-002）」迁移至进度页下方，`GET /api/progress/weekly-stats` 提供数据。
+- **进度页结构**：掌握度四态 stat-row → AI 学习建议 → 本周概况+成绩分析 → 各章节状态 → 薄弱点 → 巩固练习闭环。
+- **对话输入框固定**：`.composer` 由 `position:sticky` 改为 `position:fixed;bottom:78px`（钉在五个导航按钮 `.tabbar` 之上），学习页内容区加底部留白；`visualViewport` 脚本写 `--kb` 补偿安卓键盘高度，键盘弹起输入框不错位。
+- **「今天/今日」统一 UTC+8**：新增 `data/timeutil.py`（Asia/Shanghai），班级今日榜单与每日建议日期均按 UTC+8 日历日判定（存储 UTC，转时区后比日期）。
+- **Service Worker CACHE `v10` → `v11`**：强制用户端拉取本次 tab/班级/进度/输入框改动。
+- **版本 `1.8.0` → `1.9.0`**（新功能）。
+
 ## [1.8.0] - 2026-09-03
 
 ### Added

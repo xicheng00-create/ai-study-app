@@ -145,6 +145,17 @@ CREATE TABLE IF NOT EXISTS reports (
     created_at TEXT NOT NULL
 );
 
+-- 每日学习建议（RPT-003 改每日）：advice_date 存 UTC+8 日历日，每人每天一条
+CREATE TABLE IF NOT EXISTS daily_advice (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    advice_date TEXT NOT NULL,
+    stats       TEXT NOT NULL DEFAULT '{}',
+    advice      TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL,
+    UNIQUE(user_id, advice_date)
+);
+
 -- 自主练习：学生个人即席生成，不进教师发布状态机（防污染测评掌握度 M）
 CREATE TABLE IF NOT EXISTS practice_sessions (
     id           TEXT PRIMARY KEY,
@@ -215,6 +226,7 @@ CREATE INDEX IF NOT EXISTS idx_videos_ws ON video_resources(week_no, session_no)
 CREATE INDEX IF NOT EXISTS idx_practice_sessions_user ON practice_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_practice_questions_session ON practice_questions(session_id);
 CREATE INDEX IF NOT EXISTS idx_practice_questions_chapter ON practice_questions(chapter_id);
+CREATE INDEX IF NOT EXISTS idx_daily_advice_user_date ON daily_advice(user_id, advice_date);
 """
 
 

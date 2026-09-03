@@ -112,8 +112,8 @@ def test_practice_generate_and_submit(client, teacher_headers):
     assert resp.get_json()["data"]["session"]["completed"] is True
 
 
-def test_practice_does_not_pollute_mastery(client, teacher_headers):
-    """练习错题不改变测评掌握度 M（仅作薄弱依据）。"""
+def test_practice_counts_toward_mastery(client, teacher_headers):
+    """自主练习（已作答）计入掌握度 M（任务书定义 A，推翻旧 F3）。"""
     cid = _chapter(client, teacher_headers)
     make_student(client, teacher_headers, "alice")
     token = login(client, "alice", "student123")
@@ -123,15 +123,15 @@ def test_practice_does_not_pollute_mastery(client, teacher_headers):
     answers = [{"question_id": q["id"], "answer": ""} for q in data["questions"]]
     client.post(f"/api/practice/{sid}/submit", json={"answers": answers}, headers=h)
 
-    # 掌握度仍为未评估（无 published quiz）
+    # 全错 → M=0.0，且作答次数计入（即使无 published quiz）
     resp = client.get("/api/progress/mastery", headers=h)
     chap = [c for c in resp.get_json()["data"]["chapters"] if c["chapter_id"] == cid][0]
-    assert chap["m"] is None
-    assert chap["attempts"] == 0
+    assert chap["m"] == 0.0
+    assert chap["attempts"] == len(data["questions"])
 
 
 def test_practice_wrong_flows_to_weak_and_review(client, teacher_headers):
-    """练习错题进入薄弱点 + 巩固练习来源，不影响 M。"""
+    """练习错题进入薄弱点 + 巩固练习来源（PROG-005/006 保留）。"""
     cid = _chapter(client, teacher_headers)
     make_student(client, teacher_headers, "alice")
     token = login(client, "alice", "student123")
@@ -141,10 +141,10 @@ def test_practice_wrong_flows_to_weak_and_review(client, teacher_headers):
     answers = [{"question_id": q["id"], "answer": ""} for q in data["questions"]]
     client.post(f"/api/practice/{sid}/submit", json={"answers": answers}, headers=h)
 
-    # 薄弱点列表出现该章（from_practice）
+    # 薄弱点列表出现该章（全错 → M=0 即薄弱）
     resp = client.get("/api/progress/weak-points", headers=h)
     weak = resp.get_json()["data"]["weak_points"]
-    assert any(w["chapter_id"] == cid and w.get("from_practice") for w in weak)
+    assert any(w["chapter_id"] == cid for w in weak)
 
     # 巩固练习生成包含该章
     resp = client.post("/api/progress/review-items/generate", json={}, headers=h)

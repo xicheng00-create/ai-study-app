@@ -1,10 +1,13 @@
-"""进度 Blueprint（REQ-PROG-001~008）：掌握度四态、薄弱点、巩固/间隔复习。"""
+"""进度 Blueprint（REQ-PROG-001~008）：掌握度四态、薄弱点、巩固/间隔复习。
+
+v1.9.0 起并入：AI 每日学习建议（RPT-003 改每日）+ 本周概况/成绩分析（RPT-001/002 迁移）。
+"""
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from ai import grader, mastery, quizzer, review_sched
 from auth.jwt_utils import jwt_required, role_required
-from data import models
+from data import models, timeutil
 from data.db import get_db
 from flask import Blueprint, g, request
 from middleware.errors import e_forbidden, e_input, ok
@@ -23,6 +26,12 @@ def _all_chapters(con):
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def _monday_iso(now: datetime) -> str:
+    """本周起点（UTC 周一零点），沿用原周报口径（RPT-001 迁移）。"""
+    monday = now - timedelta(days=now.weekday())
+    return monday.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
 
 
 @progress_bp.route("/mastery", methods=["GET"])
@@ -293,3 +302,99 @@ def trend():
             "at": r["created_at"],
         })
     return ok({"trend": out})
+
+
+@progress_bp.route("/advice", methods=["GET"])
+@jwt_required
+@role_required("student")
+def advice():
+    """AI 学习建议（RPT-003 改每日）：优先取今天（UTC+8），否则最近一条。"""
+    con = get_db()
+    today = timeutil.today_str()
+    row = con.execute(
+        "SELECT * FROM daily_advice WHERE user_id=? AND advice_date=?",
+        (g.user_id, today),
+    ).fetchone()
+    if row is None:
+        row = con.execute(
+            "SELECT * FROM daily_advice WHERE user_id=? ORDER BY advice_date DESC LIMIT 1",
+            (g.user_id,),
+        ).fetchone()
+    if row is None:
+        return ok({"has_advice": False})
+    return ok({
+        "has_advice": True,
+        "advice_date": row["advice_date"],
+        "stats": json.loads(row["stats"] or "{}"),
+        "advice": row["advice"],
+        "created_at": row["created_at"],
+    })
+
+
+def _weekly_stats(con, user_id):
+    """本周概况 + 成绩分析（RPT-001/002 迁移到进度页，口径沿用原周报）。"""
+    start = datetime.fromisoformat(_monday_iso(datetime.now(timezone.utc)))
+    end = start + timedelta(days=7)
+
+    msg_rows = con.execute(
+        "SELECT created_at FROM messages WHERE conversation_id IN"
+        " (SELECT id FROM conversations WHERE user_id=?)", (user_id,)
+    ).fetchall()
+    att_subs = con.execute(
+        "SELECT a.created_at,"
+        " SUM(COALESCE(CASE WHEN a.is_reviewed=1 THEN a.reviewed_score ELSE a.score END, 0)) AS earned,"
+        " SUM(q.points) AS possible"
+        " FROM attempts a JOIN questions q ON q.id=a.question_id"
+        " WHERE a.user_id=?"
+        " GROUP BY a.quiz_id, a.quiz_version, a.created_at",
+        (user_id,),
+    ).fetchall()
+
+    days, conv_days, quiz_days, scores = set(), set(), set(), []
+    for r in msg_rows:
+        try:
+            t = datetime.fromisoformat(r["created_at"])
+        except ValueError:
+            continue
+        if start <= t < end:
+            days.add(t.date().isoformat())
+            conv_days.add(t.date().isoformat())
+    for r in att_subs:
+        try:
+            t = datetime.fromisoformat(r["created_at"])
+        except ValueError:
+            continue
+        if start <= t < end:
+            days.add(t.date().isoformat())
+            quiz_days.add(t.date().isoformat())
+            if r["possible"]:
+                scores.append(r["earned"] / r["possible"] * 100)
+
+    chapters = con.execute("SELECT * FROM chapters ORDER BY folder, order_no").fetchall()
+    weak_names = []
+    for ch in chapters:
+        m = mastery.compute_mastery(con, user_id, ch["id"])
+        if mastery.mastery_state(m["m"], m["attempts"]) == "weak":
+            weak_names.append(ch["name"])
+
+    return {
+        "stats": {
+            "days": len(days),
+            "conversation_days": len(conv_days),
+            "quiz_days": len(quiz_days),
+            "conversations": len(conv_days),
+            "quizzes": len(quiz_days),
+            "avg_score": round(sum(scores) / len(scores), 1) if scores else None,
+            "max_score": round(max(scores), 1) if scores else None,
+        },
+        "weak_chapters": weak_names,
+    }
+
+
+@progress_bp.route("/weekly-stats", methods=["GET"])
+@jwt_required
+@role_required("student")
+def weekly_stats():
+    """本周概况 + 成绩分析（RPT-001/002，供进度页展示）。"""
+    con = get_db()
+    return ok(_weekly_stats(con, g.user_id))

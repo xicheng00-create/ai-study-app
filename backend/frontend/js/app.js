@@ -5,6 +5,7 @@ const ICONS = {
   quiz: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
   progress: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>',
   report: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>',
+  class: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.4"/><circle cx="17" cy="10" r="2.4"/><path d="M3 19c0-2.8 2.7-4.5 6-4.5s6 1.7 6 4.5"/><path d="M15.4 14.4c2.1.2 3.6 1.4 4.6 3.6"/></svg>',
   admin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
 };
 
@@ -70,10 +71,10 @@ function appbar(title, sub) {
 function tabbar() {
   const h = App.state.hash;
   if (App.state.role === 'teacher') {
-    const tabs = [["curriculum", "课程", ICONS.path], ["admin", "管理", ICONS.admin], ["quiz", "测评", ICONS.quiz], ["progress", "进度", ICONS.progress], ["report", "周报", ICONS.report]];
+    const tabs = [["curriculum", "课程", ICONS.path], ["admin", "管理", ICONS.admin], ["quiz", "测评", ICONS.quiz], ["progress", "进度", ICONS.progress], ["class", "班级活动", ICONS.class]];
     return `<div class="tabbar">${tabs.map(([k, l, ic]) => `<button class="tab teacher ${h === k ? 'active' : ''}" onclick="go('${k}')">${ic}<span>${l}</span></button>`).join('')}</div>`;
   }
-  const tabs = [["learn", "学习", ICONS.learn], ["path", "路径", ICONS.path], ["quiz", "测评", ICONS.quiz], ["progress", "进度", ICONS.progress], ["report", "周报", ICONS.report]];
+  const tabs = [["learn", "学习", ICONS.learn], ["path", "路径", ICONS.path], ["quiz", "测评", ICONS.quiz], ["progress", "进度", ICONS.progress], ["class", "班级", ICONS.class]];
   return `<div class="tabbar">${tabs.map(([k, l, ic]) => `<button class="tab ${h === k ? 'active' : ''}" onclick="go('${k}')">${ic}<span>${l}</span></button>`).join('')}</div>`;
 }
 function go(h) { App.state.hash = h; if (h === "quiz") App.activeQuiz = null; location.hash = h; render(); }
@@ -181,4 +182,17 @@ async function boot() {
 window.addEventListener("hashchange", () => {
   if (App.state.role) { App.state.hash = location.hash.replace("#", "") || App.state.hash; render(); }
 });
+
+/* 键盘弹起时固定输入框不错位：--kb 补偿安卓键盘高度（iOS 下 offsetTop 随键盘上移，约 0） */
+function syncVisualViewport() {
+  if (!window.visualViewport) return;
+  const vv = window.visualViewport;
+  const kb = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+  document.documentElement.style.setProperty("--kb", kb + "px");
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", syncVisualViewport);
+  window.visualViewport.addEventListener("scroll", syncVisualViewport);
+}
+
 window.onload = boot;

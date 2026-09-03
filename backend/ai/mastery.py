@@ -1,7 +1,8 @@
 """掌握度 M 与四态（Design Spec §3.5，PROG-007/008，F3 数据正确性）。
 
 百分制 M = Σ(wᵢ·score_earnedᵢ)/Σ(wᵢ·points_possibleᵢ)×100，wᵢ=0.5^间隔周数；
-仅聚合该章「最新已发布 version」的 attempts（F3，避免重出题污染）。
+聚合该章「最新已发布 version」的 attempts（F3，避免重出题污染）+ 自主练习
+practice_questions（已作答，同权重，任务书定义 A）。
 """
 import json
 from datetime import datetime, timezone
@@ -50,28 +51,52 @@ def _chapter_ids_of(quiz_chapter_ids: str) -> list[str]:
 
 
 def compute_mastery(con, user_id: str, chapter_id: str) -> dict:
-    """返回 {m, attempts, latest_version}；m=None 表示未评估。"""
+    """返回 {m, attempts, latest_version}；m=None 表示未评估。
+
+    M 聚合两部分（同一条加权公式，任务书定义 A）：
+    1) 该章最新 published version 的测评 attempts（F3）；
+    2) 该章自主练习 practice_questions（answered_at 非空，earned=score、possible=points）。
+    仅当两者皆无作答时才返回 m=None（未评估）。
+    """
     latest = latest_version_for_chapter(con, chapter_id)
-    if latest <= 0:
-        return {"m": None, "attempts": 0, "latest_version": 0}
-    rows = con.execute(
-        "SELECT a.score, a.correct, a.created_at, a.is_reviewed, a.reviewed_score,"
-        " q.points AS points"
-        " FROM attempts a JOIN questions q ON q.id=a.question_id"
-        " WHERE a.user_id=? AND a.chapter_id=? AND a.quiz_version=?",
-        (user_id, chapter_id, latest),
-    ).fetchall()
-    if not rows:
-        return {"m": None, "attempts": 0, "latest_version": latest}
     total_w = 0.0
     earned_w = 0.0
-    for r in rows:
-        w = _weight(r["created_at"])
+    attempts = 0
+
+    # 测评：最新已发布 version（F3，避免重出题污染）
+    if latest > 0:
+        rows = con.execute(
+            "SELECT a.score, a.created_at, a.is_reviewed, a.reviewed_score,"
+            " q.points AS points"
+            " FROM attempts a JOIN questions q ON q.id=a.question_id"
+            " WHERE a.user_id=? AND a.chapter_id=? AND a.quiz_version=?",
+            (user_id, chapter_id, latest),
+        ).fetchall()
+        for r in rows:
+            w = _weight(r["created_at"])
+            pts = float(r["points"]) if r["points"] else 0.0
+            earned_w += w * effective_score(r)
+            total_w += w * pts
+        attempts += len(rows)
+
+    # 自主练习：已作答题目（按 answered_at 计时衰减，与测评同权重）
+    prows = con.execute(
+        "SELECT pq.score, pq.points, pq.answered_at"
+        " FROM practice_questions pq JOIN practice_sessions ps ON ps.id=pq.session_id"
+        " WHERE ps.user_id=? AND pq.chapter_id=? AND pq.answered_at IS NOT NULL",
+        (user_id, chapter_id),
+    ).fetchall()
+    for r in prows:
+        w = _weight(r["answered_at"])
         pts = float(r["points"]) if r["points"] else 0.0
-        earned_w += w * effective_score(r)
+        earned_w += w * (float(r["score"]) if r["score"] is not None else 0.0)
         total_w += w * pts
+    attempts += len(prows)
+
+    if attempts == 0:
+        return {"m": None, "attempts": 0, "latest_version": latest}
     m = round(earned_w / total_w * 100, 1) if total_w > 0 else None
-    return {"m": m, "attempts": len(rows), "latest_version": latest}
+    return {"m": m, "attempts": attempts, "latest_version": latest}
 
 
 def mastery_state(m, attempts: int) -> str:

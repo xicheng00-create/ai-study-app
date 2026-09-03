@@ -8,6 +8,8 @@ const Teacher = {
     { key: "20c", label: "20 选择", cfg: { choice: 20 } },
   ],
   curSel: {},       // Session 表单章节多选
+  classCat: 0,      // 班级活动排行榜当前分类
+  classQuizId: null, // 测评分数榜当前选中的测评
   async downloadMat(id, filename) {
     try { await API.download(id, filename); } catch (e) { toast(e.message); }
   },
@@ -19,7 +21,7 @@ const Teacher = {
     if (h === "curriculum") return await this.viewCurriculum();
     if (h === "quiz") return await this.viewQuiz();
     if (h === "progress") return await this.viewProgress();
-    if (h === "report") return await this.viewReport();
+    if (h === "class") return await this.viewClassActivity();
     return await this.viewAdmin();
   },
 
@@ -470,22 +472,52 @@ const Teacher = {
     catch (e) { toast(e.message); }
   },
 
-  /* ===== 全班周报 ===== */
-  async viewReport() {
-    let overview = { students: [], common_weak_chapters: [], student_count: 0 };
-    try { overview = await API.get("/api/teacher/overview"); } catch (e) {}
-    const weak = overview.common_weak_chapters || [];
-    const avg = (overview.students || []).reduce((a, s) => a + (s.counts.master + s.counts.progress), 0);
-    return appbar('全班周报', 'RPT-004 聚合') + `<div class="content">
-      <div class="report-h teacher"><div class="t">本周 · 全班聚合</div><div class="d">教师视图 · 学习周报</div></div>
-      <div class="card"><div style="font-weight:700;margin-bottom:12px">全班概览</div><div class="stat-row" style="margin:0">
-        <div class="stat"><div class="v">${overview.student_count || 0}</div><div class="k">学生数</div></div>
-        <div class="stat"><div class="v">${(overview.students || []).length}</div><div class="k">活跃学生</div></div>
-        <div class="stat"><div class="v">${avg}</div><div class="k">掌握/进行中</div></div></div></div>
-      <div class="card"><div style="font-weight:700;margin-bottom:8px">共性薄弱章节</div>
-        ${weak.map(c => `<div class="weak"><span class="badge weak">${esc(c)}</span><div class="muted" style="font-size:12.5px">建议下周统一加设巩固测评</div></div>`).join('') || '<div class="muted">暂无共性薄弱 🎉</div>'}</div>
-      <div class="card"><div style="font-weight:700;margin-bottom:10px">AI 教学建议</div>
-        <div class="ai-tip"><div class="ic">AI</div><div style="font-size:13.5px;line-height:1.5">${weak.length ? `「${weak.map(esc).join('、')}」为全班共性薄弱，建议统一加设巩固测评。` : '本周整体状态良好，可推进新章节并保持间隔复习。'}</div></div></div>
+  /* ===== 班级活动 ===== */
+  async viewClassActivity() {
+    let d = { total_turns: [], total_practice: [], today_turns: [], today_conversations: [], mastery: [], quizzes: [], quiz_boards: {}, common_weak_chapters: [] };
+    try { d = await API.get("/api/class/leaderboard"); } catch (e) {}
+    const cat = this.classCat || 0;
+    const cats = ["累计对话轮", "累计练习", "今日对话轮", "今日对话次数", "测评分数", "掌握度"];
+    const chips = cats.map((t, i) => `<div class="chip teacher ${cat === i ? 'active' : ''}" onclick="Teacher.setClassCat(${i})">${t}</div>`).join('');
+
+    const badge = (i) => i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : 'rn';
+    const av = (it) => `<div class="rank-av">${esc((it.display_name || '?').charAt(0))}</div>`;
+    const row = (it, i, valHtml, sub = '') => `<div class="rank-row"><div class="rank-num ${badge(i)}">${i + 1}</div>${av(it)}<div class="rank-meta"><div class="nm">${esc(it.display_name)}</div>${sub}</div><div class="rank-val">${valHtml}</div></div>`;
+    const num = (v, unit) => `<div class="v">${v}</div><div class="k">${unit}</div>`;
+
+    let body = '';
+    if (cat === 0) body = (d.total_turns || []).map((it, i) => row(it, i, num(it.value, '轮'), `<div class="st">累计 ${it.value} 轮对话</div>`)).join('');
+    else if (cat === 1) body = (d.total_practice || []).map((it, i) => row(it, i, num(it.value, '次'), `<div class="st">累计 ${it.value} 次练习</div>`)).join('');
+    else if (cat === 2) body = (d.today_turns || []).map((it, i) => row(it, i, num(it.value, '轮'), `<div class="st">今日 ${it.value} 轮对话</div>`)).join('');
+    else if (cat === 3) body = (d.today_conversations || []).map((it, i) => row(it, i, num(it.value, '个'), `<div class="st">今日 ${it.value} 个对话</div>`)).join('');
+    else if (cat === 4) {
+      const quizSel = this.classQuizId || (d.quizzes && d.quizzes[0] && d.quizzes[0].quiz_id) || null;
+      const quizChips = (d.quizzes || []).map(q => `<div class="c ${quizSel === q.quiz_id ? 'on' : ''}" onclick="Teacher.setClassQuiz('${q.quiz_id}')">${esc(q.title)}${q.version > 1 ? ` v${q.version}` : ''}</div>`).join('');
+      const board = (quizSel && d.quiz_boards && d.quiz_boards[quizSel]) || [];
+      body = `<div class="qp">${quizChips || '<div class="muted">暂无已发布测评</div>'}</div>` + board.map((it) => {
+        if (it.absent) return `<div class="rank-row"><div class="rank-num rn">—</div>${av(it)}<div class="rank-meta"><div class="nm">${esc(it.display_name)}</div><div class="st">未参加本次测评</div></div><div class="rank-val"><div class="v">—</div><div class="k">未参加</div></div></div>`;
+        return `<div class="rank-row"><div class="rank-num ${badge((it.rank || 1) - 1)}">${it.rank}</div>${av(it)}<div class="rank-meta"><div class="nm">${esc(it.display_name)}</div><div class="st">得分 ${it.score}</div></div><div class="rank-val"><div class="v">${it.score}</div><div class="k">/100</div></div></div>`;
+      }).join('');
+    } else {
+      body = (d.mastery || []).map((it, i) => {
+        const sub = it.avg_m == null ? '<div class="st">未评估</div>' : `<div class="st">平均 M ${it.avg_m}% · 已掌握 ${it.mastered_count} 章</div>`;
+        const val = it.avg_m == null ? '—' : it.avg_m;
+        return `<div class="rank-row"><div class="rank-num ${badge(i)}">${i + 1}</div>${av(it)}<div class="rank-meta"><div class="nm">${esc(it.display_name)}</div>${sub}</div><div class="rank-val"><div class="v">${val}</div><div class="k">%</div></div></div>`;
+      }).join('');
+    }
+
+    const weak = d.common_weak_chapters || [];
+    const weakCard = `<div class="card" style="background:var(--indigo-soft);border-color:#D9D9F5">
+      <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:var(--indigo)">共性薄弱章节</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${weak.map(c => `<span class="badge weak">${esc(c)}</span>`).join('') || '<span class="muted" style="font-size:12.5px">暂无共性薄弱 🎉</span>'}</div>
+      <button class="btn teacher sm" style="margin-top:12px;width:auto;padding:9px 16px" onclick="go('quiz')">＋ 布置巩固测评</button></div>`;
+
+    return appbar('班级活动', '教师视角 · 全班完整排行榜') + `<div class="content">
+      ${weakCard}
+      <div class="pill-wrap" style="margin-bottom:12px">${chips}</div>
+      ${body || '<div class="muted">暂无数据</div>'}
     </div>` + tabbar();
   },
+  setClassCat(i) { this.classCat = i; render(); },
+  setClassQuiz(id) { this.classQuizId = id; this.classCat = 4; render(); },
 };

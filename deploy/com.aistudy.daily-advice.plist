@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>com.aistudy.daily-advice</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/xicheng/WorkBuddy/AI学习小组app/.venv/bin/python</string>
+		<string>/Users/xicheng/WorkBuddy/AI学习小组app/backend/scripts/daily_advice_gen.py</string>
+	</array>
+	<key>WorkingDirectory</key><string>/Users/xicheng/WorkBuddy/AI学习小组app</string>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key><integer>22</integer>
+		<key>Minute</key><integer>0</integer>
+	</dict>
+	<key>StandardOutPath</key><string>/Users/xicheng/WorkBuddy/AI学习小组app/logs/daily-advice.log</string>
+	<key>StandardErrorPath</key><string>/Users/xicheng/WorkBuddy/AI学习小组app/logs/daily-advice.err.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key><string>/Users/xicheng/.workbuddy/binaries/python/versions/3.13.12/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+		<key>FLASK_ENV</key><string>production</string>
+	</dict>
+</dict>
+</plist>
