@@ -27,21 +27,36 @@ def _tokens(text: str) -> set[str]:
 
 
 def retrieve(query: str, chapter_id: str | None, top_k: int = 5) -> list[dict]:
-    """返回 [{chunk_id, text, material_id, chapter_id, score}]。"""
+    """返回 [{chunk_id, text, material_id, chapter_id, score}]。
+
+    query 为空时不做关键词过滤，直接返回该章节资料片段（供出题等无 query 场景喂原文）。
+    """
     con = get_db()
     q_tokens = _tokens(query)
-    if not q_tokens:
-        return []
 
     if chapter_id:
         rows = con.execute(
-            "SELECT id, material_id, chapter_id, text FROM chunks WHERE chapter_id = ?",
+            "SELECT id, material_id, chapter_id, text FROM chunks WHERE chapter_id = ?"
+            " ORDER BY material_id, chunk_idx",
             (chapter_id,),
         ).fetchall()
     else:
         rows = con.execute(
-            "SELECT id, material_id, chapter_id, text FROM chunks"
+            "SELECT id, material_id, chapter_id, text FROM chunks ORDER BY material_id, chunk_idx"
         ).fetchall()
+
+    if not q_tokens:
+        # 无 query：直接返回章节资料片段（供 QUIZZER 出题喂原文）
+        return [
+            {
+                "chunk_id": r["id"],
+                "material_id": r["material_id"],
+                "chapter_id": r["chapter_id"],
+                "text": r["text"][:800],
+                "score": 0.0,
+            }
+            for r in rows[:top_k]
+        ]
 
     scored = []
     for row in rows:

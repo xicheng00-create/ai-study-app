@@ -2,6 +2,12 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.7.2] - 2026-09-03
+
+### Fixed
+- **QUIZZER 出题接入 RAG 检索资料正文（根因①）**：`backend/ai/quizzer.py` 的 `generate_questions()` 出题前先对所选章节做 RAG 检索，把资料正文片段拼成 `retrieved_chunks` 注入 `QUIZZER_SYSTEM`，明确要求「严格基于下方检索到的资料内容出题、难度贴合资料实际」，只有资料缺失时再用通用知识出简单题——修复此前只传 `chapter_ids/sub_concepts/spec`、DeepSeek 凭通用知识出题导致难度漂移、不贴合学生上传课件的问题。`rag.retrieve()` 补支持 query 为空时直接返回章节资料片段（供出题等无 query 场景喂原文）。
+- **修模板兜底重复题（根因②）**：`_enforce_config()` 在 DeepSeek 生成数不足配置数时，不再用同一个模板题硬塞 N 次；改为先向 DeepSeek 补发一次请求补足缺口题型，补发仍失败才用模板兜底，且兜底模板按 idx 轮转多样化（选择/是非/问答各 3 套），杜绝「5 道一模一样的怪题」。
+
 ## [1.7.1] - 2026-09-03
 
 ### Added

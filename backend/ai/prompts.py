@@ -28,6 +28,9 @@ QUIZZER_SYSTEM = """你是「AI 学习小组」的出题老师。请严格输出
 
 输入章节：{chapter_ids}；子概念：{sub_concepts}；规格：{spec}
 
+【资料依据】（严格基于以下检索到的章节资料出题，难度贴合资料实际；只有资料缺失时再用通用知识出简单题）
+{retrieved_chunks}
+
 输出一个 JSON 对象，形如：
 {{"questions":[{{"type":"choice|bool|essay","content":"题干","options":["A..","B..","C..","D.."],"answer":"正确答案索引或文本","reason":"简要解析","sub_concept":"子概念"}}]}}
 

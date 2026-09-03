@@ -180,6 +180,7 @@
 
 **Technical**
 - **百分制评分模型（QUIZ-003/005）**：每题按题型赋分——选择题 5 分、是非题 5 分、问答题 10 分；`questions.points` 按题型写入，`quizzes.total_points=100`（题目组合须恰好 100 分，由 QUIZZER 按 QUIZ-005 配置生成）。学生单题得分 `attempts.score∈[0,points]`。
+- **QUIZZER 出题前注入 RAG（QUIZ-001/005）**：`POST /api/quizzes/draft` 生成草稿前，QUIZZER 先对所选章节做 RAG 检索，把资料正文片段拼成 `retrieved_chunks` 注入提示词，题目基于资料难度出题（不再凭通用知识漂移）。
 - **评分权双轨（QUIZ-003 + QUIZ-009）**：① 客观题（选择/是非）由**系统确定性判分**（答案比对，0 或满分，零延迟零成本）；② 问答题由 **AI(GRADER)** 评 `score∈[0,10]` 并给 `reason`，`attempts.graded_by='ai'`；③ 教师可对任一题**覆核改分**（`PUT /api/attempts/:id/review` → 写 `reviewed_score`+`graded_by='teacher'`+`is_reviewed=1`）。教师默认不评分，仅在 AI 判分争议时介入。
 - 路由：`POST /api/quizzes/draft`(含 `config` 预设) → `POST /api/quizzes/:id/publish`、`POST /api/quizzes/:id/attempts`、`GET /api/quizzes/:id/report`、`PUT /api/attempts/:id/review`(QUIZ-009)、`POST /api/quizzes/:id/revision`(P1)、`GET /api/quizzes?status=published`。
 - 轻量审核状态机（architecture §5.3）：`draft ─[教师确认]─► published`；`published ─[重出]─► superseded`（旧版保留，新 version 走 draft→published）。
@@ -351,7 +352,7 @@ users ─< reports
 
 ### 7.1 三 Agent 提示词（architecture §5.1）
 - **TUTOR**：注入 `weak_chapters`/`retrieved_chunks`（v1.5.0 起不再注入 `student_grade`）；规则「不直接给答案，以追问引导；答对或卡住才给点拨」；轮次 `{turn}/12` 护栏。
-- **QUIZZER**：输入 `chapter_ids/sub_concepts/spec`；产出结构化 JSON 题目集（含 `answer_key`/`sub_concept`）。
+- **QUIZZER**：输入 `chapter_ids/sub_concepts/spec + retrieved_chunks`（RAG 检索资料正文，题目基于资料难度出题）；产出结构化 JSON 题目集（含 `answer_key`/`sub_concept`）。
 - **GRADER**：输入题目(含 `points`)+参考答案+学生作答；产出 `{correct, score, reason}`，`score∈[0,points]`（问答 0–10、客观题不调用 GRADER 改由系统确定性判分）。
 
 > 决策：提示词即一切，不引入工具注册表；保留 `def tool_x(ctx)->Result` 统一签名，未来 Agent>5 个再升级（§十四）。
