@@ -15,8 +15,8 @@ from middleware.errors import ok
 
 class_bp = Blueprint("class_bp", __name__, url_prefix="/api/class")
 
-# 测试账号绝不出现在班级排行榜
-EXCLUDED_USERNAMES = ("Hermestest",)
+# 测试账号绝不出现在班级排行榜（Hermestest 教师测试 + hermesstu 学生测试）
+EXCLUDED_USERNAMES = ("Hermestest", "hermesstu")
 
 
 def _class_students(con):
