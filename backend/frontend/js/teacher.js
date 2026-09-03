@@ -1,11 +1,10 @@
 /* 教师视图：管理后台（资料/章节/学生）+ 发布测评 + 全班进度/班级活动 */
 const Teacher = {
   pubSel: {},
-  quizConfig: { choice: 10, essay: 5 },   // 100 分组合（QUIZ-005）
+  quizConfig: { choice: 20 },   // 100 分组合（QUIZ-005：固定 20 道选择/是非）
   QUIZ_PRESETS: [
-    { key: "10c5e", label: "10 选择 + 5 问答", cfg: { choice: 10, essay: 5 } },
-    { key: "8c6e", label: "8 选择 + 6 问答", cfg: { choice: 8, essay: 6 } },
     { key: "20c", label: "20 选择", cfg: { choice: 20 } },
+    { key: "20b", label: "20 是非", cfg: { bool: 20 } },
   ],
   curSel: {},       // Session 表单章节多选
   classCat: 0,      // 班级活动排行榜当前分类
@@ -357,10 +356,10 @@ const Teacher = {
       <span class="mini-btn teacher" onclick="Teacher.revise('${q.id}')">重出</span></div>`).join('');
     const cfg = this.quizConfig || {};
     const presetHtml = this.QUIZ_PRESETS.map(p => {
-      const on = (cfg.choice || 0) === (p.cfg.choice || 0) && (cfg.bool || 0) === (p.cfg.bool || 0) && (cfg.essay || 0) === (p.cfg.essay || 0);
+      const on = (cfg.choice || 0) === (p.cfg.choice || 0) && (cfg.bool || 0) === (p.cfg.bool || 0);
       return `<span class="pill ${on ? 'active' : ''}" style="cursor:pointer" onclick="Teacher.setQuizPreset('${p.key}')">${p.label}</span>`;
     }).join('');
-    const total = (cfg.choice || 0) * 5 + (cfg.bool || 0) * 5 + (cfg.essay || 0) * 10;
+    const total = ((cfg.choice || 0) + (cfg.bool || 0)) * 5;
     return appbar('出题 / 发布', '选章 → 100 分组合 → 生成草稿 → 确认发布') + `<div class="content">
       <div class="card"><div style="font-weight:700;margin-bottom:6px">① 选择覆盖章节</div>${chks}</div>
       <div class="card"><div style="font-weight:700;margin-bottom:6px">② 选择 100 分组合</div>
@@ -368,7 +367,6 @@ const Teacher = {
         <div style="display:flex;gap:6px;align-items:center">
           <input class="mini-input" id="cfgChoice" placeholder="选择" style="flex:1" value="${cfg.choice || ''}"/>
           <input class="mini-input" id="cfgBool" placeholder="是非" style="flex:1" value="${cfg.bool || ''}"/>
-          <input class="mini-input" id="cfgEssay" placeholder="问答" style="flex:1" value="${cfg.essay || ''}"/>
           <span class="mini-btn" onclick="Teacher.applyCustomConfig()">自定义</span>
         </div>
         <div class="muted" style="font-size:12px;margin-top:6px">当前组合：${total} 分（${total === 100 ? '✓ 有效' : '须为 100'})</div>
@@ -383,9 +381,9 @@ const Teacher = {
   },
   applyCustomConfig() {
     const n = (id) => { const v = document.getElementById(id).value.trim(); return v === "" ? 0 : (parseInt(v) || 0); };
-    const cfg = { choice: n("cfgChoice"), bool: n("cfgBool"), essay: n("cfgEssay") };
-    const total = (cfg.choice || 0) * 5 + (cfg.bool || 0) * 5 + (cfg.essay || 0) * 10;
-    if (total !== 100) { toast("自定义组合合计须为 100 分"); return; }
+    const cfg = { choice: n("cfgChoice"), bool: n("cfgBool") };
+    // 只允许选择/是非，合计恰好 20 道（每题 5 分 = 100 分）
+    if ((cfg.choice || 0) + (cfg.bool || 0) !== 20) { toast("自定义组合须为 20 道选择/是非（合计 100 分）"); return; }
     this.quizConfig = cfg; render();
   },
   async draft() {

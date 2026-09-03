@@ -2,6 +2,17 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.10.0] - 2026-09-03
+
+### Changed
+- **取消问答题（essay），固定 20 道选择/是非每题 5 分**：老师发布测评与学生自主练习两个出题路径一律不再生成 essay（问答题），题型仅限选择题（choice）与是非题（bool）。`quizzer.PRESETS` 只保留无 essay 组合（`20c`=20 选择 / `20b`=20 是非，默认 `20c`），删除 `10c5e`/`8c6e`；`default_config()`→`{"choice": 20}`，`validate_config()` 只接受 choice/bool；`_spec_text` 改为「20 道选择题/是非题，各 5 分，合计 100 分」。`POINTS` 仍保留 `essay=10` 以兼容库里旧题数据（`norm_question` 保留 essay 分支）。
+- **出题去重**：新增 `quizzer._dedup()` 按题干 `content` 去重（保留首条）；`_enforce_config` 的模板兜底按 idx 轮转并跳过已出现的 content；`_TEMPLATES` 的 choice/bool 池扩充到各 20 条唯一题。`generate_questions` 与 `generate_practice_questions` 返回前统一 `_dedup`，确保最终集无重复题干。
+- **练习出题固定 20 道**：`generate_practice_questions`/`_trim_to_100`/`_fill_to_100`/`fallback_practice_questions` 全部禁止 essay——AI 输出中的 essay 被丢弃，`_fill_to_100` 只用 choice/bool 模板补足到恰好 20 道（合计 100 分）；练习兜底改为 `_enforce_config([], {"choice": 20})`。
+- **提示词收紧**：`QUIZZER_SYSTEM` 明确「只允许 choice/bool，严禁 essay」，规格改为「20 道题，每题 5 分，合计 100 分」，并加「题目不得重复：每道题的题干必须不同」。
+- **教师出题前端**：`teacher.js` 的 `quizConfig` 默认 `{choice: 20}`，`QUIZ_PRESETS` 只含「20 选择 / 20 是非」，自定义输入移除「问答」字段，校验改为 `choice + bool === 20`（合计 100 分）。
+- **Service Worker CACHE `v11` → `v12`**：强制用户端拉取出题改动。
+- **版本 `1.9.0` → `1.10.0`**。
+
 ## [1.9.0] - 2026-09-03
 
 ### Added

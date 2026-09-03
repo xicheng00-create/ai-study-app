@@ -38,31 +38,33 @@ def _q(qtype, n):
 
 
 def test_practice_free_form_exact_100(monkeypatch):
-    """AI 自由组合恰好 100 分时原样保留。"""
-    _mock_quizzer(monkeypatch, _q("choice", 10) + _q("essay", 5))
+    """AI 固定 20 道选择时原样保留（合计 100 分）。"""
+    _mock_quizzer(monkeypatch, _q("choice", 20))
     out = quizzer.generate_practice_questions(["ch1"])
     assert sum(quizzer.POINTS[q["type"]] for q in out) == 100
-    assert len(out) == 15
+    assert len(out) == 20
+    assert all(q["type"] in ("choice", "bool") for q in out)
 
 
 def test_practice_trim_over_100(monkeypatch):
-    """AI 出题超 100 分时裁剪到恰好 100 分。"""
-    _mock_quizzer(monkeypatch, _q("essay", 12))  # 120 分
+    """AI 出题超 100 分时裁剪到恰好 20 道（100 分）。"""
+    _mock_quizzer(monkeypatch, _q("choice", 25))  # 125 分
     out = quizzer.generate_practice_questions(["ch1"])
     assert sum(quizzer.POINTS[q["type"]] for q in out) == 100
-    assert len(out) == 10
+    assert len(out) == 20
 
 
 def test_practice_fill_under_100(monkeypatch):
-    """AI 出题不足 100 分时模板补足到恰好 100 分。"""
+    """AI 出题不足 100 分时模板补足到恰好 20 道（100 分）。"""
     _mock_quizzer(monkeypatch, _q("choice", 5))  # 25 分
     out = quizzer.generate_practice_questions(["ch1"])
     assert sum(quizzer.POINTS[q["type"]] for q in out) == 100
+    assert len(out) == 20
 
 
 def test_practice_difficulty_hard(monkeypatch):
     """练习出题提示词注入 difficulty=hard（高于教师默认 normal）。"""
-    calls = _mock_quizzer(monkeypatch, _q("choice", 10) + _q("essay", 5))
+    calls = _mock_quizzer(monkeypatch, _q("choice", 20))
     quizzer.generate_practice_questions(["ch1"])
     assert "难度：hard" in calls[0]
 

@@ -1,28 +1,27 @@
 """出题（QUIZZER）：DeepSeek 生成草稿题，失败降级到模板题（L2）。
 
-百分制评分模型（QUIZ-005）：按题型赋分——选择/是非 5 分、问答 10 分；
-题目组合须恰好 100 分，由 QUIZZER 按教师所选 config 生成。
+百分制评分模型（QUIZ-005）：固定 20 道选择题/是非题，每题 5 分，合计 100 分，
+彻底取消问答题（essay）。POINTS 保留 essay=10 仅用于兼容库里旧题数据。
 """
 import json
 
 from ai import agents, rag
 from ai.prompts import QUIZZER_SYSTEM
 
-# 题型满分（QUIZ-005，选择/是非 5、问答 10）
+# 题型满分（QUIZ-005，选择/是非 5；essay=10 仅保留以兼容库里旧题数据，不再出 essay）
 POINTS = {"choice": 5, "bool": 5, "essay": 10}
 
-# 100 分预设组合（QUIZ-005）
+# 100 分预设组合（QUIZ-005）：固定 20 道 choice/bool，严禁含 essay
 PRESETS = {
-    "10c5e": {"choice": 10, "essay": 5},
-    "8c6e": {"choice": 8, "essay": 6},
     "20c": {"choice": 20},
+    "20b": {"bool": 20},
 }
 
 _TYPE_LABEL = {"choice": "选择题", "bool": "是非题", "essay": "问答题"}
 
 
 def default_config() -> dict:
-    return dict(PRESETS["10c5e"])
+    return dict(PRESETS["20c"])
 
 
 def config_total(config: dict) -> int:
@@ -31,11 +30,11 @@ def config_total(config: dict) -> int:
 
 
 def validate_config(config) -> dict:
-    """归一化并校验组合；非法返回空 dict（调用方回错误）。"""
+    """归一化并校验组合；只接受 choice/bool（essay 已取消），非法返回空 dict。"""
     if not isinstance(config, dict):
         return {}
     cfg = {}
-    for t in POINTS:
+    for t in ("choice", "bool"):
         n = config.get(t)
         if n is None:
             continue
@@ -51,11 +50,11 @@ def validate_config(config) -> dict:
 
 
 def _spec_text(config: dict) -> str:
-    parts = [f"{int(config.get(t) or 0)} 道{_TYPE_LABEL[t]}" for t in POINTS if config.get(t)]
-    return "共 " + " + ".join(parts) + "（选择/是非各 5 分，问答 10 分，合计 100 分）"
+    parts = [f"{int(config.get(t) or 0)} 道{_TYPE_LABEL[t]}" for t in ("choice", "bool") if config.get(t)]
+    return "共 " + " + ".join(parts) + "（各 5 分，合计 100 分）"
 
 
-# 兜底模板池：按 idx 轮转，避免同一道题重复 N 次（LLM 不可用/补发仍不足时用）
+# 兜底模板池：choice/bool 各 20 条（题干全局唯一），按 idx 轮转避免重复；已取消 essay
 _TEMPLATES = {
     "choice": [
         {
@@ -79,6 +78,125 @@ _TEMPLATES = {
             "reason": "主动尝试加错题记录更利于巩固",
             "sub_concept": "学习方法",
         },
+        {
+            "content": "把短期记忆转化为长期记忆，最有效的方法是？",
+            "options": ["考前临时抱佛脚", "间隔重复与主动回忆", "一次性长时间背诵", "只看不做题"],
+            "answer": "1",
+            "reason": "间隔重复和主动回忆是巩固长期记忆的核心",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "下列哪种学习行为最能促进深度理解？",
+            "options": ["机械抄写多遍", "用自己的话复述并举例", "只看重点划线", "跳过例题"],
+            "answer": "1",
+            "reason": "复述和举例能激活深加工，促进理解",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "做错题后，最有助于进步的做法是？",
+            "options": ["当作没发生", "分析错因并订正复盘", "只改答案不思考", "避免再做同类题"],
+            "answer": "1",
+            "reason": "分析错因并复盘是查漏补缺的关键",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "主动回忆（合上书回忆）相比反复重读，优势在于？",
+            "options": ["更省时间", "更能检验是否真正掌握", "更轻松", "无需动脑"],
+            "answer": "1",
+            "reason": "主动回忆能暴露记忆盲区，强化提取练习",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "分散练习（间隔练习）相比集中突击，优势在于？",
+            "options": ["更利于长期记忆保持", "见效更快", "更省时间", "更适合考前"],
+            "answer": "0",
+            "reason": "分散练习的间隔效应更利于长期保持",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "把新知识与已有知识建立联系，这种做法称为？",
+            "options": ["机械记忆", "精细加工", "死记硬背", "瞬时记忆"],
+            "answer": "1",
+            "reason": "与旧知识建立联系属于精细加工策略",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "费曼学习法的核心是？",
+            "options": ["大量刷题", "用简单的话把知识讲清楚", "反复抄写", "只看视频"],
+            "answer": "1",
+            "reason": "费曼学习法强调用自己的话讲清概念",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "制定学习目标时，最符合 SMART 原则的是？",
+            "options": ["每天学一点", "本周内掌握第三章并能做对练习", "以后再说", "尽量多学"],
+            "answer": "1",
+            "reason": "具体、可衡量、有时限的目标更符合 SMART",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "番茄工作法的核心是？",
+            "options": ["连续工作数小时", "短时专注加定时休息", "多任务并行", "通宵赶工"],
+            "answer": "1",
+            "reason": "番茄工作法通过短时专注和定时休息保持效率",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "遇到难题长时间卡住时，更合理的做法是？",
+            "options": ["死磕到底", "暂时放下，之后带着新思路再来", "直接放弃", "照抄答案了事"],
+            "answer": "1",
+            "reason": "适时暂停并换思路有助于突破卡点",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "做笔记时，更高效的做法是？",
+            "options": ["逐字照抄", "用自己的话提炼要点", "只抄标题", "完全不做"],
+            "answer": "1",
+            "reason": "用自己的话提炼能促进理解和记忆",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "定期自测（自我测验）的主要好处是？",
+            "options": ["浪费时间", "检验掌握情况并发现盲区", "增加焦虑", "替代学习"],
+            "answer": "1",
+            "reason": "自测能检验掌握度并暴露知识盲区",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "学习时保持专注，更有效的做法是？",
+            "options": ["同时刷手机", "移除干扰并设定专注时段", "边学边闲聊", "频繁切换任务"],
+            "answer": "1",
+            "reason": "移除干扰并专注能提升学习效率",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "多感官（看+听+写）参与学习的优势是？",
+            "options": ["更热闹", "多通道编码加深记忆", "更费时间", "只适合儿童"],
+            "answer": "1",
+            "reason": "多感官通道编码能加深记忆痕迹",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "学习后及时睡眠对记忆的作用是？",
+            "options": ["促进记忆巩固", "导致遗忘", "没有影响", "浪费时间"],
+            "answer": "0",
+            "reason": "睡眠期间的记忆巩固有助于长期保持",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "把大任务拆解为小步骤的好处是？",
+            "options": ["降低行动门槛、减少拖延", "让任务更复杂", "没有好处", "浪费时间"],
+            "answer": "0",
+            "reason": "拆解大任务能降低启动难度并减少拖延",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "学习过程中遇到分心，更有效的应对是？",
+            "options": ["任由分心", "记录分心点并回到任务", "干脆休息整天", "责备自己"],
+            "answer": "1",
+            "reason": "记录分心点并回归任务比自责更有效",
+            "sub_concept": "学习方法",
+        },
     ],
     "bool": [
         {
@@ -99,51 +217,167 @@ _TEMPLATES = {
             "reason": "间隔复习是巩固长期记忆的有效手段",
             "sub_concept": "学习方法",
         },
-    ],
-    "essay": [
         {
-            "content": "请用自己的话解释本章节的核心概念，并举一个例子。",
-            "answer": "概念定义准确、例子恰当即为要点齐全",
-            "reason": "模板题（AI 不可用）",
-            "sub_concept": "核心概念",
+            "content": "学习新知识时，越早开始第一次复习越有利于巩固记忆。",
+            "answer": "正确",
+            "reason": "及时复习能抓住遗忘曲线前期的巩固窗口",
+            "sub_concept": "学习方法",
         },
         {
-            "content": "结合本章资料，说明一个关键概念的含义及其适用场景。",
-            "answer": "概念表述清晰、场景贴合即为要点齐全",
-            "reason": "模板题（AI 不可用）",
-            "sub_concept": "核心概念",
+            "content": "遇到不会的题目，照抄答案是有效的学习方法。",
+            "answer": "错误",
+            "reason": "照抄答案缺乏主动思考，不利于掌握",
+            "sub_concept": "学习方法",
         },
         {
-            "content": "用自己的话总结本章节最重要的一个知识点，并说明理由。",
-            "answer": "要点准确、理由充分即为要点齐全",
-            "reason": "模板题（AI 不可用）",
-            "sub_concept": "核心概念",
+            "content": "集中突击比分散练习更有利于长期记忆保持。",
+            "answer": "错误",
+            "reason": "分散练习的间隔效应更利于长期保持",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "主动回忆比反复重读更能检验是否真正掌握。",
+            "answer": "正确",
+            "reason": "主动回忆是检验掌握度的有效提取练习",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "把新知识与已有知识联系起来，有助于理解和记忆。",
+            "answer": "正确",
+            "reason": "精细加工能加深理解与记忆",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "错题整理与复盘对查漏补缺没有帮助。",
+            "answer": "错误",
+            "reason": "错题复盘是查漏补缺的关键手段",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "充足的睡眠对记忆巩固没有影响。",
+            "answer": "错误",
+            "reason": "睡眠期间的记忆巩固对长期保持很重要",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "制定具体可衡量的学习目标比模糊目标更有效。",
+            "answer": "正确",
+            "reason": "具体可衡量的目标更易执行和检验",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "学习中适当休息、避免长时间连续学习，有助于保持效率。",
+            "answer": "正确",
+            "reason": "适当休息能恢复注意力，维持学习效率",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "只被动听讲、从不提问，是最佳的学习方式。",
+            "answer": "错误",
+            "reason": "主动提问和参与能促进理解",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "多感官参与（看、听、写）能加深记忆。",
+            "answer": "正确",
+            "reason": "多通道编码能加深记忆痕迹",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "把大任务拆解成小步骤有助于减少拖延。",
+            "answer": "正确",
+            "reason": "拆解任务能降低启动门槛、减少拖延",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "自我测验（自测）有助于发现知识盲区。",
+            "answer": "正确",
+            "reason": "自测能暴露记忆盲区并检验掌握度",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "学习环境越嘈杂，越有利于专注学习。",
+            "answer": "错误",
+            "reason": "嘈杂环境会分散注意力，不利于专注",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "及时向老师或同伴请教，是解决疑难的有效途径。",
+            "answer": "正确",
+            "reason": "及时求助能避免长时间卡壳、加速理解",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "费曼学习法强调用简单的话把知识讲清楚。",
+            "answer": "正确",
+            "reason": "费曼学习法核心是讲清楚概念",
+            "sub_concept": "学习方法",
+        },
+        {
+            "content": "重复做同一道已掌握的题，比挑战新题更能提升能力。",
+            "answer": "错误",
+            "reason": "挑战新题更能拓展能力边界",
+            "sub_concept": "学习方法",
         },
     ],
 }
 
 
-def _template(qtype: str, idx: int) -> dict:
-    """兜底模板：按 idx 轮转多样化，避免同一题重复 N 次。"""
-    pool = _TEMPLATES[qtype]
-    item = pool[idx % len(pool)]
+def _template_item(qtype: str, item: dict) -> dict:
     base = {"type": qtype, "options": item.get("options", [])}
     base.update(item)
     return base
 
 
+def _next_template(qtype: str, seen: set, tpl_idx: dict) -> dict:
+    """模板兜底：轮转取一条 content 未出现过的题；池内不足时轮转，绝不并列重复。"""
+    pool = _TEMPLATES[qtype]
+    start = tpl_idx.get(qtype, 0)
+    for offset in range(len(pool)):
+        item = pool[(start + offset) % len(pool)]
+        tpl_idx[qtype] = (start + offset + 1) % len(pool)
+        if item["content"] not in seen:
+            return _template_item(qtype, item)
+    tpl_idx[qtype] = (start + 1) % len(pool)
+    return _template_item(qtype, pool[start % len(pool)])
+
+
+def _dedup(qs: list[dict]) -> list[dict]:
+    """按 content 去重，保留首次出现的题（出题不重复）。"""
+    seen = set()
+    out = []
+    for q in qs:
+        c = q.get("content", "")
+        if c in seen:
+            continue
+        seen.add(c)
+        out.append(q)
+    return out
+
+
 def _enforce_config(qs: list[dict], config: dict) -> list[dict]:
-    """按 config 裁剪题目数量，保证组合恰好 100 分。
+    """按 config 裁剪题目数量，保证组合恰好 100 分且题干不重复。
 
     不足部分先由 generate_questions 向 DeepSeek 补发补足；仍不足才用模板兜底
-    （模板按 idx 轮转，避免同一道题重复 N 次）。
+    （模板按 idx 轮转并跳过已出现的 content，避免同一道题重复）。
     """
     out = []
+    seen: set[str] = set()
+    tpl_idx: dict = {}
     for t in POINTS:
         n = int(config.get(t) or 0)
         pool = [q for q in qs if q.get("type") == t]
-        for i in range(n):
-            out.append(pool[i] if i < len(pool) else _template(t, i))
+        pi = 0
+        for _ in range(n):
+            while pi < len(pool) and pool[pi].get("content") in seen:
+                pi += 1
+            if pi < len(pool):
+                item = pool[pi]
+                pi += 1
+            else:
+                item = _next_template(t, seen, tpl_idx)
+            seen.add(item.get("content", ""))
+            out.append(item)
     return out
 
 
@@ -238,24 +472,23 @@ def _trim_to_100(qs: list[dict]) -> list[dict]:
 
 
 def _fill_to_100(qs: list[dict]) -> list[dict]:
-    """AI 出题不足 100 分时，用模板按 idx 轮转补足到 20 单位（优先 essay 吃满 2 单位）。"""
+    """AI 出题不足 100 分时，只用 choice/bool 模板按 idx 轮转补足到恰好 20 道（各 5 分）。"""
     out = list(qs)
+    seen = {q.get("content", "") for q in out}
+    tpl_idx: dict = {}
     units = _practice_total(out) // 5
-    i = len(out)
     while units < _TARGET_UNITS:
-        # 剩余 2 单位以上优先补 essay（2 单位），只剩 1 单位补 choice
-        if _TARGET_UNITS - units >= 2:
-            out.append(_template("essay", i))
-            units += 2
-        else:
-            out.append(_template("choice", i))
-            units += 1
-        i += 1
+        # 交替 choice/bool 提升多样性，跳过 content 已出现过的模板
+        qtype = "choice" if units % 2 == 0 else "bool"
+        item = _next_template(qtype, seen, tpl_idx)
+        seen.add(item.get("content", ""))
+        out.append(item)
+        units += 1
     return out
 
 
 def _practice_system(chapter_ids: list[str], sub_concepts: str, chunk_txt: str) -> str:
-    spec = "自由组合：题型与数量由你自主决定，但所有题目分值合计必须恰好 100 分（选择/是非各 5 分、问答 10 分）"
+    spec = "固定 20 道题，只允许选择题（choice）和是非题（bool），每题 5 分，合计 100 分"
     return QUIZZER_SYSTEM.format(
         chapter_ids=",".join(chapter_ids),
         sub_concepts=sub_concepts or "不限",
@@ -266,10 +499,15 @@ def _practice_system(chapter_ids: list[str], sub_concepts: str, chunk_txt: str) 
 
 
 def generate_practice_questions(chapter_ids: list[str], sub_concepts: str = "") -> list[dict]:
-    """自主练习出题（difficulty=hard，AI 自主题量，后端强制合计=100）。"""
+    """自主练习出题（difficulty=hard，固定 20 道 choice/bool 各 5 分，后端强制合计=100）。"""
     query = (sub_concepts or "").strip()
     chunk_txt = _chunk_text(_retrieve_chunks(chapter_ids, query))
     qs = [_norm_practice(q) for q in (agents.quizzer_generate(_practice_system(chapter_ids, sub_concepts, chunk_txt)) or [])]
+    if not qs:
+        return fallback_practice_questions(chapter_ids)
+
+    # 彻底取消 essay：只保留 choice/bool，并先去除 DeepSeek 自身重复题干
+    qs = _dedup([q for q in qs if q["type"] in ("choice", "bool")])
     if not qs:
         return fallback_practice_questions(chapter_ids)
 
@@ -283,26 +521,29 @@ def generate_practice_questions(chapter_ids: list[str], sub_concepts: str = "") 
         fill_system = QUIZZER_SYSTEM.format(
             chapter_ids=",".join(chapter_ids),
             sub_concepts=sub_concepts or "不限",
-            spec=f"请补充题目，使其分值合计 {missing_units * 5} 分（选择/是非各 5 分、问答 10 分）",
+            spec=f"请补充 {missing_units} 道题（只允许选择/是非，各 5 分）",
             retrieved_chunks=chunk_txt[:4000],
             difficulty="hard",
         )
         extra = [_norm_practice(q) for q in (agents.quizzer_generate(fill_system) or [])]
         if extra:
+            extra = _dedup([q for q in extra if q["type"] in ("choice", "bool")])
+            have = {q.get("content", "") for q in qs}
             for q in extra:
-                if _practice_total(qs) + POINTS[q["type"]] <= 100:
+                if _practice_total(qs) + POINTS[q["type"]] <= 100 and q.get("content", "") not in have:
                     qs.append(q)
+                    have.add(q.get("content", ""))
         qs = _fill_to_100(qs)
 
     # 最终兜底校验：任何情况都保证恰好 100 分
     if _practice_total(qs) != 100:
         qs = _fill_to_100(_trim_to_100(qs))
-    return qs
+    return _dedup(qs)
 
 
 def fallback_practice_questions(chapter_ids: list[str]) -> list[dict]:
-    """无 LLM 时的练习兜底：10 选择 + 5 问答（合计 100 分）。"""
-    return [_norm_practice(q) for q in _enforce_config([], {"choice": 10, "essay": 5})]
+    """无 LLM 时的练习兜底：20 道选择（合计 100 分，无 essay）。"""
+    return [_norm_practice(q) for q in _enforce_config([], {"choice": 20})]
 
 
 def generate_questions(chapter_ids: list[str], sub_concepts: str = "", spec: str = "",
@@ -338,7 +579,7 @@ def generate_questions(chapter_ids: list[str], sub_concepts: str = "", spec: str
         extra = agents.quizzer_generate(fill_system)
         if extra:
             qs = qs + extra
-    return _enforce_config(qs, cfg)
+    return _dedup(_enforce_config(qs, cfg))
 
 
 def norm_question(raw: dict, chapter_id: str) -> dict:

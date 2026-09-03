@@ -70,7 +70,7 @@ def test_draft_config_must_sum_100(client, teacher_headers):
 def test_draft_preset_is_100_points(client, teacher_headers):
     cid = _chapter(client, teacher_headers)
     resp = client.post("/api/quizzes/draft",
-                       json={"chapter_ids": [cid], "config": {"choice": 10, "essay": 5}},
+                       json={"chapter_ids": [cid], "config": {"choice": 20}},
                        headers=teacher_headers)
     assert resp.status_code == 200, resp.get_json()
     qid = resp.get_json()["data"]["id"]

@@ -1,19 +1,14 @@
-"""出题（QUIZZER）单元测试：RAG 注入 + 模板兜底不再重复同一道题。"""
+"""出题（QUIZZER）单元测试：RAG 注入 + 模板兜底不再重复同一道题 + 取消 essay + 固定 20 道。"""
 from ai import agents, quizzer, rag
 
 
 def test_enforce_config_no_duplicate_template():
-    """数量不足时模板兜底应多样化，不再同一道题重复 N 次。"""
-    out = quizzer._enforce_config([], {"choice": 5, "bool": 3, "essay": 2})
-    choice_contents = [q["content"] for q in out if q["type"] == "choice"]
-    bool_contents = [q["content"] for q in out if q["type"] == "bool"]
-    essay_contents = [q["content"] for q in out if q["type"] == "essay"]
-    assert len(choice_contents) == 5
-    assert len(bool_contents) == 3
-    assert len(essay_contents) == 2
-    assert len(set(choice_contents)) > 1
-    assert len(set(bool_contents)) > 1
-    assert len(set(essay_contents)) > 1
+    """数量不足时模板兜底应多样化：仅 choice/bool、无 essay、content 无重复。"""
+    out = quizzer._enforce_config([], {"choice": 10, "bool": 10})
+    assert len(out) == 20
+    assert all(q["type"] in ("choice", "bool") for q in out)
+    contents = [q["content"] for q in out]
+    assert len(set(contents)) == 20
 
 
 def test_generate_questions_injects_rag_chunks(monkeypatch):
@@ -63,3 +58,46 @@ def test_generate_questions_retries_when_short(monkeypatch):
     out = quizzer.generate_questions(["ch1"], config={"choice": 5})
     assert len(out) == 5
     assert len(calls) == 2
+
+
+def test_generate_practice_questions_fixed_20_no_essay_no_dup(monkeypatch):
+    """练习固定 20 道 choice/bool、各 5 分、合计 100、无 essay、题干无重复。"""
+    def fake_retrieve(query, chapter_id, top_k=5):
+        return []
+
+    def fake_generate(system):
+        return [{
+            "type": "choice", "content": f"题{i}", "options": ["A", "B", "C", "D"],
+            "answer": "0", "reason": "", "sub_concept": "",
+        } for i in range(20)]
+
+    monkeypatch.setattr(rag, "retrieve", fake_retrieve)
+    monkeypatch.setattr(agents, "quizzer_generate", fake_generate)
+    out = quizzer.generate_practice_questions(["ch1"])
+    assert len(out) == 20
+    assert all(q["type"] in ("choice", "bool") for q in out)
+    assert all(quizzer.POINTS[q["type"]] == 5 for q in out)
+    assert sum(quizzer.POINTS[q["type"]] for q in out) == 100
+    assert len({q["content"] for q in out}) == 20
+
+
+def test_generate_questions_dedup_content(monkeypatch):
+    """generate_questions 返回集按 content 去重，无重复题干。"""
+    def fake_retrieve(query, chapter_id, top_k=5):
+        return []
+
+    def fake_generate(system):
+        return [
+            {"type": "choice", "content": "重复题", "options": ["A", "B"], "answer": "0", "reason": "", "sub_concept": ""},
+            {"type": "choice", "content": "重复题", "options": ["A", "B"], "answer": "0", "reason": "", "sub_concept": ""},
+            {"type": "choice", "content": "题2", "options": ["A", "B"], "answer": "0", "reason": "", "sub_concept": ""},
+            {"type": "choice", "content": "题3", "options": ["A", "B"], "answer": "0", "reason": "", "sub_concept": ""},
+            {"type": "choice", "content": "题4", "options": ["A", "B"], "answer": "0", "reason": "", "sub_concept": ""},
+            {"type": "choice", "content": "题5", "options": ["A", "B"], "answer": "0", "reason": "", "sub_concept": ""},
+        ]
+
+    monkeypatch.setattr(rag, "retrieve", fake_retrieve)
+    monkeypatch.setattr(agents, "quizzer_generate", fake_generate)
+    out = quizzer.generate_questions(["ch1"], config={"choice": 5})
+    assert len(out) == 5
+    assert len({q["content"] for q in out}) == 5
