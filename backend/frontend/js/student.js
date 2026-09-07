@@ -107,7 +107,7 @@ const Student = {
       <div class="chat">${msgs}</div>
       ${relatedHtml}
     </div>
-    <div class="composer"><div style="display:flex;gap:6px;margin-bottom:5px"><button class="mini-btn" onclick="Student.openWrongConsult()">💡 咨询错题</button>${this.wrongCtx ? `<span class="muted" style="font-size:12px;align-self:center">已选 ${this.wrongCtx.length} 道错题，随本条发送</span>` : ''}</div><div style="display:flex;gap:8px"><input id="chatInput" style="flex:1" placeholder="回答引导问题，或追问…" onkeydown="if(event.key==='Enter')Student.send()"/><button class="send" onclick="Student.send()">↑</button></div></div>` + tabbar();
+    <div class="composer"><div class="composer-body"><div style="display:flex;align-items:center;gap:6px"><button class="mini-btn" onclick="Student.openWrongConsult()">💡 咨询错题</button></div>${this.wrongCtx ? `<div style="font-size:12px;color:var(--text-2);margin-bottom:4px">已选 ${this.wrongCtx.length} 道错题，随本条发送</div>` : ''}<div style="display:flex;gap:8px"><input id="chatInput" style="flex:1" placeholder="回答引导问题，或追问…" onkeydown="if(event.key==='Enter')Student.send()"/><button class="send" onclick="Student.send()">↑</button></div></div></div>` + tabbar();
   },
   selectChapter(id) { App.activeChapter = id; render(); },
   setTutorMode(mode) {

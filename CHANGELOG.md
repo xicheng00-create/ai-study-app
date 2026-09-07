@@ -2,6 +2,12 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.13.7] - 2026-09-07
+
+### 修复
+- **学习页对话输入区（composer）布局错乱**：`.composer` 横向 flex 下，按钮行（💡咨询错题）与输入行（input+send）被并排挤压，导致发送按钮点不到。修复：composer 内部包 `.composer-body`（纵向 flex：按钮行 / 选错题提示 / 输入行），「已选 N 道错题随本条发送」小字从按钮右侧移到按钮**下方**独立一行。
+- sw.js `CACHE` bump `v26→v27`。
+
 ## [1.13.6] - 2026-09-07
 
 ### 修复

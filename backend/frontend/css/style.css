@@ -53,6 +53,8 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text)}
 /* 对话输入框固定：钉在五个导航按钮（.tabbar 高 78px）之上，滚动不遮挡；
    --kb 由 visualViewport 脚本写入（安卓键盘高度补偿，iOS 键盘弹起时约 0） */
 .composer{position:fixed;bottom:calc(78px + var(--kb, 0px));left:0;right:0;margin:0 auto;max-width:520px;display:flex;gap:10px;padding:12px 16px;background:var(--bg);border-top:1px solid var(--border);z-index:25}
+/* composer 内部纵向堆叠：按钮行 / 选错题提示 / 输入行 */
+.composer-body{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
 /* 学习页内容区底部留白，避免被固定 composer 遮挡 */
 .content.chat-view{padding-bottom:74px}
 .composer input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 15px;font-size:15px;outline:none;font-family:var(--font)}
