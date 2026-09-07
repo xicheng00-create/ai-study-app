@@ -96,8 +96,8 @@ def weak_points():
     return ok({"weak_points": weak})
 
 
-def _wrong_evidence(con, user_id, chapter_id, limit=5):
-    """该章最新 version 错题 + 自主练习错题依据（拒绝凭空定性）。"""
+def _wrong_evidence(con, user_id, chapter_id):
+    """该章最新 version 错题 + 自主练习错题依据（拒绝凭空定性；v1.13.5 起不分页全部返回）。"""
     out = []
     latest = mastery.latest_version_for_chapter(con, chapter_id)
     if latest > 0:
@@ -105,8 +105,8 @@ def _wrong_evidence(con, user_id, chapter_id, limit=5):
             "SELECT a.answer, a.score, q.content AS q_content, q.answer_key AS q_answer_key,"
             " q.type AS q_type, q.options AS q_options, a.quiz_id AS quiz_id FROM attempts a JOIN questions q ON q.id=a.question_id"
             " WHERE a.user_id=? AND a.chapter_id=? AND a.quiz_version=? AND a.correct=0"
-            " ORDER BY a.created_at DESC LIMIT ?",
-            (user_id, chapter_id, latest, limit),
+            " ORDER BY a.created_at DESC",
+            (user_id, chapter_id, latest),
         ).fetchall()
         out.extend([{
             "question": r["q_content"],
@@ -117,19 +117,19 @@ def _wrong_evidence(con, user_id, chapter_id, limit=5):
             "quiz_id": r["quiz_id"],
             "source": "quiz",
         } for r in rows])
-    out.extend(_practice_wrong(con, user_id, chapter_id, limit))
-    return out[:limit]
+    out.extend(_practice_wrong(con, user_id, chapter_id))
+    return out
 
 
-def _practice_wrong(con, user_id, chapter_id, limit=5):
+def _practice_wrong(con, user_id, chapter_id):
     """该章自主练习错题（correct=0 或部分得分），作为薄弱依据之一。"""
     rows = con.execute(
         "SELECT pq.user_answer, pq.score, pq.content, pq.answer_key, pq.sub_concept,"
         " pq.type AS q_type, pq.options AS q_options FROM practice_questions pq JOIN practice_sessions ps ON ps.id=pq.session_id"
         " WHERE ps.user_id=? AND pq.chapter_id=? AND pq.answered_at IS NOT NULL"
         " AND (pq.correct=0 OR pq.score < pq.points)"
-        " ORDER BY pq.answered_at DESC LIMIT ?",
-        (user_id, chapter_id, limit),
+        " ORDER BY pq.answered_at DESC",
+        (user_id, chapter_id),
     ).fetchall()
     return [{
         "question": r["content"],

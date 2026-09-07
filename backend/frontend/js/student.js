@@ -46,6 +46,8 @@ const Student = {
   convs: [],          // 学习页对话 pill 列表缓存（长按删除时查标题）
   classCat: 0,        // 班级排行榜当前分类（0~5）
   classQuizId: null,  // 测评分数榜当前选中的测评
+  weakOpen: null,     // 薄弱点页展开的章节 id
+  weakGroupOpen: {},  // 薄弱点页展开的「章→组」键：`${chapter_id}:${quiz_id|practice}`
   _pressTimer: null,  // 长按手势定时器
   _pressX: 0, _pressY: 0, _touchTs: 0, _suppressClick: false,
 
@@ -61,6 +63,7 @@ const Student = {
     }
     if (h === "path") return await this.viewPath();
     if (h === "progress") return await this.viewProgress();
+    if (h === "weak") return await this.viewWeak();
     if (h === "class") return await this.viewClass();
     return await this.viewLearn();
   },
@@ -472,8 +475,8 @@ const Student = {
   },
 
   /* ===== 进度 ===== */
-  toggleWeak(cid) { this.weakOpen = (this.weakOpen === cid) ? null : cid; this.weakPick = {}; render(); },
-  pickWeakQuiz(cid, qid) { this.weakPick[cid] = (this.weakPick[cid] === qid) ? null : qid; render(); },
+  toggleWeak(cid) { this.weakOpen = (this.weakOpen === cid) ? null : cid; this.weakGroupOpen = {}; render(); },
+  toggleWeakGroup(cid, gid) { const k = `${cid}:${gid}`; this.weakGroupOpen[k] = !this.weakGroupOpen[k]; render(); },
   async viewProgress() {
     let mastery = { chapters: [], counts: { master: 0, progress: 0, weak: 0, na: 0 } };
     let weak = { weak_points: [] };
@@ -482,10 +485,6 @@ const Student = {
     let weekly = { stats: {}, weak_chapters: [] };
     try { mastery = await API.get("/api/progress/mastery"); } catch (e) {}
     try { weak = await API.get("/api/progress/weak-points"); } catch (e) {}
-    let quizzes = [];
-    try { quizzes = (await API.get("/api/quizzes")).quizzes || []; } catch (e) {}
-    const quizMap = {};
-    quizzes.forEach(function (qq) { quizMap[qq.id] = qq; });
     try { reviews = await API.get("/api/progress/review-items"); } catch (e) {}
     try { advice = await API.get("/api/progress/advice"); } catch (e) {}
     try { weekly = await API.get("/api/progress/weekly-stats"); } catch (e) {}
@@ -494,37 +493,10 @@ const Student = {
       const st = stateOf(ch.m, ch.attempts);
       return `<div class="chapter"><div><div class="nm">${esc(ch.name)}</div><div class="mt">掌握度 ${ch.m == null ? '—' : ch.m + '%'} · 作答 ${ch.attempts} 次</div></div><span class="badge ${st.cls}">${st.label}</span></div>`;
     }).join('') || '<div class="muted">暂无章节</div>';
-    const weakHtml = (weak.weak_points || []).map(w => {
-      const mLabel = w.m == null ? '未测评' : `M=${w.m}%`;
-      const evs = w.evidence || [];
-      const quizErr = {}, practiceErr = [];
-      evs.forEach(function (e) {
-        if (e.source === 'practice' || !e.quiz_id) practiceErr.push(e);
-        else { (quizErr[e.quiz_id] = quizErr[e.quiz_id] || []).push(e); }
-      });
-      const qids = Object.keys(quizErr);
-      const open = this.weakOpen === w.chapter_id;
-      // 章头（可点击展开/收起）
-      let head = `<div class="weak" style="cursor:pointer" onclick="Student.toggleWeak('${w.chapter_id}')"><span class="badge weak" style="flex-shrink:0">${esc(w.name)}</span><div style="flex:1"><div style="font-weight:600;font-size:13.5px">${mLabel} · ${evs.length} 道错题 · 来自 ${qids.length} 份测评</div></div><span>${open ? '▾' : '▸'}</span></div>`;
-      let body = '';
-      if (open) {
-        const groups = [];
-        qids.forEach(function (qid) {
-          const q = quizMap[qid] || {};
-          const sess = q.session;
-          const label = sess ? `测评 · 第${sess.week_no}周 第${sess.session_no}节` : (q.title || '测评');
-          const picked = this.weakPick[w.chapter_id] === qid;
-          const errs = quizErr[qid].map(function (e) { return fmtWrongCard({ content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept }); }).join('');
-          groups.push(`<div class="weak" style="margin-left:12px"><div style="cursor:pointer;font-weight:600;font-size:13px;color:var(--coral-strong)" onclick="Student.pickWeakQuiz('${w.chapter_id}','${qid}')">${esc(label)} <span class="muted">(${quizErr[qid].length} 道)</span></div>${picked ? errs : ''}</div>`);
-        }, this);
-        if (practiceErr.length) {
-          const pe = practiceErr.map(function (e) { return fmtWrongCard({ content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept }); }).join('');
-          groups.push(`<div class="weak" style="margin-left:12px"><div style="font-weight:600;font-size:13px">练习错题 <span class="muted">(${practiceErr.length} 道)</span></div>${pe}</div>`);
-        }
-        body = groups.join('') || '<div class="muted" style="margin-left:12px">暂无错题依据</div>';
-      }
-      return head + body;
-    }).join('') || '<div class="muted">暂无薄弱章节 🎉</div>';
+    const weakPoints = weak.weak_points || [];
+    const weakWrongCount = weakPoints.reduce(function (s, w) { return s + (w.evidence || []).length; }, 0);
+    // 薄弱点入口卡：点击进入独立薄弱点页（不再内嵌展开全部错题）
+    const weakHtml = `<div class="weak" style="cursor:pointer" onclick="go('weak')"><span class="badge weak" style="flex-shrink:0">📌</span><div style="flex:1"><div style="font-weight:600;font-size:13.5px">薄弱点 · ${weakPoints.length} 章 · ${weakWrongCount} 道错题</div><div class="muted" style="font-size:12px">点击查看按练习 / 测评分组的错题依据</div></div><span>›</span></div>`;
     const revHtml = (reviews.review_items || []).map(r => `<div class="rev-item ${r.status === 'done' ? 'done' : ''}">
       <span class="badge ${r.status === 'done' ? 'master' : 'weak'}">${esc(App.chapterName(r.chapter_id))}</span>
       <div style="flex:1;font-size:13px">${r.status === 'done' ? '已完成' : (r.due ? '已到期，可作答' : '下次复习 ' + r.interval_days + ' 天后')}</div>
@@ -554,6 +526,53 @@ const Student = {
       <div class="card"><div style="font-weight:700;margin-bottom:8px">薄弱点（带错题依据）</div>${weakHtml}</div>
       <div class="card"><div style="font-weight:700;margin-bottom:8px">巩固练习闭环（间隔复习 1→3→7）</div>${revHtml}
         <button class="btn" style="margin-top:12px" onclick="Student.genReview()">一键生成巩固练习</button></div>
+    </div>` + tabbar();
+  },
+  async viewWeak() {
+    let weak = { weak_points: [] };
+    try { weak = await API.get("/api/progress/weak-points"); } catch (e) {}
+    let quizzes = [];
+    try { quizzes = (await API.get("/api/quizzes")).quizzes || []; } catch (e) {}
+    const quizMap = {};
+    quizzes.forEach(function (qq) { quizMap[qq.id] = qq; });
+    const pts = weak.weak_points || [];
+    const totalWrong = pts.reduce(function (s, w) { return s + (w.evidence || []).length; }, 0);
+    // 章节纵向列表：点章头展开，章内按「练习错题 / 测评错题」分组，点组向下展开全部错题
+    const chapterList = pts.map(w => {
+      const evs = w.evidence || [];
+      const mLabel = w.m == null ? '未测评' : `M=${w.m}%`;
+      const open = this.weakOpen === w.chapter_id;
+      const head = `<div class="weak" style="cursor:pointer" onclick="Student.toggleWeak('${w.chapter_id}')"><span class="badge weak" style="flex-shrink:0">${esc(w.name)}</span><div style="flex:1"><div style="font-weight:600;font-size:13.5px">掌握度 ${mLabel} · ${evs.length} 道错题</div></div><span>${open ? '▾' : '▸'}</span></div>`;
+      let body = '';
+      if (open) {
+        const quizErr = {}, practiceErr = [];
+        evs.forEach(function (e) {
+          if (e.source === 'practice' || !e.quiz_id) practiceErr.push(e);
+          else { (quizErr[e.quiz_id] = quizErr[e.quiz_id] || []).push(e); }
+        });
+        const groups = [];
+        Object.keys(quizErr).forEach(function (qid) {
+          const q = quizMap[qid] || {};
+          const sess = q.session;
+          const label = sess ? `测评 · 第${sess.week_no}周 第${sess.session_no}节` : (q.title || '测评');
+          const gkey = `${w.chapter_id}:${qid}`;
+          const gOpen = !!this.weakGroupOpen[gkey];
+          const errs = quizErr[qid].map(function (e) { return fmtWrongCard({ content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept }); }).join('');
+          groups.push(`<div class="weak" style="margin-left:12px"><div style="cursor:pointer;font-weight:600;font-size:13px;color:var(--coral-strong)" onclick="Student.toggleWeakGroup('${w.chapter_id}','${qid}')">${esc(label)} <span class="muted">(${quizErr[qid].length} 道)</span> <span>${gOpen ? '▾' : '▸'}</span></div>${gOpen ? errs : ''}</div>`);
+        }, this);
+        if (practiceErr.length) {
+          const gkey = `${w.chapter_id}:practice`;
+          const gOpen = !!this.weakGroupOpen[gkey];
+          const pe = practiceErr.map(function (e) { return fmtWrongCard({ content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept }); }).join('');
+          groups.push(`<div class="weak" style="margin-left:12px"><div style="cursor:pointer;font-weight:600;font-size:13px" onclick="Student.toggleWeakGroup('${w.chapter_id}','practice')">练习错题 <span class="muted">(${practiceErr.length} 道)</span> <span>${gOpen ? '▾' : '▸'}</span></div>${gOpen ? pe : ''}</div>`);
+        }
+        body = groups.join('') || '<div class="muted" style="margin-left:12px">暂无错题依据</div>';
+      }
+      return head + body;
+    }).join('') || '<div class="muted">暂无薄弱章节 🎉</div>';
+    return appbar('薄弱点', '带错题依据 · 按练习 / 测评分组') + `<div class="content">
+      <button class="btn ghost sm" style="margin-bottom:10px" onclick="go('progress')">‹ 返回进度</button>
+      <div class="card"><div style="font-weight:700;margin-bottom:8px">薄弱章节 · ${pts.length} 章 · ${totalWrong} 道错题</div>${chapterList}</div>
     </div>` + tabbar();
   },
   async genReview() {

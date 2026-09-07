@@ -1,6 +1,6 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v1.13.4（2026-09-07）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
+> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v1.13.5（2026-09-07）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
 > 日期：2026-09-02  
 > 状态：设计评审  
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）  
@@ -557,6 +557,10 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 ### 12.12 实现状态回写（v1.13.4，2026-09-07）
 
 > - **CHAT-004/005（TUTOR 辅导模式可开关，✅）**：普通提问（无错题）从「恒引导式」改为**可切换「引导式 / 直接讲解」，默认直接讲解**。前端学习页顶部「🧑‍🎓 引导式」写死 pill 改为两态开关，选择写入 `localStorage("aistudy_tutor_mode")`（`guide`/`direct`）；`post_message` 读取 `tutor_mode`（非法/缺失默认 `direct`）传给 `tutor_orchestrate`，`TUTOR_SYSTEM` 新增 `{tutor_mode}` 槽位按模式分流。**错题辅导（wrong_ctx 非空）恒强制直接逐题输出完整解析**，不受开关影响（维持 v1.13.0 逻辑）。
+
+### 12.13 实现状态回写（v1.13.5，2026-09-07）
+
+> - **PROG-005（薄弱点改独立页，✅）**：学生端进度页底部「薄弱点（带错题依据）」由内嵌折叠大卡改为**入口卡**（「📌 薄弱点 · N 章 · M 道错题 ›」），点击进入独立薄弱点页（新 hash `#weak`，`Student.viewWeak()`）。独立页为**章节纵向列表**（掌握度 M + 错题数）→ 点章展开 → 章内按**「练习错题 / 测评错题（第X周 第Y节，用 `/api/quizzes` quizMap 反查 session 标题）」分组** → 点组**向下滚动展开全部错题**（复用 `fmtWrongCard` 纵向排列，杜绝横向滚动/横向卡片）。交互状态：`weakOpen`（展开章）+ `weakGroupOpen`（`${chapter_id}:${quiz_id|practice}` 组级展开）。后端 `_wrong_evidence`/`_practice_wrong` 去掉 `limit=5` 截断、全量返回错题依据（聚合逻辑不变）。
 
 ## 十三、NFR 与已知盲区（融合 PRD §13 + architecture §十三）
 
