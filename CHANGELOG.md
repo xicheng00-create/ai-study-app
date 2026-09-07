@@ -2,6 +2,13 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.12.4] - 2026-09-07
+
+### 修复
+- **学生「咨询错题」TUTOR 没拿到错题**：`tutor.py` 的 `if not chunks:` 门控在 `rag.retrieve` 无资料片段时直接返回「没找到资料」兜底，**忽略了 `wrong_ctx`**——学生带错题来咨询、恰好该轮检索不到资料时，TUTOR 不会讲错题。改为 `if not chunks and not wrong_ctx`：有错题时即使无资料片段，TUTOR 也按错题（题干+学生答案+参考答案）辅导。
+- **咨询错题选择器标题**改显「测评 · 第X周 第Y节」，不再显示草稿默认标题「草稿·X章」。
+- sw.js `CACHE` bump `v19→v20`。
+
 ## [1.12.3] - 2026-09-07
 
 ### 变更

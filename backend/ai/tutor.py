@@ -104,7 +104,7 @@ def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str
         return {"content": fallback.conclude_reply(topic), "cite": "", "turn": turn,
                 "fallback": True, "related_videos": related}
 
-    if not chunks:
+    if not chunks and not wrong_ctx:
         return {"content": fallback.fallback_reply("empty", chapter_name(con, chapter_id)),
                 "cite": "", "turn": turn, "fallback": True, "related_videos": related}
 

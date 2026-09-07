@@ -150,8 +150,9 @@ const Student = {
     const taken = quizzes.filter(q => q.taken);
     const rows = taken.map(q => {
       const s = q.session;
-      const label = s ? `第${s.week_no}周 第${s.session_no}节 · ${s.title}` : '未关联';
-      return `<div class="row" onclick="Student.selectWrongConsult('${q.id}')"><div>${esc(q.title)}</div><div class="muted" style="font-size:12px">${esc(label)}</div></div>`;
+      const title = s ? `测评 · 第${s.week_no}周 第${s.session_no}节` : (q.title || '测评');
+      const label = s ? `${s.title} · 覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}` : '未关联';
+      return `<div class="row" onclick="Student.selectWrongConsult('${q.id}')"><div>${esc(title)}</div><div class="muted" style="font-size:12px">${esc(label)}</div></div>`;
     }).join('');
     openSheet(`<div class="row" style="font-weight:700;cursor:default">💡 咨询错题</div>${rows || '<div class="row muted" style="cursor:default">暂无已作答测评</div>'}<div class="row cancel" onclick="closeSheet()">取消</div>`);
   },
