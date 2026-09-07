@@ -121,6 +121,8 @@ def post_message(conversation_id):
     concept_tags = data.get("concept_tags") or []
     chapter_ids = data.get("chapter_ids") or []
     wrong_ctx = data.get("wrong_ctx") or []
+    # 辅导模式开关：仅接受 guide/direct，非法或缺失默认 direct（直接讲解）
+    tutor_mode = data.get("tutor_mode") if data.get("tutor_mode") in ("guide", "direct") else "direct"
     if (not isinstance(concept_tags, list) or not isinstance(chapter_ids, list)
             or not isinstance(wrong_ctx, list)):
         return e_input("concept_tags / chapter_ids / wrong_ctx 需为数组")
@@ -154,7 +156,7 @@ def post_message(conversation_id):
 
     result = tutor.tutor_orchestrate(
         con, user_row, conv, content, chapter_id, concept_tags=concept_tags,
-        chapter_ids=chapter_ids, wrong_ctx=wrong_ctx
+        chapter_ids=chapter_ids, wrong_ctx=wrong_ctx, tutor_mode=tutor_mode
     )
     con.execute(
         "INSERT INTO messages (id, conversation_id, role, content, cite, turn, created_at)"

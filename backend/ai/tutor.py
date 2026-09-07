@@ -102,8 +102,13 @@ def _format_wrong_ctx(wrong_ctx) -> str:
 
 
 def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str | None,
-                      concept_tags=None, chapter_ids=None, wrong_ctx=None) -> dict:
-    """返回 {content, cite, turn, fallback, related_videos}。"""
+                      concept_tags=None, chapter_ids=None, wrong_ctx=None,
+                      tutor_mode: str = "direct") -> dict:
+    """返回 {content, cite, turn, fallback, related_videos}。
+
+    tutor_mode：普通提问（无错题）的辅导模式，`direct` 直接讲解 / `guide` 苏格拉底引导。
+    带错题（wrong_ctx 非空）时强制直接解析，不受 tutor_mode 影响。
+    """
     user_id = user_row["id"]
     turn = _current_turn(con, conversation["id"])
     weak = weak_chapter_names(con, user_id)
@@ -137,11 +142,16 @@ def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str
         return {"content": fallback.fallback_reply("empty", chapter_name(con, chapter_id)),
                 "cite": "", "turn": turn, "fallback": True, "related_videos": related}
 
+    # 错题辅导强制直接解析；普通提问按学生开关选择模式（非法值回退直接讲解）
+    mode = "direct" if wrong_ctx else (tutor_mode if tutor_mode in ("guide", "direct") else "direct")
+    mode_label = "直接讲解" if mode == "direct" else "引导式"
+
     system = TUTOR_SYSTEM.format(
         weak_chapters=weak_txt,
         retrieved_chunks=chunk_txt[:4000],
         related_videos=related_txt,
         wrong_ctx=_format_wrong_ctx(wrong_ctx),
+        tutor_mode=mode_label,
         turn=turn,
     )
     reply = agents.tutor_reply(system, _history(con, conversation["id"], turn))

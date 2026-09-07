@@ -33,6 +33,7 @@ const Student = {
   answers: {},
   result: null,
   wrongCtx: null,      // 本次待咨询的已作答错题，仅随下一条消息发送
+  tutorMode: null,     // 辅导模式开关：'guide' 引导式 / 'direct' 直接讲解（localStorage 持久化）
   practiceView: false,   // 自主练习入口（与教师测评列表并列）
   practice: null,        // 当前练习会话（含 questions，无 answer_key）
   practiceResult: null,  // {summary, detail}：批改结果
@@ -69,6 +70,8 @@ const Student = {
     let convs = [];
     try { convs = (await API.get("/api/conversations")).conversations || []; } catch (e) { convs = []; }
     this.convs = convs;
+    // 辅导模式开关：从 localStorage 读，无则默认「直接讲解」
+    this.tutorMode = localStorage.getItem("aistudy_tutor_mode") || "direct";
     if (!this.convId && convs.length) this.convId = convs[0].id;
     if (this.convId) {
       try { const d = await API.get("/api/conversations/" + this.convId); this.messages = d.messages || []; } catch (e) { this.messages = []; }
@@ -82,16 +85,17 @@ const Student = {
     const msgsHtml = this.messages.map(m => `<div class="msg ${m.role === 'user' ? 'user' : 'bot'}">${m.role === 'user' ? '' : '<div class="who">TUTOR</div>'}${esc(m.content)}</div>`).join('')
       + (this.pendingReply ? `<div class="msg bot"><div class="who">TUTOR</div><span class="typing"><span></span><span></span><span></span></span></div>` : '');
     const msgs = msgsHtml
-      || `<div class="muted" style="padding:12px 0">${App.activeChapter ? `已选择：${esc(App.chapterName(App.activeChapter))}，开始提问（不会直接给答案）` : '请从上方资料库选择章节，开始提问'}</div>`;
+      || `<div class="muted" style="padding:12px 0">${App.activeChapter ? `已选择：${esc(App.chapterName(App.activeChapter))}，开始提问（${this.tutorMode === 'guide' ? '引导式，不直接给答案' : '直接讲解，有问必答'}）` : '请从上方资料库选择章节，开始提问'}</div>`;
     const relatedHtml = (this.relatedVideos || []).length ? `<div class="card sm" style="margin-top:12px">
       <div style="font-weight:700;font-size:13px;margin-bottom:8px">🎬 相关视频课（学员自选观看）</div>
       ${this.relatedVideos.map(v => `<a class="video-chip" href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">▶ ${esc(v.title)}${v.platform ? ` · ${esc(v.platform)}` : ''}</a>`).join('')}
       </div>` : '';
 
-    return appbar('学习', '引导式辅导 · 不直接给答案') +
+    const isGuide = this.tutorMode === 'guide';
+    return appbar('学习', isGuide ? '引导式辅导 · 不直接给答案' : '直接讲解 · 有问必答') +
     `<div class="content chat-view">
       <div class="pill-wrap" style="margin-bottom:10px">
-        <span class="pill active">🧑‍🎓 引导式</span>
+        <span class="pill ${isGuide ? 'active' : ''}" style="cursor:pointer" onclick="Student.setTutorMode('guide')">🧑‍🎓 引导式</span><span class="pill ${isGuide ? '' : 'active'}" style="cursor:pointer" onclick="Student.setTutorMode('direct')">💬 直接讲解</span>
       </div>
       <div class="gate">🛡️ 回答由 AI 生成，请核对资料原文 · 越界内容已拦截</div>
       <div class="card sm" style="margin-bottom:12px"><div style="font-weight:700;font-size:13px;margin-bottom:8px">📚 资料库（点选范围）</div>${chapters || '<div class="muted">暂无章节</div>'}</div>
@@ -103,6 +107,12 @@ const Student = {
     <div class="composer"><div style="display:flex;gap:6px;margin-bottom:5px"><button class="mini-btn" onclick="Student.openWrongConsult()">💡 咨询错题</button>${this.wrongCtx ? `<span class="muted" style="font-size:12px;align-self:center">已选 ${this.wrongCtx.length} 道错题，随本条发送</span>` : ''}</div><div style="display:flex;gap:8px"><input id="chatInput" style="flex:1" placeholder="回答引导问题，或追问…" onkeydown="if(event.key==='Enter')Student.send()"/><button class="send" onclick="Student.send()">↑</button></div></div>` + tabbar();
   },
   selectChapter(id) { App.activeChapter = id; render(); },
+  setTutorMode(mode) {
+    // 切换辅导模式：guide 引导式 / direct 直接讲解，持久化到 localStorage
+    this.tutorMode = (mode === 'guide') ? 'guide' : 'direct';
+    localStorage.setItem("aistudy_tutor_mode", this.tutorMode);
+    render();
+  },
   selectConv(id) {
     // 长按弹删除后浏览器会补发 click，这里抑制以免误切换
     if (this._suppressClick) { this._suppressClick = false; return; }
@@ -175,7 +185,7 @@ const Student = {
     this.pendingReply = true;   // 显示思考气泡（即时反馈）
     render();
     try {
-      const payload = { content, chapter_id: App.activeChapter };
+      const payload = { content, chapter_id: App.activeChapter, tutor_mode: this.tutorMode || "direct" };
       // 从「路径」进入提问时，携带 session 的 chapter_ids/concept_tags 供视频推荐
       if (this.askCtx) {
         payload.chapter_ids = this.askCtx.chapter_ids || [];

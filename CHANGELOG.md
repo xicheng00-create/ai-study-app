@@ -2,6 +2,14 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.13.4] - 2026-09-07
+
+### 变更
+- **TUTOR 辅导模式可切换（引导式 / 直接讲解），默认直接讲解**：学生端学习页顶部「🧑‍🎓 引导式」写死 pill 改为可点切换的两态开关（`🧑‍🎓 引导式` ↔ `💬 直接讲解`），选择写入 `localStorage("aistudy_tutor_mode")`，默认「直接讲解」。
+- 后端 `post_message` 读取 `tutor_mode`（仅 `guide`/`direct`，非法或缺失默认 `direct`）传入 `tutor_orchestrate`；`TUTOR_SYSTEM` 新增 `{tutor_mode}` 槽位——普通提问按模式分流：直接讲解（给答案+解析）/ 引导式（苏格拉底反问）。
+- **错题恒直接解析**：带错题咨询（`wrong_ctx` 非空）无论开关状态一律强制直接逐题输出完整解析（保持 v1.13.0 逻辑不变）。
+- sw.js `CACHE` bump `v23→v24`。
+
 ## [1.13.3] - 2026-09-07
 
 ### 变更
