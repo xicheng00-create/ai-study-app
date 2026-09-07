@@ -2,6 +2,13 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.13.2] - 2026-09-07
+
+### 修复
+- **资料下载偶发 load failed**：`api.js` 的 `download` 在 `a.click()` 后**立即 `URL.revokeObjectURL`**，浏览器尚未读取 blob 就撤销对象 URL → 偶发「download load failed」。改为**延迟 revoke(120s)**。
+- 下载过程加 `loadingOn/loadingOff` + 完成 `toast`，避免大文件(pptx/pdf)全量拉取时无反馈、看似卡死。
+- sw.js `CACHE` bump `v21→v22`。
+
 ## [1.13.1] - 2026-09-07
 
 ### 修复

@@ -44,20 +44,29 @@ const API = (() => {
     // 方案B：下载源文件（带 Bearer，blob 触发下载）
     async download(id, filename) {
       const token = getToken();
-      const resp = await fetch("/api/materials/" + id + "/download", {
-        headers: token ? { "Authorization": "Bearer " + token } : {},
-      });
-      if (!resp.ok) {
-        let msg = "下载失败";
-        try { const b = await resp.json(); msg = b.msg || msg; } catch (e) { /* ignore */ }
-        throw new Error(msg);
+      loadingOn("下载中…");
+      try {
+        const resp = await fetch("/api/materials/" + id + "/download", {
+          headers: token ? { "Authorization": "Bearer " + token } : {},
+        });
+        if (!resp.ok) {
+          let msg = "下载失败";
+          try { const b = await resp.json(); msg = b.msg || msg; } catch (e) { /* ignore */ }
+          throw new Error(msg);
+        }
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = filename || "download";
+        document.body.appendChild(a); a.click(); a.remove();
+        // 延迟 revoke：避免浏览器还没读取 blob 就撤销导致「download load failed」
+        setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
+        toast("已开始下载");
+      } catch (e) {
+        throw e;
+      } finally {
+        loadingOff();
       }
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = filename || "download";
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
     },
     getToken, setToken,
   };
