@@ -537,6 +537,10 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 
 > - **QUIZ-002 学生答题页「返回列表」按钮无响应（前端 bug）**：`viewQuizTake()` 的「返回列表」`onclick` 只清了无关字段 `App.activeQuiz`（`Student.render()` 根本不用它分派），未清 `Student.quiz/answers/result` → 点击后 `render()` 仍按 `this.quiz` 走答题页。修复：改为清 `Student.quiz=null; Student.answers={}; Student.result=null`（与结果页「返回测评列表」按钮一致），返回测评列表生效（✅）。
 
+### 12.9 实现状态回写（v1.10.2，2026-09-07）
+
+> - **QUIZ-001/008 已发布测评可预览（前端增强）**：教师端「已发布的测评」卡片原仅有「重出」无预览入口；新增「👁 预览」（复用 `Teacher.preview`，调 `GET /api/quizzes/:id` 展示题目/分值/答案）。预览弹窗标题与底部按钮按状态适配：草稿→「草稿预览」+「确认发布」，已发布→「测评预览」+仅「关闭」（已发布无需再确认发布）（✅）。
+
 ## 十三、NFR 与已知盲区（融合 PRD §13 + architecture §十三）
 
 ### 13.1 NFR（REQ-NFR）
