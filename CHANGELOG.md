@@ -2,6 +2,12 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.12.2] - 2026-09-07
+
+### 修复
+- 学生端/教师端测评列表标题改显「测评 · 第X周 第Y节」（关联已发布 session 的周/节），不再显示草稿默认标题「草稿 · X章」；副标题含 session 标题（无 session 回退原标题）。
+- sw.js `CACHE` bump `v17→v18`；前端 `student.js`/`teacher.js` 周/节标题无功能回归（教师端「👁 学生错题」入口保留）。
+
 ## [1.12.1] - 2026-09-07
 
 ### 修复

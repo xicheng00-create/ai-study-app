@@ -254,8 +254,10 @@ const Student = {
     const list = quizzes.map(q => {
       const badge = q.taken ? `<span class="badge master">已完成 ${q.score}</span>` : `<span class="badge prog">待完成</span>`;
       const ver = q.version > 1 ? `<span class="badge ver">v${q.version}</span> ` : '';
+      const s = q.session;
+      const title = s ? `测评 · 第${s.week_no}周 第${s.session_no}节` : (q.title || '测评');
       return `<div class="qcard" onclick="Student.openQuiz('${q.id}')"><div class="ic">📝</div>
-        <div class="meta"><div class="t">${ver}${esc(q.title)}</div><div class="s">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div></div>
+        <div class="meta"><div class="t">${ver}${esc(title)}</div><div class="s">${s ? esc(s.title) + ' · ' : ''}覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div></div>
         <div style="text-align:right">${badge}</div></div>`;
     }).join('') || '<div class="muted">老师尚未发布测评</div>';
     const practiceEntry = `<div class="qcard" style="border-color:var(--coral)" onclick="Student.enterPractice()"><div class="ic">🎯</div>

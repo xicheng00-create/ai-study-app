@@ -351,9 +351,13 @@ const Teacher = {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-weight:700">${esc(q.title)}</div><span class="badge na">草稿待确认</span></div>
       <div class="muted" style="font-size:12px;margin-bottom:8px">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')} · v${q.version} · ${q.total_points} 分</div>
       <div style="display:flex;gap:8px"><button class="btn teacher sm" style="flex:1" onclick="Teacher.preview('${q.id}')">👁 预览</button><button class="btn teacher sm" style="flex:1" onclick="Teacher.publish('${q.id}')">确认发布</button><button class="mini-btn danger" onclick="Teacher.dropQuiz('${q.id}')">放弃</button></div></div>`).join('');
-    const published = quizzes.filter(q => q.status === "published").map(q => `<div class="card sm" style="display:flex;justify-content:space-between;align-items:center">
-      <div><div style="font-weight:700">${q.version > 1 ? `<span class="badge ver">v${q.version}</span> ` : ''}${esc(q.title)}</div><div class="muted">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')} · ${q.total_points} 分</div></div>
-      <div style="display:flex;gap:6px"><span class="mini-btn teacher" onclick="Teacher.preview('${q.id}')">👁 预览</span><span class="mini-btn teacher" onclick="Teacher.openStudentErrors('${q.id}')">👁 学生错题</span><span class="mini-btn teacher" onclick="Teacher.revise('${q.id}')">重出</span></div></div>`).join('');
+    const published = quizzes.filter(q => q.status === "published").map(q => {
+      const s = q.session;
+      const title = s ? `测评 · 第${s.week_no}周 第${s.session_no}节` : (q.title || '测评');
+      return `<div class="card sm" style="display:flex;justify-content:space-between;align-items:center">
+      <div><div style="font-weight:700">${q.version > 1 ? `<span class="badge ver">v${q.version}</span> ` : ''}${esc(title)}</div><div class="muted">${s ? esc(s.title) + ' · ' : ''}覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')} · ${q.total_points} 分</div></div>
+      <div style="display:flex;gap:6px"><span class="mini-btn teacher" onclick="Teacher.preview('${q.id}')">👁 预览</span><span class="mini-btn teacher" onclick="Teacher.openStudentErrors('${q.id}')">👁 学生错题</span><span class="mini-btn teacher" onclick="Teacher.revise('${q.id}')">重出</span></div></div>`;
+    }).join('');
     const cfg = this.quizConfig || {};
     const presetHtml = this.QUIZ_PRESETS.map(p => {
       const on = (cfg.choice || 0) === (p.cfg.choice || 0) && (cfg.bool || 0) === (p.cfg.bool || 0);
