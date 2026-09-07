@@ -58,7 +58,9 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text)}
 /* 学习页内容区底部留白，避免被固定 composer 遮挡 */
 .content.chat-view{padding-bottom:74px}
 .composer input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 15px;font-size:15px;outline:none;font-family:var(--font)}
-.composer .send{width:46px;height:46px;border-radius:14px;background:var(--coral);border:none;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0}
+.composer .send{width:46px;height:46px;border-radius:14px;background:var(--coral);border:none;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.composer .send .ic{width:20px;height:20px}
+.dl .ic{width:14px;height:14px;vertical-align:-2px}
 .tabbar{position:fixed;bottom:0;left:0;right:0;margin:0 auto;max-width:520px;height:78px;background:rgba(251,247,242,.86);backdrop-filter:blur(20px);border-top:1px solid var(--border);display:flex;padding:8px 6px 18px;z-index:30}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--text-3);font-size:10.5px;font-weight:600;cursor:pointer;border:none;background:none;font-family:var(--font)}
 .tab svg{width:23px;height:23px}
@@ -137,6 +139,7 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text)}
 .gate{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-2);background:var(--surface-2);border-radius:10px;padding:8px 11px;margin-bottom:10px;border:1px solid var(--border)}
 .note{text-align:center;color:var(--text-2);font-size:14px;padding:40px 24px;line-height:1.6}
 .note .big{font-size:40px;margin-bottom:14px}
+.note .big .ic{width:40px;height:40px}
 .mini-input{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px;font-family:var(--font);font-size:13.5px;outline:none;margin-top:8px}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--coral);border-radius:50%;animation:rot .7s linear infinite;vertical-align:-2px}
 @keyframes rot{to{transform:rotate(360deg)}}
@@ -190,3 +193,38 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text)}
 .qp::-webkit-scrollbar{display:none}
 .qp .c{flex:0 0 auto;padding:8px 14px;border-radius:12px;background:var(--surface);border:1px solid var(--border);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap}
 .qp .c.on{background:var(--coral-soft);border-color:var(--coral);color:var(--coral-strong)}
+
+/* ===== 全局 UI 优化（v1.14.0 方向 A + 层级重排）===== */
+/* 工具类：抽内联 style */
+.sec-title{font-weight:700;font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.sec-title-sm{font-weight:600;font-size:12.5px;margin-bottom:6px}
+.sec-head{font-weight:700;font-size:15px;margin:14px 0 10px;display:flex;align-items:center;gap:6px}
+.sec-head:first-child{margin-top:2px}
+.mt-8{margin-top:8px}.mt-10{margin-top:10px}.mt-12{margin-top:12px}
+.mb-8{margin-bottom:8px}.mb-10{margin-bottom:10px}.mb-12{margin-bottom:12px}
+.grow{flex:1;min-width:0}
+.flex{display:flex;align-items:center;gap:8px}
+/* 图标：内联 SVG via <span class="ic">，颜色随 token 自适应 */
+.ic{width:15px;height:15px;flex-shrink:0;display:inline-block;vertical-align:-2px}
+.ic svg{width:100%;height:100%}
+.ic.coral{color:var(--coral-strong)}
+.ic.indigo{color:var(--indigo)}
+/* segmented control：学习页模式切换（一眼看出当前模式） */
+.seg{display:flex;background:var(--surface-2);border-radius:12px;padding:3px;margin-bottom:12px;gap:3px}
+.seg button{flex:1;border:none;background:transparent;border-radius:9px;padding:8px 10px;font-size:12.5px;font-weight:600;color:var(--text-2);font-family:var(--font);display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
+.seg button.on{background:var(--surface);color:var(--coral-strong);box-shadow:0 2px 8px rgba(0,0,0,.06)}
+/* AI info 条：安静，不抢戏 */
+.ai-info{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-3);background:var(--surface-2);border-radius:10px;padding:8px 11px;margin-bottom:12px}
+/* 卡片标题行 + 计数徽章 */
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.card-title{font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px}
+.card-title .ic{color:var(--coral-strong)}
+.card-count{font-size:11px;color:var(--text-3);background:var(--surface-2);border-radius:999px;padding:3px 8px;font-weight:600}
+/* 选中章节左珊瑚条 */
+.chapter.active{position:relative}
+.chapter.active::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--coral)}
+/* 进度行（新对话 + 轮数）*/
+.row-meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+/* 底部行动按钮（咨询错题等主操作）*/
+.tool-btn{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--coral-strong);background:var(--coral-soft);border:none;border-radius:9px;padding:7px 11px;cursor:pointer;font-family:var(--font)}
+.tool-btn.teacher{color:var(--indigo);background:var(--indigo-soft)}

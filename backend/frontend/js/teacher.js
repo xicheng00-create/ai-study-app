@@ -35,7 +35,7 @@ const Teacher = {
     App.chapters.forEach(c => { (grouped[c.folder || '未分组'] = grouped[c.folder || '未分组'] || []).push(c); });
     const lib = Object.keys(grouped).map(f => `<div class="folder">${esc(f)}</div>` + grouped[f].map(c => {
       const mats = materials.filter(m => m.chapter_id === c.id);
-      const matHtml = mats.map(m => `<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:6px"><span style="flex:1;min-width:0;word-break:break-word">📄 ${esc(m.original_name)}</span>
+      const matHtml = mats.map(m => `<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:6px"><span style="flex:1;min-width:0;word-break:break-word">${ic('file')} ${esc(m.original_name)}</span>
         <span class="badge ${m.parse_status === 'parsed' ? 'parse' : 'fail'}" style="flex-shrink:0">${m.parse_status === 'parsed' ? `已解析 ${m.chunk_count} 块` : '解析失败'}</span>
         <span class="mini-btn" style="flex-shrink:0" onclick="Teacher.downloadMat('${m.id}','${esc(m.original_name)}')">下载</span>
         <span class="mini-btn danger" style="flex-shrink:0" onclick="Teacher.delMaterial('${m.id}')">删</span></div>`).join('') || '<div class="muted" style="font-size:12px;margin-top:4px">暂无资料</div>';
@@ -58,9 +58,9 @@ const Teacher = {
     return appbar('管理后台', '教师专有') + `<div class="content">
       <button class="btn teacher" style="margin-bottom:8px" onclick="Teacher.newChapterForm()">＋ 新建章节</button>
       <button class="btn sec" style="margin-bottom:14px" onclick="Teacher.newStudentForm()">＋ 新建学生账号</button>
-      <div style="font-weight:700;font-size:15px;margin:4px 0 10px">资料与章节</div>${lib}
-      <div style="font-weight:700;font-size:15px;margin:14px 0 10px">学生账号管理</div>${studentsHtml}
-      <div style="font-weight:700;font-size:15px;margin:14px 0 10px">全班学习概览</div>${overviewHtml || '<div class="muted">暂无数据</div>'}
+      <div class="sec-head">资料与章节</div>${lib}
+      <div class="sec-head">学生账号管理</div>${studentsHtml}
+      <div class="sec-head">全班学习概览</div>${overviewHtml || '<div class="muted">暂无数据</div>'}
     </div>` + tabbar();
   },
   newChapterForm() {
@@ -166,7 +166,7 @@ const Teacher = {
         const vids = (s.videos || []).map(v => `<div class="mat">▶ ${esc(v.title)}${v.platform ? ` · ${esc(v.platform)}` : ''}</div>`).join('') || '<div class="muted" style="font-size:12px">暂无视频</div>';
         return `<div class="adm-card" style="flex-direction:column;align-items:stretch">
           <div style="display:flex;align-items:center;gap:10px"><div style="font-weight:700;flex:1">第${w.week_no}周 · 第${s.session_no}节 ${esc(s.title)}</div>${badge}</div>
-          ${s.goal ? `<div class="muted" style="font-size:12px;margin:4px 0">🎯 ${esc(s.goal)}</div>` : ''}
+          ${s.goal ? `<div class="muted" style="font-size:12px;margin:4px 0">${ic('target','coral')}${esc(s.goal)}</div>` : ''}
           <div class="muted" style="font-size:12px;margin-bottom:4px">关联章节：${(s.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、') || '无'}</div>
           <div>${vids}</div>
           <div style="display:flex;gap:8px;margin-top:10px">
@@ -190,8 +190,8 @@ const Teacher = {
     return appbar('课程管理', '学习路径 · 发布后学生可见') + `<div class="content">
       <button class="btn teacher" style="margin-bottom:8px" onclick="Teacher.newSessionForm()">＋ 新建 Session</button>
       <button class="btn sec" style="margin-bottom:14px" onclick="Teacher.newVideoForm()">＋ 新建视频课</button>
-      <div style="font-weight:700;font-size:15px;margin:4px 0 10px">学习路径（周→节）</div>${sessHtml}
-      <div style="font-weight:700;font-size:15px;margin:14px 0 10px">视频课（外链）</div>${vidsHtml}
+      <div class="sec-head">学习路径</div>${sessHtml}
+      <div class="sec-head">视频课</div>${vidsHtml}
     </div>` + tabbar();
   },
 
@@ -350,13 +350,13 @@ const Teacher = {
     const drafts = quizzes.filter(q => q.status === "draft").map(q => `<div class="card sm" style="border-color:var(--indigo)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-weight:700">${esc(q.title)}</div><span class="badge na">草稿待确认</span></div>
       <div class="muted" style="font-size:12px;margin-bottom:8px">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')} · v${q.version} · ${q.total_points} 分</div>
-      <div style="display:flex;gap:8px"><button class="btn teacher sm" style="flex:1" onclick="Teacher.preview('${q.id}')">👁 预览</button><button class="btn teacher sm" style="flex:1" onclick="Teacher.publish('${q.id}')">确认发布</button><button class="mini-btn danger" onclick="Teacher.dropQuiz('${q.id}')">放弃</button></div></div>`).join('');
+      <div style="display:flex;gap:8px"><button class="btn teacher sm" style="flex:1" onclick="Teacher.preview('${q.id}')">${ic('eye')}预览</button><button class="btn teacher sm" style="flex:1" onclick="Teacher.publish('${q.id}')">确认发布</button><button class="mini-btn danger" onclick="Teacher.dropQuiz('${q.id}')">放弃</button></div></div>`).join('');
     const published = quizzes.filter(q => q.status === "published").map(q => {
       const s = q.session;
       const title = s ? `测评 · 第${s.week_no}周 第${s.session_no}节` : (q.title || '测评');
       return `<div class="card sm" style="display:flex;justify-content:space-between;align-items:center">
       <div><div style="font-weight:700">${q.version > 1 ? `<span class="badge ver">v${q.version}</span> ` : ''}${esc(title)}</div><div class="muted">${s ? esc(s.title) + ' · ' : ''}覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')} · ${q.total_points} 分</div></div>
-      <div style="display:flex;gap:6px"><span class="mini-btn teacher" onclick="Teacher.preview('${q.id}')">👁 预览</span><span class="mini-btn teacher" onclick="Teacher.openStudentErrors('${q.id}')">👁 学生错题</span><span class="mini-btn teacher" onclick="Teacher.revise('${q.id}')">重出</span></div></div>`;
+      <div style="display:flex;gap:6px"><span class="mini-btn teacher" onclick="Teacher.preview('${q.id}')">${ic('eye')}预览</span><span class="mini-btn teacher" onclick="Teacher.openStudentErrors('${q.id}')">${ic('eye')}学生错题</span><span class="mini-btn teacher" onclick="Teacher.revise('${q.id}')">重出</span></div></div>`;
     }).join('');
     const cfg = this.quizConfig || {};
     const presetHtml = this.QUIZ_PRESETS.map(p => {
@@ -375,8 +375,8 @@ const Teacher = {
         </div>
         <div class="muted" style="font-size:12px;margin-top:6px">当前组合：${total} 分（${total === 100 ? '✓ 有效' : '须为 100'})</div>
         <button class="btn teacher" style="margin-top:12px" onclick="Teacher.draft()">生成草稿（${sel.length} 章）</button></div>
-      ${drafts ? `<div style="font-weight:700;font-size:14px;margin:12px 0 8px">待确认草稿</div>${drafts}` : ''}
-      <div style="font-weight:700;font-size:15px;margin:14px 0 10px">已发布的测评</div>${published || '<div class="muted">暂无</div>'}
+      ${drafts ? `<div class="sec-head" style="font-size:14px">待确认草稿</div>${drafts}` : ''}
+      <div class="sec-head">已发布的测评</div>${published || '<div class="muted">暂无</div>'}
     </div>` + tabbar();
   },
   setQuizPreset(key) {
@@ -454,8 +454,8 @@ const Teacher = {
       <div class="stat"><div class="v" style="color:var(--red);font-size:18px">${s.counts.weak}</div><div class="k">薄弱</div></div></div>
       ${(s.weak_chapters || []).length ? `<div class="muted" style="margin-top:10px;font-size:12px">薄弱章节：${s.weak_chapters.map(esc).join('、')}</div>` : ''}</div>`).join('');
     return appbar('全班进度', '按学生聚合') + `<div class="content">
-      <div class="card"><div style="font-weight:700;margin-bottom:8px">共性薄弱章节</div>
-        ${(overview.common_weak_chapters || []).map(c => `<div class="weak"><span class="badge weak">${esc(c)}</span><div class="muted" style="font-size:12.5px">多名同学待补强</div></div>`).join('') || '<div class="muted">暂无共性薄弱 🎉</div>'}</div>
+      <div class="card"><div class="sec-title">共性薄弱章节</div>
+        ${(overview.common_weak_chapters || []).map(c => `<div class="weak"><span class="badge weak">${esc(c)}</span><div class="muted" style="font-size:12.5px">多名同学待补强</div></div>`).join('') || '<div class="muted">暂无共性薄弱</div>'}</div>
       ${cards}</div>` + tabbar();
   },
 
@@ -527,8 +527,8 @@ const Teacher = {
 
     const weak = d.common_weak_chapters || [];
     const weakCard = `<div class="card" style="background:var(--indigo-soft);border-color:#D9D9F5">
-      <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:var(--indigo)">共性薄弱章节</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">${weak.map(c => `<span class="badge weak">${esc(c)}</span>`).join('') || '<span class="muted" style="font-size:12.5px">暂无共性薄弱 🎉</span>'}</div>
+      <div class="sec-title" style="color:var(--indigo)">共性薄弱章节</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${weak.map(c => `<span class="badge weak">${esc(c)}</span>`).join('') || '<span class="muted" style="font-size:12.5px">暂无共性薄弱</span>'}</div>
       <button class="btn teacher sm" style="margin-top:12px;width:auto;padding:9px 16px" onclick="go('quiz')">＋ 布置巩固测评</button></div>`;
 
     return appbar('班级活动', '教师视角 · 全班完整排行榜') + `<div class="content">

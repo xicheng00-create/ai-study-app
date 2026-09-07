@@ -90,24 +90,33 @@ const Student = {
     const msgs = msgsHtml
       || `<div class="muted" style="padding:12px 0">${App.activeChapter ? `已选择：${esc(App.chapterName(App.activeChapter))}，开始提问（${this.tutorMode === 'guide' ? '引导式，不直接给答案' : '直接讲解，有问必答'}）` : '请从上方资料库选择章节，开始提问'}</div>`;
     const relatedHtml = (this.relatedVideos || []).length ? `<div class="card sm" style="margin-top:12px">
-      <div style="font-weight:700;font-size:13px;margin-bottom:8px">🎬 相关视频课（学员自选观看）</div>
+      <div class="sec-title">${ic('video','coral')}相关视频课（学员自选观看）</div>
       ${this.relatedVideos.map(v => `<a class="video-chip" href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">▶ ${esc(v.title)}${v.platform ? ` · ${esc(v.platform)}` : ''}</a>`).join('')}
       </div>` : '';
 
     const isGuide = this.tutorMode === 'guide';
     return appbar('学习', isGuide ? '引导式辅导 · 不直接给答案' : '直接讲解 · 有问必答') +
     `<div class="content chat-view">
-      <div class="pill-wrap" style="margin-bottom:10px">
-        <span class="pill ${isGuide ? 'active' : ''}" style="cursor:pointer" onclick="Student.setTutorMode('guide')">🧑‍🎓 引导式</span><span class="pill ${isGuide ? '' : 'active'}" style="cursor:pointer" onclick="Student.setTutorMode('direct')">💬 直接讲解</span>
+      <!-- 模式切换：segmented control，一眼看出当前 -->
+      <div class="seg">
+        <button class="${isGuide ? 'on' : ''}" onclick="Student.setTutorMode('guide')">${ic('grad')}引导式</button>
+        <button class="${isGuide ? '' : 'on'}" onclick="Student.setTutorMode('direct')">${ic('chat')}直接讲解</button>
       </div>
-      <div class="gate">🛡️ 回答由 AI 生成，请核对资料原文 · 越界内容已拦截</div>
-      <div class="card sm" style="margin-bottom:12px"><div style="font-weight:700;font-size:13px;margin-bottom:8px">📚 资料库（点选范围）</div>${chapters || '<div class="muted">暂无章节</div>'}</div>
-      <div class="pill-wrap" style="margin-bottom:10px">${convChips}</div>
-      <div class="pill" style="margin-bottom:10px">🧭 第 ${this.turn} / 12 轮</div>
+      <!-- AI info 条：安静，不抢戏 -->
+      <div class="ai-info">${ic('shield')}回答由 AI 生成，请核对资料原文 · 越界内容已拦截</div>
+      <!-- 资料库：标题 + 篇数徽章 + 选中章左珊瑚条 -->
+      <div class="card sm mb-12">
+        <div class="card-head"><div class="card-title">${ic('book','coral')}资料库</div><span class="card-count">${App.chapters.length} 篇</span></div>
+        ${chapters || '<div class="muted">暂无章节</div>'}
+      </div>
+      <!-- 对话 chips + 新对话 -->
+      <div class="pill-wrap mb-10">${convChips}</div>
+      <!-- 进度行：轮数 -->
+      <div class="row-meta"><span class="pill">${ic('clock')}第 ${this.turn} / 12 轮</span></div>
       <div class="chat">${msgs}</div>
       ${relatedHtml}
     </div>
-    <div class="composer"><div class="composer-body"><div style="display:flex;align-items:center;gap:6px"><button class="mini-btn" onclick="Student.openWrongConsult()">💡 咨询错题</button></div>${this.wrongCtx ? `<div style="font-size:12px;color:var(--text-2);margin-bottom:4px">已选 ${this.wrongCtx.length} 道错题，随本条发送</div>` : ''}<div style="display:flex;gap:8px"><input id="chatInput" style="flex:1" placeholder="回答引导问题，或追问…" onkeydown="if(event.key==='Enter')Student.send()"/><button class="send" onclick="Student.send()">↑</button></div></div></div>` + tabbar();
+    <div class="composer"><div class="composer-body"><div class="flex"><button class="tool-btn" onclick="Student.openWrongConsult()">${ic('lightbulb')}咨询错题</button></div>${this.wrongCtx ? `<div class="muted" style="font-size:12px;margin-bottom:4px">已选 ${this.wrongCtx.length} 道错题，随本条发送</div>` : ''}<div class="flex"><input id="chatInput" class="grow" placeholder="回答引导问题，或追问…" onkeydown="if(event.key==='Enter')Student.send()"/><button class="send" onclick="Student.send()">${ic('arrowUp')}</button></div></div></div>` + tabbar();
   },
   selectChapter(id) { App.activeChapter = id; render(); },
   setTutorMode(mode) {
@@ -167,7 +176,7 @@ const Student = {
       const label = s ? `${s.title} · 覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}` : '未关联';
       return `<div class="row" onclick="Student.selectWrongConsult('${q.id}')"><div>${esc(title)}</div><div class="muted" style="font-size:12px">${esc(label)}</div></div>`;
     }).join('');
-    openSheet(`<div class="row" style="font-weight:700;cursor:default">💡 咨询错题</div>${rows || '<div class="row muted" style="cursor:default">暂无已作答测评</div>'}<div class="row cancel" onclick="closeSheet()">取消</div>`);
+    openSheet(`<div class="row" style="font-weight:700;cursor:default">${ic('lightbulb')}咨询错题</div>${rows || '<div class="row muted" style="cursor:default">暂无已作答测评</div>'}<div class="row cancel" onclick="closeSheet()">取消</div>`);
   },
   async selectWrongConsult(id) {
     try {
@@ -228,23 +237,23 @@ const Student = {
     const body = weeks.length ? weeks.map(w => {
       const ss = (w.sessions || []).map(s => {
         const chaps = (s.chapters || []).map(c => `<span class="pill">${esc(c.name)}</span>`).join('') || '';
-        const mats = (s.materials || []).map(m => `<div class="mat">📄 ${esc(m.original_name || m.filename)} <span class="dl" onclick="Student.downloadMat('${m.id}','${esc(m.original_name || m.filename)}')">⬇ 下载</span></div>`).join('') || '<div class="muted" style="font-size:12.5px">暂无资料</div>';
+        const mats = (s.materials || []).map(m => `<div class="mat">${ic('file')} ${esc(m.original_name || m.filename)} <span class="dl" onclick="Student.downloadMat('${m.id}','${esc(m.original_name || m.filename)}')">${ic('download','indigo')}下载</span></div>`).join('') || '<div class="muted" style="font-size:12.5px">暂无资料</div>';
         const vids = (s.videos || []).map(v => `<a class="video-chip" href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">▶ ${esc(v.title)}${v.platform ? ` · ${esc(v.platform)}` : ''}</a>`).join('') || '<div class="muted" style="font-size:12.5px">暂无视频</div>';
         const tags = (s.concept_tags || []).map(t => `<span class="badge ver">${esc(t)}</span>`).join('') || '';
         return `<details class="acc">
           <summary><div class="acc-t"><b>第${w.week_no}周 · 第${s.session_no}节</b><span>${esc(s.title)}</span></div></summary>
           <div class="acc-body">
-            ${s.goal ? `<div class="muted" style="margin-bottom:8px">🎯 ${esc(s.goal)}</div>` : ''}
-            ${tags ? `<div class="pill-wrap" style="margin-bottom:8px">${tags}</div>` : ''}
-            ${chaps ? `<div class="pill-wrap" style="margin-bottom:8px">${chaps}</div>` : ''}
-            <div style="font-weight:600;font-size:12.5px;margin-bottom:6px">📚 资料</div>${mats}
-            <div style="font-weight:600;font-size:12.5px;margin:10px 0 6px">🎬 视频课（外链，自行观看）</div>${vids}
-            <button class="btn sm" style="margin-top:12px" onclick="Student.askSession('${s.id}')">💬 去提问</button>
+            ${s.goal ? `<div class="muted mb-8">${ic('target','coral')}${esc(s.goal)}</div>` : ''}
+            ${tags ? `<div class="pill-wrap mb-8">${tags}</div>` : ''}
+            ${chaps ? `<div class="pill-wrap mb-8">${chaps}</div>` : ''}
+            <div class="sec-title-sm">${ic('book','coral')}资料</div>${mats}
+            <div class="sec-title-sm" style="margin:10px 0 6px">${ic('video','coral')}视频课（外链）</div>${vids}
+            <button class="btn sm mt-12" onclick="Student.askSession('${s.id}')">${ic('chat')}去提问</button>
           </div>
         </details>`;
       }).join('');
       return `<div class="week-title">第 ${w.week_no} 周</div>${ss}`;
-    }).join('') : '<div class="note"><div class="big">📖</div>老师尚未发布学习路径</div>';
+    }).join('') : `<div class="note"><div class="big">${ic('book')}</div>老师尚未发布学习路径</div>`;
     return appbar('学习路径', '8 周 · 周/节进度') + `<div class="content">${body}</div>` + tabbar();
   },
 
@@ -270,11 +279,11 @@ const Student = {
       const ver = q.version > 1 ? `<span class="badge ver">v${q.version}</span> ` : '';
       const s = q.session;
       const title = s ? `测评 · 第${s.week_no}周 第${s.session_no}节` : (q.title || '测评');
-      return `<div class="qcard" onclick="Student.openQuiz('${q.id}')"><div class="ic">📝</div>
+      return `<div class="qcard" onclick="Student.openQuiz('${q.id}')"><div class="ic">${ic('edit')}</div>
         <div class="meta"><div class="t">${ver}${esc(title)}</div><div class="s">${s ? esc(s.title) + ' · ' : ''}覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div></div>
         <div style="text-align:right">${badge}</div></div>`;
     }).join('') || '<div class="muted">老师尚未发布测评</div>';
-    const practiceEntry = `<div class="qcard" style="border-color:var(--coral)" onclick="Student.enterPractice()"><div class="ic">🎯</div>
+    const practiceEntry = `<div class="qcard" style="border-color:var(--coral)" onclick="Student.enterPractice()"><div class="ic">${ic('target')}</div>
       <div class="meta"><div class="t">自主练习</div><div class="s">根据资料 AI 生成 · 即答即批</div></div></div>`;
     return appbar('测评', '教师发布 · 全班同题') + `<div class="content">${practiceEntry}${list}</div>` + tabbar();
   },
@@ -302,8 +311,9 @@ const Student = {
       const opts = (item.options || []).map((o, oi) => `<div class="opt" id="opt_${item.id}_${oi}" onclick="Student.pick('${item.id}',${oi})"><span class="dot"></span>${esc(o)}</div>`).join('');
       return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}<b class="pts">${item.points} 分</b></span></div>${opts}</div>`;
     }).join('');
-    return appbar('测评', esc(q.title)) +
-    `<div class="content"><div class="card sm" style="margin-bottom:12px">覆盖章节：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(c => `<span class="pill" style="margin-right:6px">${esc(c)}</span>`).join('')}</div>
+    const ttl = (q.session ? `测评 · 第${q.session.week_no}周 第${q.session.session_no}节` : (q.title || '测评'));
+    return appbar('测评', esc(ttl)) +
+    `<div class="content"><div class="card sm mb-12"><div class="muted">覆盖章节：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(c => `<span class="pill" style="margin-right:6px">${esc(c)}</span>`).join('')}</div></div>
       ${qs}<button class="btn" onclick="Student.submit()">提交并批改</button>
       <button class="btn ghost" style="margin-top:8px" onclick="Student.quiz=null;Student.answers={};Student.result=null;App.activeQuiz=null;render()">返回列表</button></div>` + tabbar();
   },
@@ -330,10 +340,10 @@ const Student = {
   viewResult() {
     const r = this.result || {};
     const wrong = (r.report && r.report.wrong) || [];
-    const wrongHtml = wrong.length ? wrong.map(w => fmtWrongCard(w)).join('') : '<div class="muted">全部正确 🎉</div>';
+    const wrongHtml = wrong.length ? wrong.map(w => fmtWrongCard(w)).join('') : `<div class="muted">${ic('sparkle','coral')}全部正确</div>`;
     return appbar('测评', '批改完成') + `<div class="content">
       <div class="result"><div class="score">${r.score}</div><div class="lbl">本次得分 / 100 · 答对 ${r.correct}/${r.total}</div></div>
-      <div class="card"><div style="font-weight:700;margin-bottom:8px">错题明细</div>${wrongHtml}</div>
+      <div class="card"><div class="sec-title">错题明细</div>${wrongHtml}</div>
       <button class="btn sec" onclick="App.activeQuiz=null;Student.quiz=null;Student.result=null;render()">返回测评列表</button></div>` + tabbar();
   },
 
@@ -365,15 +375,15 @@ const Student = {
     const chapterSel = chapters.map(c => `<div class="chapter ${sel.includes(c.id) ? 'active' : ''}" onclick="Student.togglePracticeChapter('${c.id}')"><div><div class="nm">${esc(c.name)}</div><div class="mt">${esc(c.folder || '未分组')}</div></div></div>`).join('') || '<div class="muted">暂无章节</div>';
     const hist = sessions.map(s => {
       const status = s.completed ? `<span class="badge master">已完成 ${s.score}</span>` : `<span class="badge prog">进行中</span>`;
-      return `<div class="qcard" onclick="Student.openPractice('${s.id}')"><div class="ic">🎯</div>
+      return `<div class="qcard" onclick="Student.openPractice('${s.id}')"><div class="ic">${ic('target')}</div>
         <div class="meta"><div class="t">练习 ${s.question_count} 题</div><div class="s">覆盖：${(s.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div></div>
         <div style="text-align:right">${status}</div></div>`;
     }).join('') || '<div class="muted">暂无练习记录</div>';
     return appbar('自主练习', 'AI 出题 · 合计 100 分') + `<div class="content">
       <div class="card sm"><div style="font-weight:700;font-size:13px;margin-bottom:8px">选择章节（可多选）</div>${chapterSel}
-        <button class="btn" style="margin-top:12px" onclick="Student.generatePractice()">🎯 生成练习</button>
+        <button class="btn mt-12" onclick="Student.generatePractice()">${ic('target')}生成练习</button>
         <button class="btn ghost" style="margin-top:8px" onclick="Student.exitPractice()">返回测评列表</button></div>
-      <div class="card"><div style="font-weight:700;margin-bottom:8px">练习历史</div>${hist}</div>
+      <div class="card"><div class="sec-title">练习历史</div>${hist}</div>
     </div>` + tabbar();
   },
   async generatePractice() {
@@ -414,7 +424,7 @@ const Student = {
     }).join('');
     const chaps = (this.practice.chapter_ids || []).map(App.chapterName.bind(App)).map(c => `<span class="pill" style="margin-right:6px">${esc(c)}</span>`).join('');
     return appbar('自主练习', '合计 100 分') + `<div class="content">
-      <div class="card sm" style="margin-bottom:12px">覆盖章节：${chaps || '全部'}</div>
+      <div class="card sm mb-12"><div class="muted">覆盖章节：${chaps || '全部'}</div></div>
       ${qs}<button class="btn" onclick="Student.submitPractice()">提交并批改</button>
       <button class="btn ghost" style="margin-top:8px" onclick="Student.exitPractice()">返回练习列表</button></div>` + tabbar();
   },
@@ -470,7 +480,7 @@ const Student = {
     }).join('');
     return appbar('自主练习', '批改完成') + `<div class="content">
       <div class="result"><div class="score">${r.score}</div><div class="lbl">本次得分 / 100 · 答对 ${r.correct}/${r.total}</div></div>
-      <div class="card"><div style="font-weight:700;margin-bottom:8px">逐题解析（含正确答案）</div>${rows}</div>
+      <div class="card"><div class="sec-title">逐题解析（含正确答案）</div>${rows}</div>
       <button class="btn sec" onclick="Student.exitPractice()">返回练习列表</button></div>` + tabbar();
   },
 
@@ -496,7 +506,7 @@ const Student = {
     const weakPoints = weak.weak_points || [];
     const weakWrongCount = weakPoints.reduce(function (s, w) { return s + (w.evidence || []).length; }, 0);
     // 薄弱点入口卡：点击进入独立薄弱点页（不再内嵌展开全部错题）
-    const weakHtml = `<div class="weak" style="cursor:pointer" onclick="go('weak')"><span class="badge weak" style="flex-shrink:0">📌</span><div style="flex:1"><div style="font-weight:600;font-size:13.5px">薄弱点 · ${weakPoints.length} 章 · ${weakWrongCount} 道错题</div><div class="muted" style="font-size:12px">点击查看按练习 / 测评分组的错题依据</div></div><span>›</span></div>`;
+    const weakHtml = `<div class="weak" style="cursor:pointer" onclick="go('weak')"><span class="badge weak" style="flex-shrink:0">${ic('pin')}</span><div style="flex:1"><div style="font-weight:600;font-size:13.5px">薄弱点 · ${weakPoints.length} 章 · ${weakWrongCount} 道错题</div><div class="muted" style="font-size:12px">点击查看按练习 / 测评分组的错题依据</div></div><span>›</span></div>`;
     const revHtml = (reviews.review_items || []).map(r => `<div class="rev-item ${r.status === 'done' ? 'done' : ''}">
       <span class="badge ${r.status === 'done' ? 'master' : 'weak'}">${esc(App.chapterName(r.chapter_id))}</span>
       <div style="flex:1;font-size:13px">${r.status === 'done' ? '已完成' : (r.due ? '已到期，可作答' : '下次复习 ' + r.interval_days + ' 天后')}</div>
@@ -522,9 +532,9 @@ const Student = {
         <div class="stat"><div class="v" style="color:var(--text-3)">${c.na}</div><div class="k">未评估</div></div></div>
       <div class="card"><div style="font-weight:700;margin-bottom:10px">AI 学习建议</div>${adviceHtml}</div>
       ${weeklyHtml}
-      <div class="card"><div style="font-weight:700;margin-bottom:8px">各章节状态</div>${chapList}</div>
-      <div class="card"><div style="font-weight:700;margin-bottom:8px">薄弱点（带错题依据）</div>${weakHtml}</div>
-      <div class="card"><div style="font-weight:700;margin-bottom:8px">巩固练习闭环（间隔复习 1→3→7）</div>${revHtml}
+      <div class="card"><div class="sec-title">各章节状态</div>${chapList}</div>
+      <div class="card"><div class="sec-title">薄弱点（带错题依据）</div>${weakHtml}</div>
+      <div class="card"><div class="sec-title">巩固练习闭环（间隔复习 1→3→7）</div>${revHtml}
         <button class="btn" style="margin-top:12px" onclick="Student.genReview()">一键生成巩固练习</button></div>
     </div>` + tabbar();
   },
@@ -569,10 +579,10 @@ const Student = {
         body = groups.join('') || '<div class="muted" style="margin-left:12px">暂无错题依据</div>';
       }
       return head + body;
-    }).join('') || '<div class="muted">暂无薄弱章节 🎉</div>';
+    }).join('') || `<div class="muted">${ic('sparkle','coral')}暂无薄弱章节</div>`;
     return appbar('薄弱点', '带错题依据 · 按练习 / 测评分组') + `<div class="content">
       <button class="btn ghost sm" style="margin-bottom:10px" onclick="go('progress')">‹ 返回进度</button>
-      <div class="card"><div style="font-weight:700;margin-bottom:8px">薄弱章节 · ${pts.length} 章 · ${totalWrong} 道错题</div>${chapterList}</div>
+      <div class="card"><div class="sec-title">薄弱章节 · ${pts.length} 章 · ${totalWrong} 道错题</div>${chapterList}</div>
     </div>` + tabbar();
   },
   async genReview() {

@@ -2,6 +2,24 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.14.0] - 2026-09-07
+
+### UI 优化（方向 A 原味精修 + 信息层级重排，全量所有视图）
+
+学生端（`student.js`）+ 教师端（`teacher.js`）+ App shell（`app.js`）全局 UI 治理，只动视觉与层级，token（学生珊瑚 #F2714E / 教师靛蓝 #5B5BD6 / 米底 #FBF7F2）与布局完全不变。
+
+- **去 decorative emoji → 共享内联 SVG 图标**：新增 `app.js` 的 `ICO` 图标库（book/video/chat/lightbulb/target/file/edit/grad/shield/clock/pin/eye/sparkle/plus/check/cross/download/arrowUp/back/warn）+ `ic(name, cls)` helper，替换全部 22 种装饰 emoji（📚🎬💬📄🎯📝🧑🎓🛡🧭📌📖💡👁⚠🎉 等）。语义字符（✅❌→✓⬇▶）保留。
+- **抽内联样式 → 工具类**：新增 `.sec-title`/`.sec-title-sm`/`.sec-head`/`.mt-8/.mt-10/.mt-12`/`.mb-8/.mb-10/.mb-12`/`.grow`/`.flex`/`.ic`，替换高频内联 `font-weight:700;margin-bottom:8px`（8 处）、`flex:1`、`margin-top:12px` 等。
+- **信息层级重排（学习页为主）**：
+  - 模式切换 pill → **segmented control**（`.seg`），当前模式白底高亮 + 凹陷态，一眼看出「直接讲解/引导式」。
+  - AI 声明条从加粗 emoji 🛡 → **安静的 `.ai-info`** 小字条，不再占视觉焦点。
+  - 资料库 → 标题行加 **「N 篇」计数徽章**（`.card-count`），选中章节加**左珊瑚条**（`.chapter.active::before`）。
+  - 新对话/轮数散放 → 独立**进度行**（`.row-meta`）。
+  - 底部「咨询错题」从灰 pill → **珊瑚行动按钮**（`.tool-btn`）。
+- **统一测评标题规范**：学生端答题页 `viewQuizTake` 标题从 raw `q.title` 改为「测评 · 第X周 第Y节」（`q.session` 反查 → session 名），对齐 v1.12.2 规范；无 session 回退 `q.title`。
+- app.js 渲染错误态 `⚠️` → `${ic('warn')}`（`.note .big` 图标 40px）。
+- sw.js `CACHE` bump `v27→v28`。
+
 ## [1.13.7] - 2026-09-07
 
 ### 修复
