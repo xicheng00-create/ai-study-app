@@ -4,6 +4,7 @@
 实名（display_name）。排行榜本就是全班展示，student 只限定同班集合（即除测试号
 外的 active 学生），teacher 无需 @user_scope、可看完整排名 + 管理入口（前端跳转）。
 """
+import json
 from collections import Counter
 
 from ai import mastery
@@ -93,6 +94,34 @@ def _weak_names(con, user_id):
     return names
 
 
+def _quiz_session_label(con, chapter_ids):
+    """通过章节反查首个命中的已发布周/节 → 「测评 · 第X周 第Y节」；查不到回退 title。"""
+    chids = _parse_ids(chapter_ids)
+    if not chids:
+        return None
+    rows = con.execute(
+        "SELECT week_no, session_no, title, chapter_ids FROM sessions"
+        " WHERE status='published' ORDER BY week_no, session_no, order_no"
+    ).fetchall()
+    for row in rows:
+        if set(_parse_ids(row["chapter_ids"])).intersection(chids):
+            return f"测评 · 第{row['week_no']}周 第{row['session_no']}节"
+    return None
+
+
+def _parse_ids(raw):
+    """安全解析 JSON 字符串/列表为 list[str]。"""
+    if isinstance(raw, list):
+        return [str(x) for x in raw]
+    if not raw:
+        return []
+    try:
+        v = json.loads(raw)
+        return [str(x) for x in v] if isinstance(v, list) else []
+    except (ValueError, TypeError):
+        return []
+
+
 @class_bp.route("/leaderboard", methods=["GET"])
 @jwt_required
 def leaderboard():
@@ -141,6 +170,8 @@ def leaderboard():
             "title": quiz["title"],
             "version": quiz["version"],
             "published_at": quiz["published_at"],
+            # 班级活动「测评分数」下拉显示规范标题（沿用测评列表规范），避免裸「草稿 · X 章」
+            "label": _quiz_session_label(con, quiz["chapter_ids"]) or quiz["title"],
         })
         entries = []
         for uid in students:

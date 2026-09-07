@@ -2,6 +2,12 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.13.6] - 2026-09-07
+
+### 修复
+- **班级活动「测评分数」下拉显示裸「草稿 · X 章」**：leaderboard 返回的 `quiz_list` 补 `label`（通过 `chapter_ids` 反查已发布 session → 「测评 · 第X周 第Y节」），前端 `quizChips` 改用 `q.label || q.title`——与测评列表标题规范（v1.12.2/v1.12.4）一致，避免已发布但未改标题的测评显示难看的默认值。
+- sw.js `CACHE` bump `v25→v26`。
+
 ## [1.13.5] - 2026-09-07
 
 ### 变更

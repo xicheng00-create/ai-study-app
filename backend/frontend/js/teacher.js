@@ -511,7 +511,7 @@ const Teacher = {
     else if (cat === 3) body = (d.today_conversations || []).map((it, i) => row(it, i, num(it.value, '个'), `<div class="st">今日 ${it.value} 个对话</div>`)).join('');
     else if (cat === 4) {
       const quizSel = this.classQuizId || (d.quizzes && d.quizzes[0] && d.quizzes[0].quiz_id) || null;
-      const quizChips = (d.quizzes || []).map(q => `<div class="c ${quizSel === q.quiz_id ? 'on' : ''}" onclick="Teacher.setClassQuiz('${q.quiz_id}')">${esc(q.title)}${q.version > 1 ? ` v${q.version}` : ''}</div>`).join('');
+      const quizChips = (d.quizzes || []).map(q => `<div class="c ${quizSel === q.quiz_id ? 'on' : ''}" onclick="Teacher.setClassQuiz('${q.quiz_id}')">${esc(q.label || q.title)}${q.version > 1 ? ` v${q.version}` : ''}</div>`).join('');
       const board = (quizSel && d.quiz_boards && d.quiz_boards[quizSel]) || [];
       body = `<div class="qp">${quizChips || '<div class="muted">暂无已发布测评</div>'}</div>` + board.map((it) => {
         if (it.absent) return `<div class="rank-row"><div class="rank-num rn">—</div>${av(it)}<div class="rank-meta"><div class="nm">${esc(it.display_name)}</div><div class="st">未参加本次测评</div></div><div class="rank-val"><div class="v">—</div><div class="k">未参加</div></div></div>`;
