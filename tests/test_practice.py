@@ -1,4 +1,4 @@
-"""自主练习测试（REQ-PRACTICE-001~003）：AI 自主题量合计 100、GRADER 复用、错题联动。"""
+"""自主练习测试（REQ-PRACTICE-001~003）：最多 5 道、资料驱动、同学生去重、GRADER 复用、错题联动。"""
 from ai import agents, quizzer
 from conftest import login, make_student
 
@@ -13,6 +13,16 @@ def _generate(client, h, chapter_ids):
     resp = client.post("/api/practice/generate", json={"chapter_ids": chapter_ids}, headers=h)
     assert resp.status_code == 200, resp.get_json()
     return resp.get_json()["data"]
+
+
+def _mock_generate(monkeypatch, n=3):
+    """API 测试：mock 出题链路（返回 n 道 choice），隔离 LLM 与 RAG。"""
+    def fake_generate(chapter_ids, sub_concepts="", exclude_contents=None):
+        return [{"type": "choice", "content": f"练习{cid}{i}",
+                 "options": ["A", "B", "C", "D"], "answer": "0",
+                 "reason": "", "sub_concept": ""}
+                for cid in chapter_ids for i in range(n)][:n]
+    monkeypatch.setattr(quizzer, "generate_practice_questions", fake_generate)
 
 
 # ---- 单元：AI 自主题量 + 难度 hard ----
@@ -37,29 +47,35 @@ def _q(qtype, n):
              "reason": "", "sub_concept": ""} for i in range(n)]
 
 
-def test_practice_free_form_exact_100(monkeypatch):
-    """AI 固定 20 道选择时原样保留（合计 100 分）。"""
+def test_practice_caps_to_max_5(monkeypatch):
+    """AI 返回 20 道时裁剪到最多 5 道，不再强制 20 道/100 分。"""
     _mock_quizzer(monkeypatch, _q("choice", 20))
     out = quizzer.generate_practice_questions(["ch1"])
-    assert sum(quizzer.POINTS[q["type"]] for q in out) == 100
-    assert len(out) == 20
+    assert 0 < len(out) <= quizzer.MAX_PRACTICE_QUESTIONS
     assert all(q["type"] in ("choice", "bool") for q in out)
 
 
-def test_practice_trim_over_100(monkeypatch):
-    """AI 出题超 100 分时裁剪到恰好 20 道（100 分）。"""
-    _mock_quizzer(monkeypatch, _q("choice", 25))  # 125 分
+def test_practice_keeps_under_5(monkeypatch):
+    """AI 返回少于 5 道时原样保留，不再模板补足到 100 分。"""
+    _mock_quizzer(monkeypatch, _q("choice", 3))
     out = quizzer.generate_practice_questions(["ch1"])
-    assert sum(quizzer.POINTS[q["type"]] for q in out) == 100
-    assert len(out) == 20
+    assert len(out) == 3
+    assert sum(quizzer.POINTS[q["type"]] for q in out) == 15
 
 
-def test_practice_fill_under_100(monkeypatch):
-    """AI 出题不足 100 分时模板补足到恰好 20 道（100 分）。"""
-    _mock_quizzer(monkeypatch, _q("choice", 5))  # 25 分
-    out = quizzer.generate_practice_questions(["ch1"])
-    assert sum(quizzer.POINTS[q["type"]] for q in out) == 100
-    assert len(out) == 20
+def test_practice_no_llm_returns_empty(monkeypatch):
+    """LLM 真返空时返回空列表（不再硬塞通用模板）。"""
+    _mock_quizzer(monkeypatch, None)
+    assert quizzer.generate_practice_questions(["ch1"]) == []
+
+
+def test_practice_excludes_history_dedup(monkeypatch):
+    """同学生历史已出题干（按规范化 hash）在生成阶段被过滤，且注入提示词。"""
+    calls = _mock_quizzer(monkeypatch, _q("choice", 5))
+    out = quizzer.generate_practice_questions(["ch1"], exclude_contents=["q0", "q1"])
+    assert all(q["content"] != "q0" for q in out)
+    assert all(q["content"] != "q1" for q in out)
+    assert "q0" in calls[0]  # 历史题干注入提示词
 
 
 def test_practice_difficulty_hard(monkeypatch):
@@ -78,15 +94,16 @@ def test_teacher_quiz_default_normal(monkeypatch):
 
 # ---- API：生成/批改/隔离/错题联动 ----
 
-def test_practice_generate_and_submit(client, teacher_headers):
+def test_practice_generate_and_submit(client, teacher_headers, monkeypatch):
     cid = _chapter(client, teacher_headers)
     make_student(client, teacher_headers, "alice")
     token = login(client, "alice", "student123")
     h = {"Authorization": f"Bearer {token}"}
+    _mock_generate(monkeypatch)
 
     data = _generate(client, h, [cid])
     assert data["difficulty"] == "hard"
-    assert data["total_points"] == 100
+    assert data["total_points"] == len(data["questions"]) * 5
     assert len(data["questions"]) > 0
     # 作答前不露答案
     assert all("answer_key" not in q for q in data["questions"])
@@ -114,12 +131,13 @@ def test_practice_generate_and_submit(client, teacher_headers):
     assert resp.get_json()["data"]["session"]["completed"] is True
 
 
-def test_practice_counts_toward_mastery(client, teacher_headers):
+def test_practice_counts_toward_mastery(client, teacher_headers, monkeypatch):
     """自主练习（已作答）计入掌握度 M（任务书定义 A，推翻旧 F3）。"""
     cid = _chapter(client, teacher_headers)
     make_student(client, teacher_headers, "alice")
     token = login(client, "alice", "student123")
     h = {"Authorization": f"Bearer {token}"}
+    _mock_generate(monkeypatch)
     data = _generate(client, h, [cid])
     sid = data["id"]
     answers = [{"question_id": q["id"], "answer": ""} for q in data["questions"]]
@@ -132,12 +150,13 @@ def test_practice_counts_toward_mastery(client, teacher_headers):
     assert chap["attempts"] == len(data["questions"])
 
 
-def test_practice_wrong_flows_to_weak_and_review(client, teacher_headers):
+def test_practice_wrong_flows_to_weak_and_review(client, teacher_headers, monkeypatch):
     """练习错题进入薄弱点 + 巩固练习来源（PROG-005/006 保留）。"""
     cid = _chapter(client, teacher_headers)
     make_student(client, teacher_headers, "alice")
     token = login(client, "alice", "student123")
     h = {"Authorization": f"Bearer {token}"}
+    _mock_generate(monkeypatch)
     data = _generate(client, h, [cid])
     sid = data["id"]
     answers = [{"question_id": q["id"], "answer": ""} for q in data["questions"]]
@@ -157,13 +176,14 @@ def test_practice_wrong_flows_to_weak_and_review(client, teacher_headers):
     assert any(i["chapter_id"] == cid for i in items)
 
 
-def test_practice_isolation(client, teacher_headers):
+def test_practice_isolation(client, teacher_headers, monkeypatch):
     """学生 A 不能读/交学生 B 的练习（F9）。"""
     cid = _chapter(client, teacher_headers)
     make_student(client, teacher_headers, "alice")
     make_student(client, teacher_headers, "bob")
     alice = login(client, "alice", "student123")
     bob = login(client, "bob", "student123")
+    _mock_generate(monkeypatch)
     data = _generate(client, {"Authorization": f"Bearer {alice}"}, [cid])
     sid = data["id"]
     # B 读 A 的练习 → 403

@@ -195,13 +195,13 @@
 **Functional**
 | REQ | 角色 | 优先级 | 说明 |
 |-----|------|--------|------|
-| PRACTICE-001 | student | P1 | 选章 → AI 生成练习（difficulty=hard、固定 20 道选择/是非各 5 分、合计恰 100 分；v1.10.0 取消问答）|
+| PRACTICE-001 | student | P1 | 选章 → AI 生成练习（difficulty=hard、最多 5 道选择/是非、基于章节资料、同学生跨会话不重复；v1.10.0 取消问答、v1.16.0 起不再强制 20 道/100 分）|
 | PRACTICE-002 | student | P0 | 在线作答 + GRADER 批改 + 提供正确答案 |
 | PRACTICE-003 | student | P1 | 练习错题进入薄弱点/巩固练习依据（v1.9.0 起练习同时计入掌握度 M）|
 
 **Technical**
-- **独立数据层**：`practice_sessions`（user_id/chapter_ids/difficulty/total_points/config_json）+ `practice_questions`（session_id/chapter_id/sub_concept/type/content/options/answer_key/points/correct/user_answer/score/reason/answered_at）。练习是学生**个人即席生成**，**不进老师 draft→publish 状态机**，不写 quizzes/questions/attempts；**v1.9.0 起练习（已作答）与测评同权重计入掌握度 M（任务书定义 A），不再是「不污染 M」**。
-- **固定 20 道 + 100 分硬约束**：`quizzer.generate_practice_questions()` 固定 20 道 choice/bool（**v1.10.0 起取消 essay**），后端按题型分值（选择/是非各 5）校验合计=100——超 100 按序裁剪、不足 100 先向 DeepSeek 补发一次再模板兜底；AI 输出中的 essay 一律丢弃，最终任何情况合计恰 100、题干不重复。
+- **独立数据层**：`practice_sessions`（user_id/chapter_ids/difficulty/total_points/config_json）+ `practice_questions`（session_id/chapter_id/sub_concept/type/content/options/answer_key/points/content_hash/correct/user_answer/score/reason/answered_at）。练习是学生**个人即席生成**，**不进老师 draft→publish 状态机**，不写 quizzes/questions/attempts；**v1.9.0 起练习（已作答）与测评同权重计入掌握度 M（任务书定义 A），不再是「不污染 M」**。
+- **最多 5 道 + 资料驱动 + 难度 high + 同学生不重复（v1.16.0 起）**：`quizzer.generate_practice_questions()` 基于章节资料出 **2~5 道 choice/bool**（**v1.10.0 起取消 essay**、v1.16.0 起不再强制 20 道/100 分），difficulty=hard；不再凑 100 分，`total_points` 写各题实际分之和，`_session_dict` 按实际 total_points 归一。RAG 检索章节资料正文注入 QUIZZER_SYSTEM；LLM 真返空时返回空列表、由端点提示「生成失败，请重试」（不再硬塞通用模板）。**同学生跨会话去重**：`practice_questions.content_hash`（题干规范化 hash，去空格/标点/大小写）存 `hash(q.content)`，生成前查该学生历史题干注入提示词「避免重复、基于资料衍生变体」，后端 `_cap_to_max` 再按规范化 hash 过滤已出题干；不同学生可相同、同考点不同问法不算重复。
 - **难度 hard**：`QUIZZER_SYSTEM` 注入 `{difficulty}`（normal/hard 指示）；练习固定 `difficulty='hard'`（综合运用/多步推理/概念辨析/跨知识点），老师测评默认 `normal` 不受影响。
 - **批改复用 GRADER**：与测评一致（客观题确定性判分；essay AI 三档/启发式分支保留以兼容旧数据，v1.10.0 起不再产生）；`practice_questions` 写 `correct/score/user_answer/reason/answered_at`。
 - **错题联动（PROG-005/006）**：`progress_bp._practice_wrong` 读取本人练习错题（correct=0 或 score<points）作为薄弱点依据（`from_practice`）与巩固练习来源章/聚焦子概念；v1.9.0 起练习同时计入 M（全错→M 下降→薄弱），错题联动逻辑保留。
@@ -329,8 +329,8 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 | questions | id, quiz_id, chapter_id, sub_concept, type, content, answer_key, +points(选择/是非5；v1.10.0 取消问答，essay=10 仅兼容旧数据) | DM-005 | 掌握度溯源；单题满分 |
 | attempts | id, user_id, quiz_id, question_id, chapter_id, **+quiz_version(F3)**, correct, score(实际得分点), +graded_by('ai'/'teacher'), +is_reviewed, +reviewed_score, created_at | DM-006 | M 数据源之一；评分权双轨 |
 | review_items | id, user_id, chapter_id, question_id(NULL), next_review_at, interval_days, status | DM-007 | 间隔复习状态机 |
-| practice_sessions | id, user_id, chapter_ids(JSON), difficulty('hard', v1.9.0 隐藏不展示), total_points(DEFAULT 100), config_json | REQ-PRACTICE-001 | 学生个人即席生成；v1.9.0 起已作答计入 M |
-| practice_questions | id, session_id, chapter_id, sub_concept, type, content, options, answer_key, points, correct(可空), user_answer, score(可空), reason, answered_at | REQ-PRACTICE-001/002 | 作答结果留痕；v1.9.0 起已作答计入 M；错题供薄弱点/巩固 |
+| practice_sessions | id, user_id, chapter_ids(JSON), difficulty('hard', v1.9.0 隐藏不展示), total_points(实际各题分之和，v1.16.0 起非固定 100), config_json | REQ-PRACTICE-001 | 学生个人即席生成；v1.16.0 起最多 5 道；v1.9.0 起已作答计入 M |
+| practice_questions | id, session_id, chapter_id, sub_concept, type, content, options, answer_key, points, content_hash(题干规范化 hash，v1.16.0), correct(可空), user_answer, score(可空), reason, answered_at | REQ-PRACTICE-001/002 | 作答结果留痕；v1.16.0 起 content_hash 供同学生跨会话去重；v1.9.0 起已作答计入 M；错题供薄弱点/巩固 |
 | reports | +user_id | DM-008 | 周报归属（v1.9.0 废弃，表保留） |
 | daily_advice | id, user_id, advice_date(UTC+8 日历日), stats(JSON), advice, created_at, UNIQUE(user_id, advice_date) | RPT-003(改每日) | 每日建议，每人每天一条 |
 | ChromaDB | material_chunks +chapter_id | DM-010 | 按章召回 |
@@ -569,6 +569,12 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 > - **CHAT-004 强化（模式切换吸顶，✅）**：学习页「引导式/直接讲解」segmented control 从内容流提出、包 `.seg-sticky`（`position:sticky;top:74px`），对话滚动时固定顶部、始终可见，不遮挡 appbar。
 > - **MAT-004 强化（资料库「越新越左」，✅）**：`GET /api/chapters` 返回补 `created_at`，`viewLearn()` 按 `created_at` 倒序渲染章节卡片（最新添加排最左），选中态/「N 篇」徽章/单章竖排·多章横滑不变。
 > - **输入框钉底根治（UI 修复，✅）**：`body` 移除 `-webkit-overflow-scrolling:touch`（该属性在 body 滚动时会让 iOS `position:fixed` 的 `.composer`/`.tabbar` 跟随回弹），输入框稳定钉在 `.tabbar`（78px）正上方；headless Chrome 实测滚动前后 `.composer` `getBoundingClientRect().y` 恒定。
+
+### 12.15 实现状态回写（v1.16.0，2026-09-08）
+
+> - **自主练习出题全走兜底（根因修复，✅）**：生产 `.env` 的 `DEEPSEEK_MODEL` 由 `deepseek-v4-flash`（原生推理模型）改为 `deepseek-chat`（非推理）。实测推理模型对大 JSON 出题 prompt `finish_reason=length`、`content len=0`、`reasoning len=3612`、2000 completion_tokens 全烧在 reasoning → `_chat()` 拿空 content → `quizzer_generate()` 返回 None → 无条件兜底硬编码模板；改 `deepseek-chat` 后 `content len=4871`、`reasoning len=0`（真实资料题）。与四口之家 sikou「智能养护贴士」修法一致（短/结构化任务用 deepseek-chat）。
+> - **PRACTICE-001/002/003 重构（最多 5 道 + 资料驱动 + 难度 high + 同学生不重复，✅）**：`generate_practice_questions()` 不再强制 20 道/100 分，改为基于章节资料出 **2~5 道 choice/bool（difficulty=hard）**；端点放开 `total != 100` 校验，`total_points` 写实际分之和、`_session_dict` 按实际归一；LLM 真返空返回空列表、前端提示「生成失败，请重试」（不再硬塞通用模板）。`practice_questions` 新增 `content_hash`（题干规范化 hash），生成前查该学生历史题干注入提示词（避免重复 + 基于资料衍生变体）并在后端按 hash 过滤，同学生跨会话不重复、不同学生可相同。
+> - **前端文案（✅）**：练习入口/生成页/答题页「合计 100 分」改为「最多 5 题 · N 题 · 共 X 分」；sw.js `CACHE` bump `v31→v32`。
 
 ## 十三、NFR 与已知盲区（融合 PRD §13 + architecture §十三）
 

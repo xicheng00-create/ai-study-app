@@ -1,4 +1,4 @@
-"""出题（QUIZZER）单元测试：RAG 注入 + 模板兜底不再重复同一道题 + 取消 essay + 固定 20 道。"""
+"""出题（QUIZZER）单元测试：RAG 注入 + 模板兜底不再重复同一道题 + 取消 essay + 练习最多 5 道。"""
 from ai import agents, quizzer, rag
 
 
@@ -60,8 +60,8 @@ def test_generate_questions_retries_when_short(monkeypatch):
     assert len(calls) == 2
 
 
-def test_generate_practice_questions_fixed_20_no_essay_no_dup(monkeypatch):
-    """练习固定 20 道 choice/bool、各 5 分、合计 100、无 essay、题干无重复。"""
+def test_generate_practice_questions_max_5_no_essay_no_dup(monkeypatch):
+    """练习最多 5 道 choice/bool、无 essay、题干无重复（不再强制 20/100）。"""
     def fake_retrieve(query, chapter_id, top_k=5):
         return []
 
@@ -74,11 +74,9 @@ def test_generate_practice_questions_fixed_20_no_essay_no_dup(monkeypatch):
     monkeypatch.setattr(rag, "retrieve", fake_retrieve)
     monkeypatch.setattr(agents, "quizzer_generate", fake_generate)
     out = quizzer.generate_practice_questions(["ch1"])
-    assert len(out) == 20
+    assert 0 < len(out) <= quizzer.MAX_PRACTICE_QUESTIONS
     assert all(q["type"] in ("choice", "bool") for q in out)
-    assert all(quizzer.POINTS[q["type"]] == 5 for q in out)
-    assert sum(quizzer.POINTS[q["type"]] for q in out) == 100
-    assert len({q["content"] for q in out}) == 20
+    assert len({q["content"] for q in out}) == len(out)
 
 
 def test_generate_questions_dedup_content(monkeypatch):

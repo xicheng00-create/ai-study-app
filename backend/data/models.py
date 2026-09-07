@@ -177,6 +177,7 @@ CREATE TABLE IF NOT EXISTS practice_questions (
     options     TEXT NOT NULL DEFAULT '[]',
     answer_key  TEXT NOT NULL DEFAULT '',
     points      REAL NOT NULL DEFAULT 0,
+    content_hash TEXT NOT NULL DEFAULT '',  -- 题干规范化 hash（同学生跨会话去重）
     correct     INTEGER,              -- 学生作答结果（未作答前 NULL）
     user_answer TEXT DEFAULT '',
     score       REAL,                 -- 实际得分点（未作答前 NULL）
@@ -251,6 +252,8 @@ def migrate(con) -> None:
     _add_column(con, "quizzes", "total_points", "REAL NOT NULL DEFAULT 100")
     _add_column(con, "quizzes", "config_json", "TEXT NOT NULL DEFAULT '{}'")
     _add_column(con, "questions", "points", "REAL NOT NULL DEFAULT 0")
+    # 自主练习同学生跨会话去重：practice_questions 增题干规范化 hash（v1.16.0）
+    _add_column(con, "practice_questions", "content_hash", "TEXT NOT NULL DEFAULT ''")
     added_graded_by = _add_column(con, "attempts", "graded_by", "TEXT NOT NULL DEFAULT 'ai'")
     _add_column(con, "attempts", "is_reviewed", "INTEGER NOT NULL DEFAULT 0")
     _add_column(con, "attempts", "reviewed_score", "REAL")

@@ -286,7 +286,7 @@ const Student = {
         <div style="text-align:right">${badge}</div></div>`;
     }).join('') || '<div class="muted">老师尚未发布测评</div>';
     const practiceEntry = `<div class="qcard" style="border-color:var(--coral)" onclick="Student.enterPractice()"><div class="ic">${ic('target')}</div>
-      <div class="meta"><div class="t">自主练习</div><div class="s">根据资料 AI 生成 · 即答即批</div></div></div>`;
+      <div class="meta"><div class="t">自主练习</div><div class="s">根据资料 AI 出题 · 最多 5 题 · 即答即批</div></div></div>`;
     return appbar('测评', '教师发布 · 全班同题') + `<div class="content">${practiceEntry}${list}</div>` + tabbar();
   },
   async openQuiz(id) {
@@ -381,7 +381,7 @@ const Student = {
         <div class="meta"><div class="t">练习 ${s.question_count} 题</div><div class="s">覆盖：${(s.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div></div>
         <div style="text-align:right">${status}</div></div>`;
     }).join('') || '<div class="muted">暂无练习记录</div>';
-    return appbar('自主练习', 'AI 出题 · 合计 100 分') + `<div class="content">
+    return appbar('自主练习', 'AI 出题 · 最多 5 题 · 高难度') + `<div class="content">
       <div class="card sm"><div style="font-weight:700;font-size:13px;margin-bottom:8px">选择章节（可多选）</div>${chapterSel}
         <button class="btn mt-12" onclick="Student.generatePractice()">${ic('target')}生成练习</button>
         <button class="btn ghost" style="margin-top:8px" onclick="Student.exitPractice()">返回测评列表</button></div>
@@ -408,7 +408,7 @@ const Student = {
         };
         this.practice = null;
       } else {
-        this.practice = { id: d.session.id, chapter_ids: d.session.chapter_ids, questions: d.questions };
+        this.practice = { id: d.session.id, chapter_ids: d.session.chapter_ids, total_points: d.session.total_points, questions: d.questions };
         this.answers = {}; this.practiceResult = null;
       }
       render();
@@ -425,7 +425,9 @@ const Student = {
       return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}<b class="pts">${item.points} 分</b></span></div>${opts}</div>`;
     }).join('');
     const chaps = (this.practice.chapter_ids || []).map(App.chapterName.bind(App)).map(c => `<span class="pill" style="margin-right:6px">${esc(c)}</span>`).join('');
-    return appbar('自主练习', '合计 100 分') + `<div class="content">
+    const n = (this.practice.questions || []).length;
+    const total = (this.practice.questions || []).reduce((s, q) => s + (q.points || 0), 0);
+    return appbar('自主练习', `${n} 题 · 共 ${total} 分`) + `<div class="content">
       <div class="card sm mb-12"><div class="muted">覆盖章节：${chaps || '全部'}</div></div>
       ${qs}<button class="btn" onclick="Student.submitPractice()">提交并批改</button>
       <button class="btn ghost" style="margin-top:8px" onclick="Student.exitPractice()">返回练习列表</button></div>` + tabbar();

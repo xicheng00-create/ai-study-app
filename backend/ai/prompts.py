@@ -57,7 +57,7 @@ QUIZZER_SYSTEM = """你是「AI 学习小组」的出题老师。请严格输出
 输出一个 JSON 对象，形如：
 {{"questions":[{{"type":"choice|bool","content":"题干","options":["A..","B..","C..","D.."],"answer":"正确答案索引或文本","reason":"简要解析","sub_concept":"子概念"}}]}}
 
-要求：严格按「规格」出题（20 道题，每题 5 分，合计 100 分）；choice 的 answer 为选项索引(0 起)，bool 的 answer 为"正确/错误"；题目不得重复——每道题的题干必须不同。"""
+要求：严格按「规格」出题；choice 的 answer 为选项索引(0 起)，bool 的 answer 为"正确/错误"；题目不得重复——每道题的题干必须不同。"""
 
 GRADER_SYSTEM = """你是「AI 学习小组」的批改老师。请严格输出 JSON（不要输出其他文字）。
 

@@ -2,6 +2,19 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.16.0] - 2026-09-08
+
+### 修复
+- **自主练习出题全走兜底（根因：推理模型烧预算）**：生产 `.env` 的 `DEEPSEEK_MODEL` 由 `deepseek-v4-flash`（原生推理模型）改为 `deepseek-chat`（非推理）。实测同一 QUIZZER prompt 下推理模型 `finish_reason=length`、`content len=0`、`reasoning len=3612`（2000 completion_tokens 全烧在 reasoning）→ `_chat()` 拿空 content → `quizzer_generate()` 返回 None → 无条件兜底 20 道通用模板（与章节资料无关）；改 `deepseek-chat` 后返回 `content len=4871`（真实资料题）、`reasoning len=0`。与四口之家 sikou「智能养护贴士」修法一致（短/结构化任务用 deepseek-chat）。`agents._chat` 默认 model 兜底已为非推理 `deepseek-chat`（`config.py` 默认亦然）。
+
+### 新功能
+- **自主练习改为「最多 5 道 · 只选择/是非 · 难度 high · 资料驱动 · 同学生不重复」（REQ-PRACTICE-001/002/003 重构）**：
+  - 不再强制 20 道/100 分：`quizzer.generate_practice_questions()` 基于章节资料出 2~5 道 choice/bool（difficulty=hard），删除「凑 100 分」的 `_trim_to_100`/`_fill_to_100`/`_TARGET_UNITS` 逻辑；`generate_practice` 端点放开 `total != 100` 校验，`total_points` 写入实际各题分之和，`_session_dict` 按实际 `total_points` 归一（`total_points or 1`）。
+  - 资料驱动 + 高难度：RAG 检索章节资料正文注入 QUIZZER_SYSTEM（`{retrieved_chunks}`），练习固定 `difficulty=hard`；LLM 真返空时返回空列表、由前端提示「生成失败，请重试」，不再硬塞通用模板。
+  - 同学生跨会话去重 + 变体衍生：`practice_questions` 新增 `content_hash`（题干规范化 hash，去空格/标点/大小写）；`generate_practice` 生成前查该学生历史题干注入提示词「避免重复、基于资料衍生变体」，后端 `_cap_to_max` 再按规范化 hash 过滤历史已出题干。不同学生可相同、同考点不同问法不算重复。
+  - 前端：练习入口/生成页/答题页文案从「合计 100 分」改为「最多 5 题 · N 题 · 共 X 分」。
+- sw.js `CACHE` bump `v31→v32`。
+
 ## [1.15.0] - 2026-09-08
 
 ### 新功能

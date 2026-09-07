@@ -1,9 +1,14 @@
 """出题（QUIZZER）：DeepSeek 生成草稿题，失败降级到模板题（L2）。
 
-百分制评分模型（QUIZ-005）：固定 20 道选择题/是非题，每题 5 分，合计 100 分，
+百分制评分模型（QUIZ-005）：教师测评固定 20 道选择题/是非题，每题 5 分，合计 100 分，
 彻底取消问答题（essay）。POINTS 保留 essay=10 仅用于兼容库里旧题数据。
+
+自主练习（REQ-PRACTICE-001）自 v1.16.0 起改为：最多 5 道 choice/bool、基于章节资料、
+难度 hard、同学生跨会话不重复；不再强制 20 道/100 分，LLM 真返空时返回空列表（不硬塞通用模板）。
 """
+import hashlib
 import json
+import re
 
 from ai import agents, rag
 from ai.prompts import QUIZZER_SYSTEM
@@ -421,16 +426,14 @@ def fallback_questions(chapter_ids: list[str], config: dict | None = None) -> li
     return _enforce_config([], cfg)
 
 
-# 练习自由组合：目标 20 个 5 分单位（恰好 100 分）
-_TARGET_UNITS = 20
+# 自主练习：最多 5 道 choice/bool，基于章节资料，不再凑 100 分
+MAX_PRACTICE_QUESTIONS = 5
 
 
-def _q_units(raw: dict) -> int:
-    """单题占用 5 分单位数（choice/bool=1、essay=2），非法题型按 choice 计。"""
-    qtype = raw.get("type", "choice")
-    if qtype not in POINTS:
-        qtype = "choice"
-    return POINTS[qtype] // 5
+def _content_hash(content: str) -> str:
+    """题干规范化 hash（去空格/标点/大小写）：同学生跨会话去重与变体判定基准。"""
+    norm = re.sub(r"[\W_]+", "", (content or "")).lower()
+    return hashlib.sha256(norm.encode("utf-8")).hexdigest()
 
 
 def _norm_practice(raw: dict) -> dict:
@@ -454,96 +457,65 @@ def _norm_practice(raw: dict) -> dict:
     }
 
 
-def _practice_total(qs: list[dict]) -> int:
-    """练习题目集总分（按题型赋分求和）。"""
-    return sum(POINTS[q["type"]] for q in qs)
-
-
-def _trim_to_100(qs: list[dict]) -> list[dict]:
-    """AI 出题超 100 分时，按原顺序贪心保留恰好 20 单位（5 分一单位）。"""
-    out = []
-    units = 0
+def _cap_to_max(qs: list[dict], exclude_hashes: set | None = None,
+                max_q: int = MAX_PRACTICE_QUESTIONS) -> list[dict]:
+    """练习题目收敛：只留 choice/bool、按规范化 hash 去重、过滤同学生已出题干、裁剪到最多 max_q 道。"""
+    exclude_hashes = exclude_hashes or set()
+    seen: set[str] = set()
+    out: list[dict] = []
     for q in qs:
-        u = _q_units(q)
-        if units + u <= _TARGET_UNITS:
-            out.append(q)
-            units += u
+        if q.get("type") not in ("choice", "bool"):
+            continue
+        h = _content_hash(q.get("content", ""))
+        if h in seen or h in exclude_hashes:
+            continue
+        seen.add(h)
+        out.append(q)
+        if len(out) >= max_q:
+            break
     return out
 
 
-def _fill_to_100(qs: list[dict]) -> list[dict]:
-    """AI 出题不足 100 分时，只用 choice/bool 模板按 idx 轮转补足到恰好 20 道（各 5 分）。"""
-    out = list(qs)
-    seen = {q.get("content", "") for q in out}
-    tpl_idx: dict = {}
-    units = _practice_total(out) // 5
-    while units < _TARGET_UNITS:
-        # 交替 choice/bool 提升多样性，跳过 content 已出现过的模板
-        qtype = "choice" if units % 2 == 0 else "bool"
-        item = _next_template(qtype, seen, tpl_idx)
-        seen.add(item.get("content", ""))
-        out.append(item)
-        units += 1
-    return out
+def _avoid_block(exclude_contents: list[str]) -> str:
+    """注入提示词：同学生历史已出题干清单（要求避免重复 + 基于资料衍生变体）。"""
+    if not exclude_contents:
+        return ""
+    lines = "\n".join(f"- {c[:120]}" for c in exclude_contents[:20])
+    return (
+        "\n\n【同学生历史已出题干（避免重复）】以下题干该学生之前已出过，"
+        "不得生成相同题干；可基于章节资料改问法/角度/场景衍生变体（考点同、题干不同不算重复）：\n"
+        + lines
+    )
 
 
-def _practice_system(chapter_ids: list[str], sub_concepts: str, chunk_txt: str) -> str:
-    spec = "固定 20 道题，只允许选择题（choice）和是非题（bool），每题 5 分，合计 100 分"
+def _practice_system(chapter_ids: list[str], sub_concepts: str, chunk_txt: str,
+                     exclude_contents: list[str] | None = None) -> str:
+    spec = "最多 5 道题（2~5 道），只允许选择题（choice）和是非题（bool），难度 hard"
     return QUIZZER_SYSTEM.format(
         chapter_ids=",".join(chapter_ids),
         sub_concepts=sub_concepts or "不限",
         spec=spec,
         retrieved_chunks=chunk_txt[:4000],
         difficulty="hard",
-    )
+    ) + _avoid_block(exclude_contents or [])
 
 
-def generate_practice_questions(chapter_ids: list[str], sub_concepts: str = "") -> list[dict]:
-    """自主练习出题（difficulty=hard，固定 20 道 choice/bool 各 5 分，后端强制合计=100）。"""
+def generate_practice_questions(chapter_ids: list[str], sub_concepts: str = "",
+                                exclude_contents: list[str] | None = None) -> list[dict]:
+    """自主练习出题（difficulty=hard，最多 5 道 choice/bool，基于章节资料，同学生跨会话不重复）。
+
+    LLM 真返空时返回空列表，由调用方提示「生成失败，请重试」——不再硬塞 20 道通用模板。
+    """
     query = (sub_concepts or "").strip()
     chunk_txt = _chunk_text(_retrieve_chunks(chapter_ids, query))
-    qs = [_norm_practice(q) for q in (agents.quizzer_generate(_practice_system(chapter_ids, sub_concepts, chunk_txt)) or [])]
+    exclude_contents = exclude_contents or []
+    exclude_hashes = {_content_hash(c) for c in exclude_contents}
+
+    system = _practice_system(chapter_ids, sub_concepts, chunk_txt, exclude_contents)
+    qs = [_norm_practice(q) for q in (agents.quizzer_generate(system) or [])]
     if not qs:
-        return fallback_practice_questions(chapter_ids)
-
-    # 彻底取消 essay：只保留 choice/bool，并先去除 DeepSeek 自身重复题干
-    qs = _dedup([q for q in qs if q["type"] in ("choice", "bool")])
-    if not qs:
-        return fallback_practice_questions(chapter_ids)
-
-    total = _practice_total(qs)
-    if total > 100:
-        qs = _trim_to_100(qs)
-        total = _practice_total(qs)
-    if total < 100:
-        # 先向 DeepSeek 补发一次补足缺口；仍不足用模板兜底
-        missing_units = _TARGET_UNITS - total // 5
-        fill_system = QUIZZER_SYSTEM.format(
-            chapter_ids=",".join(chapter_ids),
-            sub_concepts=sub_concepts or "不限",
-            spec=f"请补充 {missing_units} 道题（只允许选择/是非，各 5 分）",
-            retrieved_chunks=chunk_txt[:4000],
-            difficulty="hard",
-        )
-        extra = [_norm_practice(q) for q in (agents.quizzer_generate(fill_system) or [])]
-        if extra:
-            extra = _dedup([q for q in extra if q["type"] in ("choice", "bool")])
-            have = {q.get("content", "") for q in qs}
-            for q in extra:
-                if _practice_total(qs) + POINTS[q["type"]] <= 100 and q.get("content", "") not in have:
-                    qs.append(q)
-                    have.add(q.get("content", ""))
-        qs = _fill_to_100(qs)
-
-    # 最终兜底校验：任何情况都保证恰好 100 分
-    if _practice_total(qs) != 100:
-        qs = _fill_to_100(_trim_to_100(qs))
-    return _dedup(qs)
-
-
-def fallback_practice_questions(chapter_ids: list[str]) -> list[dict]:
-    """无 LLM 时的练习兜底：20 道选择（合计 100 分，无 essay）。"""
-    return [_norm_practice(q) for q in _enforce_config([], {"choice": 20})]
+        return []
+    return _cap_to_max(qs, exclude_hashes=exclude_hashes)
 
 
 def generate_questions(chapter_ids: list[str], sub_concepts: str = "", spec: str = "",

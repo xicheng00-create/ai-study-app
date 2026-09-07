@@ -68,7 +68,7 @@ def _session_dict(row, con=None) -> dict:
         d["question_count"] = agg["c"]
         d["answered"] = agg["answered"] or 0
         d["completed"] = bool(agg["c"] and (agg["answered"] or 0) >= agg["c"])
-        d["score"] = round((agg["earned"] or 0) / (row["total_points"] or 100) * 100, 1) if d["completed"] else None
+        d["score"] = round((agg["earned"] or 0) / (row["total_points"] or 1) * 100, 1) if d["completed"] else None
     return d
 
 
@@ -84,12 +84,23 @@ def list_practice():
     return ok({"sessions": [_session_dict(r, con) for r in rows]})
 
 
+def _history_contents(con, user_id) -> list[str]:
+    """该学生历史练习全部题干（跨会话，供去重与提示词注入）。"""
+    rows = con.execute(
+        "SELECT pq.content FROM practice_questions pq"
+        " JOIN practice_sessions ps ON ps.id = pq.session_id"
+        " WHERE ps.user_id = ?",
+        (user_id,),
+    ).fetchall()
+    return [r["content"] for r in rows if r["content"]]
+
+
 @practice_bp.route("/generate", methods=["POST"])
 @jwt_required
 @role_required("student")
 @rate_limit(limit=60)
 def generate_practice():
-    """选章 → AI 出题（difficulty=hard、自主题量、合计 100）→ 建会话（不露答案）。"""
+    """选章 → AI 出题（difficulty=hard、最多 5 道 choice/bool、基于资料、同学生不重复）→ 建会话。"""
     data = request.get_json(silent=True) or {}
     chapter_ids = data.get("chapter_ids") or []
     if (not isinstance(chapter_ids, list) or not chapter_ids
@@ -105,29 +116,36 @@ def generate_practice():
         if row is None:
             return e_not_found(f"章节不存在或未发布：{cid}")
 
-    raw_qs = quizzer.generate_practice_questions(chapter_ids, sub_concepts=data.get("sub_concepts", ""))
+    raw_qs = quizzer.generate_practice_questions(
+        chapter_ids,
+        sub_concepts=data.get("sub_concepts", ""),
+        exclude_contents=_history_contents(con, g.user_id),
+    )
+    if not raw_qs:
+        return e_input("练习生成失败，请稍后重试")
+    if len(raw_qs) > quizzer.MAX_PRACTICE_QUESTIONS:
+        raw_qs = raw_qs[:quizzer.MAX_PRACTICE_QUESTIONS]
     total = sum(quizzer.POINTS[q["type"]] for q in raw_qs)
-    if total != 100:
-        return e_input(f"练习出题失败：合计 {total} 分，无法生成 100 分练习")
 
     session_id = models.new_id()
     now = models.utcnow()
     config = {t: sum(1 for q in raw_qs if q["type"] == t) for t in quizzer.POINTS}
     con.execute(
         "INSERT INTO practice_sessions (id, user_id, chapter_ids, difficulty, total_points,"
-        " config_json, created_at) VALUES (?, ?, ?, 'hard', 100, ?, ?)",
+        " config_json, created_at) VALUES (?, ?, ?, 'hard', ?, ?, ?)",
         (session_id, g.user_id, json.dumps(chapter_ids, ensure_ascii=False),
-         json.dumps(config, ensure_ascii=False), now),
+         total, json.dumps(config, ensure_ascii=False), now),
     )
     for i, raw in enumerate(raw_qs):
         cid = chapter_ids[i % len(chapter_ids)]
         q = quizzer.norm_question(raw, cid)
         con.execute(
             "INSERT INTO practice_questions (id, session_id, chapter_id, sub_concept, type,"
-            " content, options, answer_key, points, correct, user_answer, score, reason, answered_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '', NULL, '', NULL)",
+            " content, options, answer_key, points, content_hash, correct, user_answer, score,"
+            " reason, answered_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '', NULL, '', NULL)",
             (models.new_id(), session_id, cid, q["sub_concept"], q["type"], q["content"],
-             q["options"], q["answer_key"], q["points"]),
+             q["options"], q["answer_key"], q["points"], quizzer._content_hash(q["content"])),
         )
     con.commit()
 
@@ -137,7 +155,7 @@ def generate_practice():
     return ok({
         "id": session_id,
         "chapter_ids": chapter_ids,
-        "total_points": 100,
+        "total_points": total,
         "difficulty": "hard",
         "config": config,
         "questions": [_question_dict(r) for r in rows],
