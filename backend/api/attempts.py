@@ -4,6 +4,8 @@
 教师可经 `PUT /api/attempts/:id/review` 覆核改分。
 """
 
+import json
+
 from ai import grader
 from auth.jwt_utils import jwt_required, role_required
 from data import models
@@ -16,10 +18,10 @@ attempts_bp = Blueprint("attempts_bp", __name__, url_prefix="/api/quizzes")
 attempts_review_bp = Blueprint("attempts_review_bp", __name__, url_prefix="/api/attempts")
 
 
-def _latest_submission(con, user_id, quiz_id, version):
-    """最近一次提交的时间戳（可重做取最近，QUIZ-002）。"""
+def _first_submission(con, user_id, quiz_id, version):
+    """首次提交的时间戳（一次作答取首次，QUIZ-002 改为一次作答）。"""
     row = con.execute(
-        "SELECT MAX(created_at) AS t FROM attempts"
+        "SELECT MIN(created_at) AS t FROM attempts"
         " WHERE user_id=? AND quiz_id=? AND quiz_version=?",
         (user_id, quiz_id, version),
     ).fetchone()
@@ -43,6 +45,14 @@ def submit_attempt(quiz_id):
         return e_not_found("测评不存在")
     if quiz["status"] != "published":
         return e_input("该测评尚未发布，不可作答")
+
+    # 一次作答（QUIZ-002 改：提交后不可重做，分数保留首次）
+    existing = con.execute(
+        "SELECT 1 FROM attempts WHERE user_id=? AND quiz_id=? AND quiz_version=? LIMIT 1",
+        (g.user_id, quiz_id, quiz["version"]),
+    ).fetchone()
+    if existing:
+        return e_input("该测评已作答，不能重复提交")
 
     now = models.utcnow()
     details = []
@@ -106,7 +116,7 @@ def quiz_report(quiz_id):
     quiz = con.execute("SELECT * FROM quizzes WHERE id=?", (quiz_id,)).fetchone()
     if quiz is None:
         return e_not_found("测评不存在")
-    t = _latest_submission(con, g.user_id, quiz_id, quiz["version"])
+    t = _first_submission(con, g.user_id, quiz_id, quiz["version"])
     if t is None:
         return ok({"taken": False, "score": None, "wrong": []})
     rows = con.execute(
@@ -128,6 +138,8 @@ def quiz_report(quiz_id):
             wrong.append({
                 "question_id": r["question_id"],
                 "content": r["q_content"],
+                "type": r["q_type"],
+                "options": json.loads(r["q_options"] or "[]"),
                 "your_answer": r["answer"],
                 "answer_key": r["q_answer_key"],
                 "sub_concept": r["q_sub_concept"],

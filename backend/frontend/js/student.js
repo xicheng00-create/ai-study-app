@@ -1,4 +1,30 @@
 /* 学生视图：学习（引导对话）/ 测评 / 进度 / 班级 */
+/* 错题完整渲染：题目 + 全部选项，标注「正确答案 / 你的答案」（choice 索引→文本，bool 文本；essay 回退文本） */
+function fmtWrongCard(w) {
+  const opts = (w.options || []).map(x => String(x));
+  const your = w.your_answer, key = w.answer_key;
+  let inner = '';
+  if (w.type === 'bool') {
+    inner = ['正确', '错误'].map(v => {
+      const isAns = (String(key) === v), isYour = (String(your) === v);
+      const cls = isAns ? ' style="border-color:var(--green);background:#eefaf0"' : (isYour ? ' style="border-color:var(--red);background:#fdecea"' : '');
+      const mark = isAns ? ' ✅ 正确答案' : (isYour ? ' ❌ 你的答案' : '');
+      return `<div class="opt"${cls}><span class="dot"></span>${v}${mark}</div>`;
+    }).join('');
+  } else if (w.type === 'choice' && opts.length) {
+    const yi = parseInt(your, 10), ai = parseInt(key, 10);
+    inner = opts.map((o, i) => {
+      const isAns = (i === ai), isYour = (i === yi);
+      const cls = isAns ? ' style="border-color:var(--green);background:#eefaf0"' : (isYour ? ' style="border-color:var(--red);background:#fdecea"' : '');
+      const mark = isAns ? ' ✅ 正确答案' : (isYour ? ' ❌ 你的答案' : '');
+      return `<div class="opt"${cls}><span class="dot"></span>${String.fromCharCode(65 + i)}. ${esc(o)}${mark}</div>`;
+    }).join('');
+  } else {
+    inner = `<div class="muted" style="margin-top:6px;font-size:13px">你的答案：${esc(your || '未作答')}</div><div class="muted" style="margin-top:2px;font-size:13px">参考答案：${esc(key || '—')}</div>`;
+  }
+  return `<div class="card sm" style="border-color:#FAD9D6"><div style="font-size:13.5px"><b>题：</b>${esc(w.content)}${w.sub_concept ? ` <span class="muted">（${esc(w.sub_concept)}）</span>` : ''}</div>${inner}</div>`;
+}
+
 const Student = {
   convId: null,
   messages: [],
@@ -213,8 +239,16 @@ const Student = {
     return appbar('测评', '教师发布 · 全班同题') + `<div class="content">${practiceEntry}${list}</div>` + tabbar();
   },
   async openQuiz(id) {
-    try { this.quiz = await API.get("/api/quizzes/" + id); this.answers = {}; this.result = null; render(); }
-    catch (e) { toast(e.message); }
+    try {
+      const rep = await API.get(`/api/quizzes/${id}/report`);
+      if (rep.taken) {
+        // 一次作答：已做过的测评点进去恒显示该次结果（分数+完整错题），不重做
+        this.result = { score: rep.score, correct: rep.correct, total: rep.total, report: { wrong: rep.wrong || [] } };
+        this.quiz = null; render();
+      } else {
+        this.quiz = await API.get(`/api/quizzes/${id}`); this.answers = {}; this.result = null; render();
+      }
+    } catch (e) { toast(e.message); }
   },
   viewQuizTake() {
     const q = this.quiz.quiz;
@@ -256,9 +290,7 @@ const Student = {
   viewResult() {
     const r = this.result || {};
     const wrong = (r.report && r.report.wrong) || [];
-    const wrongHtml = wrong.length ? wrong.map(w => `<div class="card sm" style="border-color:#FAD9D6"><div style="font-size:13px"><b>题：</b>${esc(w.content)}</div>
-      <div style="font-size:13px;margin-top:5px"><span style="color:var(--red)">你的答案：${esc(w.your_answer || '未作答')}</span></div>
-      <div class="muted" style="margin-top:4px">参考：${esc(w.answer_key)}</div></div>`).join('') : '<div class="muted">全部正确 🎉</div>';
+    const wrongHtml = wrong.length ? wrong.map(w => fmtWrongCard(w)).join('') : '<div class="muted">全部正确 🎉</div>';
     return appbar('测评', '批改完成') + `<div class="content">
       <div class="result"><div class="score">${r.score}</div><div class="lbl">本次得分 / 100 · 答对 ${r.correct}/${r.total}</div></div>
       <div class="card"><div style="font-weight:700;margin-bottom:8px">错题明细</div>${wrongHtml}</div>
@@ -398,8 +430,8 @@ const Student = {
     const weakHtml = (weak.weak_points || []).map(w => {
       const mLabel = w.m == null ? '未测评' : `M=${w.m}%`;
       const tag = w.from_practice ? '<span class="badge prog" style="margin-left:6px">练习错题</span>' : '';
-      return `<div class="weak"><span class="badge weak" style="flex-shrink:0">${esc(w.name)}</span><div><div style="font-weight:600;font-size:13.5px">${mLabel}${tag}</div>
-      ${(w.evidence || []).slice(0, 2).map(e => `<div class="ev">• ${esc(e.question)}${e.source === 'practice' ? '（练习）' : ''}</div>`).join('')}</div></div>`;
+      const evs = (w.evidence || []).map(e => fmtWrongCard({ content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept })).join('');
+      return `<div class="weak"><span class="badge weak" style="flex-shrink:0">${esc(w.name)}</span><div><div style="font-weight:600;font-size:13.5px">${mLabel}${tag}</div>${evs}</div></div>`;
     }).join('') || '<div class="muted">暂无薄弱章节 🎉</div>';
     const revHtml = (reviews.review_items || []).map(r => `<div class="rev-item ${r.status === 'done' ? 'done' : ''}">
       <span class="badge ${r.status === 'done' ? 'master' : 'weak'}">${esc(App.chapterName(r.chapter_id))}</span>

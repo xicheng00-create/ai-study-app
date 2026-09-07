@@ -57,9 +57,9 @@ def list_quizzes():
     for r in rows:
         d = _quiz_dict(r, with_status=True)
         if g.role == "student":
-            # 学生视角：标记最近一次成绩（可重做取最近，QUIZ-002）
+            # 学生视角：一次作答取首次成绩（QUIZ-002）
             latest = con.execute(
-                "SELECT MAX(created_at) AS t FROM attempts"
+                "SELECT MIN(created_at) AS t FROM attempts"
                 " WHERE user_id=? AND quiz_id=? AND quiz_version=?",
                 (g.user_id, r["id"], r["version"]),
             ).fetchone()

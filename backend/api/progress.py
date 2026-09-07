@@ -102,14 +102,16 @@ def _wrong_evidence(con, user_id, chapter_id, limit=5):
     latest = mastery.latest_version_for_chapter(con, chapter_id)
     if latest > 0:
         rows = con.execute(
-            "SELECT a.answer, a.score, q.content AS q_content, q.answer_key AS q_answer_key"
-            " FROM attempts a JOIN questions q ON q.id=a.question_id"
+            "SELECT a.answer, a.score, q.content AS q_content, q.answer_key AS q_answer_key,"
+            " q.type AS q_type, q.options AS q_options FROM attempts a JOIN questions q ON q.id=a.question_id"
             " WHERE a.user_id=? AND a.chapter_id=? AND a.quiz_version=? AND a.correct=0"
             " ORDER BY a.created_at DESC LIMIT ?",
             (user_id, chapter_id, latest, limit),
         ).fetchall()
         out.extend([{
             "question": r["q_content"],
+            "type": r["q_type"],
+            "options": json.loads(r["q_options"] or "[]"),
             "your_answer": r["answer"],
             "answer_key": r["q_answer_key"],
             "source": "quiz",
@@ -121,8 +123,8 @@ def _wrong_evidence(con, user_id, chapter_id, limit=5):
 def _practice_wrong(con, user_id, chapter_id, limit=5):
     """该章自主练习错题（correct=0 或部分得分），作为薄弱依据之一。"""
     rows = con.execute(
-        "SELECT pq.user_answer, pq.score, pq.content, pq.answer_key, pq.sub_concept"
-        " FROM practice_questions pq JOIN practice_sessions ps ON ps.id=pq.session_id"
+        "SELECT pq.user_answer, pq.score, pq.content, pq.answer_key, pq.sub_concept,"
+        " pq.type AS q_type, pq.options AS q_options FROM practice_questions pq JOIN practice_sessions ps ON ps.id=pq.session_id"
         " WHERE ps.user_id=? AND pq.chapter_id=? AND pq.answered_at IS NOT NULL"
         " AND (pq.correct=0 OR pq.score < pq.points)"
         " ORDER BY pq.answered_at DESC LIMIT ?",
@@ -130,6 +132,8 @@ def _practice_wrong(con, user_id, chapter_id, limit=5):
     ).fetchall()
     return [{
         "question": r["content"],
+        "type": r["q_type"],
+        "options": json.loads(r["q_options"] or "[]"),
         "your_answer": r["user_answer"],
         "answer_key": r["answer_key"],
         "sub_concept": r["sub_concept"],
