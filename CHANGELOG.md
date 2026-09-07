@@ -2,6 +2,11 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.16.1] - 2026-09-08
+
+### 修复
+- **学习页顶部缝隙（appbar 与模式切换之间漏内容）**：`body` 为滚动容器时 `position:fixed` 子元素在 iOS 上不稳；将 `#app` 改固定高度（`100vh/100dvh` + `overflow:hidden`）+ `.screen` 设为唯一滚动容器 + `.appbar` 改 `position:sticky`。仍残留缝隙根因：`.content.chat-view` 的 `padding-top:6px` 导致 `seg-sticky` 自然 offsetTop=80（=appbar 74 + 6），未滚动时与 appbar 间有 6px 透明带，滚动时内容从此漏出。修复：`.content.chat-view{padding-top:0}`，seg 自然位即 74 与 appbar 齐平，`gap_px=0`（全滚动位置实测）。headless Chrome 点查头顶 3 采样点全部为 opaque 元素（appbar/seg/on），无内容透出；登录/班级/进度/测评视图无回归。
+
 ## [1.16.0] - 2026-09-08
 
 ### 修复

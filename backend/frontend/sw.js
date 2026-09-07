@@ -1,6 +1,6 @@
 /* ServiceWorker：network-first App Shell（联网必拿最新，离线回退缓存） */
 /* v13：自主练习改最多 5 道选择/是非（资料驱动、难度高、同学生不重复），bump 以强制旧缓存失效 */
-const CACHE = "aistudy-shell-v32";
+const CACHE = "aistudy-shell-v33";
 const ASSETS = ["/", "/css/style.css", "/js/api.js", "/js/app.js", "/js/student.js", "/js/teacher.js", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

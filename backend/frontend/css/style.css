@@ -57,7 +57,7 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text);overflow:hidde
 /* composer 内部纵向堆叠：按钮行 / 选错题提示 / 输入行 */
 .composer-body{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
 /* 学习页内容区底部留白，避免被固定 composer 遮挡（composer 实测高约 108px） */
-.content.chat-view{padding-bottom:118px}
+.content.chat-view{padding-top:0;padding-bottom:118px}
 .composer input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 15px;font-size:15px;outline:none;font-family:var(--font)}
 .composer .send{width:46px;height:46px;border-radius:14px;background:var(--coral);border:none;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
 .composer .send .ic{width:20px;height:20px}
