@@ -90,8 +90,8 @@ const API = (() => {
     // 进度指示：无总长只显示已下载 MB，有总长显示百分比（同时更新进度条宽度）
     _dlProgress(resp) {
       const total = parseInt(resp.headers.get("Content-Length") || "0", 10);
-      if (typeof $ === "undefined" || !document.getElementById("dlProgress")) return;
       const bar = document.getElementById("dlProgress");
+      if (!bar) return;
       bar.style.display = "flex";
       const txt = document.getElementById("dlProgressTxt");
       if (total > 0) { txt.textContent = "下载中 0%"; } else { txt.textContent = "准备下载…"; }
@@ -99,22 +99,27 @@ const API = (() => {
       if (pct) pct.style.width = "0%";
     },
     _dlProgressUpdate(received, total) {
-      if (typeof $ === "undefined" || !document.getElementById("dlProgress")) return;
+      const bar = document.getElementById("dlProgress");
+      if (!bar) return;
       const txt = document.getElementById("dlProgressTxt");
       const pct = document.getElementById("dlProgressPct");
       if (!txt) return;
       const mb = (received / (1024 * 1024)).toFixed(1);
       if (total > 0) {
         const p = Math.min(100, Math.round((received / total) * 100));
-        txt.textContent = `下载中 ${p}%`;
-        if (pct) pct.style.width = p + "%";
+        // 节流：百分比不变则不重写 DOM（避免大量小 chunk 频繁重绘卡顿）
+        if (p !== this._lastPct) {
+          txt.textContent = `下载中 ${p}%`;
+          if (pct) pct.style.width = p + "%";
+          this._lastPct = p;
+        }
       } else {
         txt.textContent = `下载中 ${mb} MB`;
       }
     },
     _dlProgressDone() {
-      if (typeof $ === "undefined" || !document.getElementById("dlProgress")) return;
       const bar = document.getElementById("dlProgress");
+      if (!bar) return;
       setTimeout(function () { bar.style.display = "none"; }, 600);
     },
     getToken, setToken,

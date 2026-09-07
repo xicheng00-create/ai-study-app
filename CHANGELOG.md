@@ -2,6 +2,13 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.14.1] - 2026-09-07
+
+### 修复
+- **资料下载进度条不显示（百分比缺失）**：`api.js` 三个 `_dlProgress*` 方法开头误写 `if (typeof $ === "undefined" || ...) return;`，而项目**无 jQuery**，`typeof $ === "undefined"` 恒真 → 进度条逻辑每次直接 return，永远不显示。修复：删除 `typeof $` 检查，改用 `document.getElementById("dlProgress")` 判存在。
+- 进度条更新加节流：百分比不变不重写 DOM（`_lastPct`），避免大文件大量小 chunk 频繁重绘卡顿。
+- sw.js `CACHE` bump `v28→v29`。
+
 ## [1.14.0] - 2026-09-07
 
 ### UI 优化（方向 A 原味精修 + 信息层级重排，全量所有视图）
