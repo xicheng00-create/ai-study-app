@@ -42,8 +42,28 @@ def weak_chapter_names(con, user_id: str) -> list[str]:
 def chapter_name(con, chapter_id: str | None) -> str:
     if not chapter_id:
         return "全部资料"
-    row = con.execute("SELECT name FROM chapters WHERE id=?", (chapter_id,)).fetchone()
+    row = con.execute("SELECT name FROM chapters WHERE id=? LIMIT 1", (chapter_id,)).fetchone()
     return row["name"] if row else "全部资料"
+
+
+def _last_user_substantive(history: list[dict]) -> str:
+    """从对话历史里取最近一条『实质性』用户提问（跳过承接语/当前轮）。
+
+    承接语（如「你帮我展开」「继续」「那第三点呢」「展开讲讲」）单独检索不到资料，
+    需要回退到上一轮真正问内容的 user 消息去 RAG 检索。取 history 中（不含末尾）
+    最近的 role=user 且长度足够非承接语的消息；无则返回空串。
+    """
+    SUBSTITUTE = {"你帮我展开", "继续展开", "展开讲讲", "继续", "展开", "那第三点呢",
+                  "那第二个呢", "讲详细点", "详细说说", "再说说", "展开说一下", "说详细点"}
+    # history 从旧到新；末尾可能是当前轮 user（post_message 已写入），跳过后再向前找
+    for msg in reversed(history):
+        if msg.get("role") != "user":
+            continue
+        txt = (msg.get("content") or "").strip()
+        if not txt or txt in SUBSTITUTE or len(txt) <= 2:
+            continue
+        return txt
+    return ""
 
 
 def _history(con, conversation_id: str, turn: int) -> list[dict]:
@@ -121,7 +141,14 @@ def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str
     related = video_link.retrieve_related_videos(video_chapter_ids, concept_tags) if _user_wants_video(content) else []
     related_txt = _format_related_videos(related)
 
+    # 多轮历史：提前取出（含刚写入的当前用户消息），供检索回退 + gate 判断 + LLM 承接
+    history = _history(con, conversation["id"], turn)
+    # 检索当前消息；承接语单独检索会空，回退用上一轮实质提问（保证多轮上下文不丢）
     chunks = rag.retrieve(content, chapter_id, top_k=5)
+    if not chunks:
+        last_q = _last_user_substantive(history)
+        if last_q and last_q != content:
+            chunks = rag.retrieve(last_q, chapter_id, top_k=5)
     chunk_txt = "\n".join(f"- {c['text'][:300]}" for c in chunks) if chunks else "（无相关片段）"
 
     # 门控 a/b：越界或敏感 → 兜底，不调用 LLM
@@ -138,7 +165,9 @@ def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str
         return {"content": fallback.conclude_reply(topic), "cite": "", "turn": turn,
                 "fallback": True, "related_videos": related}
 
-    if not chunks and not wrong_ctx:
+    # 检索不到且无错题、且无任何历史上下文（首问即空）→ 才兜底。
+    # 有历史上下文时放行让 LLM 承接（学生可能用承接语继续，不能因单轮检索空就打断上下文）
+    if not chunks and not wrong_ctx and not history:
         return {"content": fallback.fallback_reply("empty", chapter_name(con, chapter_id)),
                 "cite": "", "turn": turn, "fallback": True, "related_videos": related}
 
@@ -154,7 +183,7 @@ def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str
         tutor_mode=mode_label,
         turn=turn,
     )
-    reply = agents.tutor_reply(system, _history(con, conversation["id"], turn))
+    reply = agents.tutor_reply(system, history)
     if reply is None:
         return {"content": fallback.fallback_reply("error"), "cite": "", "turn": turn,
                 "fallback": True, "related_videos": related}

@@ -2,6 +2,13 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.14.2] - 2026-09-07
+
+### 修复
+- **学习页输入框「皮筋回弹」**：`.composer`/`.tabbar` 被塞进 `.screen`（`overflow-y:auto` 滚动容器），iOS 的 `-webkit-overflow-scrolling:touch` 会让 fixed 元素跟随滚动容器回弹。修复：滚动改交 `body`（`.screen` 改 `overflow:visible`），composer/tabbar fixed 相对 viewport 稳定；`.content.chat-view` 底部留白 74px→118px（composer 实测高 108px），滚动到底消息不再被输入框盖住。
+- **对话多轮上下文丢失**：`tutor_orchestrate` 用当前单条消息做 RAG 检索，学生发承接语（「你帮我展开」「继续」等）检索不到资料 → `if not chunks` 直接 empty 兜底，LLM 未承接上下文（截图「没找到相关内容」）。修复：① 检索空时回退用最近一轮实质用户提问再检索；② `if not chunks and not wrong_ctx` gate 放宽为 `and not history`（有历史上下文时放行让 LLM 承接，不因单轮检索空打断）。新增 `_last_user_substantive()`。
+- sw.js `CACHE` bump `v29→v30`。
+
 ## [1.14.1] - 2026-09-07
 
 ### 修复
