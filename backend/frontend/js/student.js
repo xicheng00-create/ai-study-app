@@ -44,7 +44,7 @@ const Student = {
   curriculum: null,
   pendingReply: false, // 等待 DeepSeek 回复期间驱动思考气泡（避免被 render 重载覆盖）
   convs: [],          // 学习页对话 pill 列表缓存（长按删除时查标题）
-  classCat: 0,        // 班级排行榜当前分类（0~5）
+  classData: null,    // 班级排行榜响应缓存（供「更多排行榜」弹层读取）
   classQuizId: null,  // 测评分数榜当前选中的测评
   weakOpen: null,     // 薄弱点页展开的章节 id
   weakGroupOpen: {},  // 薄弱点页展开的「章→组」键：`${chapter_id}:${quiz_id|practice}`
@@ -79,10 +79,12 @@ const Student = {
     if (this.convId) {
       try { const d = await API.get("/api/conversations/" + this.convId); this.messages = d.messages || []; } catch (e) { this.messages = []; }
     }
-    const chapterCards = App.chapters.map(c => `<div class="chapter ${App.activeChapter === c.id ? 'active' : ''}" onclick="Student.selectChapter('${c.id}')">
+    // 资料库「越新的在越左边」：按 created_at 倒序（最新添加排最左），不改 App.chapters 原序
+    const chaptersSorted = [...App.chapters].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    const chapterCards = chaptersSorted.map(c => `<div class="chapter ${App.activeChapter === c.id ? 'active' : ''}" onclick="Student.selectChapter('${c.id}')">
       <div><div class="nm">${esc(c.name)}</div><div class="mt">${esc(c.folder || '未分组')}</div></div></div>`).join('');
     // ≥2 章节时资料库改为横向滑动卡片组（单章保持竖排）
-    const chapters = App.chapters.length >= 2 ? `<div class="chapter-scroll">${chapterCards}</div>` : chapterCards;
+    const chapters = chaptersSorted.length >= 2 ? `<div class="chapter-scroll">${chapterCards}</div>` : chapterCards;
     const convChips = convs.map(c => `<span class="pill ${this.convId === c.id ? 'active' : ''}" style="cursor:pointer" onclick="Student.selectConv('${c.id}')" onmousedown="Student.pressStart(event,'${c.id}')" onmouseup="Student.pressEnd(event)" onmouseleave="Student.pressEnd(event)" ontouchstart="Student.pressStart(event,'${c.id}')" ontouchend="Student.pressEnd(event)" ontouchmove="Student.pressMove(event)" ontouchcancel="Student.pressEnd(event)"><span class="pill-t">${esc(c.title)}</span></span>`).join('')
       + `<span class="pill" style="cursor:pointer" onclick="Student.newConv()">＋ 新对话</span>`;
     const msgsHtml = this.messages.map(m => `<div class="msg ${m.role === 'user' ? 'user' : 'bot'}">${m.role === 'user' ? '' : '<div class="who">TUTOR</div>'}${esc(m.content)}</div>`).join('')
@@ -97,11 +99,11 @@ const Student = {
     const isGuide = this.tutorMode === 'guide';
     return appbar('学习', isGuide ? '引导式辅导 · 不直接给答案' : '直接讲解 · 有问必答') +
     `<div class="content chat-view">
-      <!-- 模式切换：segmented control，一眼看出当前 -->
-      <div class="seg">
+      <!-- 模式切换吸顶容器：滚动对话时 seg 固定顶部、始终可见（不遮挡 appbar） -->
+      <div class="seg-sticky"><div class="seg">
         <button class="${isGuide ? 'on' : ''}" onclick="Student.setTutorMode('guide')">${ic('grad')}引导式</button>
         <button class="${isGuide ? '' : 'on'}" onclick="Student.setTutorMode('direct')">${ic('chat')}直接讲解</button>
-      </div>
+      </div></div>
       <!-- AI info 条：安静，不抢戏 -->
       <div class="ai-info">${ic('shield')}回答由 AI 生成，请核对资料原文 · 越界内容已拦截</div>
       <!-- 资料库：标题 + 篇数徽章 + 选中章左珊瑚条 -->
@@ -618,52 +620,65 @@ const Student = {
   },
 
   /* ===== 班级 ===== */
+  /* 排行榜行渲染：前 3 名金/银/铜奖牌（SVG），第 4 名起普通序号 */
+  _rankNum(i) {
+    const cls = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+    return cls
+      ? `<div class="rank-num medal ${cls}" title="第${i + 1}名">${ic('medal')}</div>`
+      : `<div class="rank-num rn">${i + 1}</div>`;
+  },
+  _rankRow(it, i, me, valHtml, sub) {
+    const isMe = it.user_id === me;
+    return `<div class="rank-row ${isMe ? 'me' : ''}">${this._rankNum(i)}<div class="rank-av ${isMe ? 'b' : ''}">${esc((it.display_name || '?').charAt(0))}</div><div class="rank-meta"><div class="nm">${esc(it.display_name)}${isMe ? '<span class="me-tag">我</span>' : ''}</div>${sub || ''}</div><div class="rank-val">${valHtml}</div></div>`;
+  },
+  _rankVal(v, unit) { return `<div class="v">${v}</div><div class="k">${unit}</div>`; },
   async viewClass() {
-    let d = { total_turns: [], total_practice: [], today_turns: [], today_conversations: [], mastery: [], quizzes: [], quiz_boards: {} };
+    let d = { total_turns: [], total_practice: [], today_turns: [], today_conversations: [], today_practice: [], mastery: [], quizzes: [], quiz_boards: {} };
     try { d = await API.get("/api/class/leaderboard"); } catch (e) {}
+    this.classData = d;  // 缓存，供「更多排行榜」弹层读取
     const me = (App.state.user && App.state.user.id) || d.me_user_id;
-    const cat = this.classCat || 0;
-    const cats = ["累计对话轮", "累计练习", "今日对话轮", "今日对话次数", "测评分数", "掌握度"];
-    const chips = cats.map((t, i) => `<div class="chip ${cat === i ? 'active' : ''}" onclick="Student.setClassCat(${i})">${t}</div>`).join('');
-
-    const badge = (i) => i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : 'rn';
-    const av = (it, isMe) => `<div class="rank-av ${isMe ? 'b' : ''}">${esc((it.display_name || '?').charAt(0))}</div>`;
-    const name = (it, isMe) => `<div class="nm">${esc(it.display_name)}${isMe ? '<span class="me-tag">我</span>' : ''}</div>`;
-    const row = (it, i, valHtml, sub = '') => {
-      const isMe = it.user_id === me;
-      return `<div class="rank-row ${isMe ? 'me' : ''}"><div class="rank-num ${badge(i)}">${i + 1}</div>${av(it, isMe)}<div class="rank-meta">${name(it, isMe)}${sub}</div><div class="rank-val">${valHtml}</div></div>`;
+    // 主屏两个排行榜卡片：① 今日对话次数 ② 今日练习次数（各卡片前 3 名奖牌）
+    const card = (title, icon, entries, unit, subFn) => {
+      const rows = (entries || []).map((it, i) => this._rankRow(it, i, me, this._rankVal(it.value, unit), `<div class="st">${subFn(it)}</div>`)).join('');
+      return `<div class="card"><div class="card-head"><div class="card-title">${ic(icon, 'coral')}${title}</div><span class="card-count">${(entries || []).length} 人</span></div>${rows || '<div class="muted">暂无数据</div>'}</div>`;
     };
-    const num = (v, unit) => `<div class="v">${v}</div><div class="k">${unit}</div>`;
-
-    let body = '';
-    if (cat === 0) body = (d.total_turns || []).map((it, i) => row(it, i, num(it.value, '轮'), `<div class="st">累计 ${it.value} 轮对话</div>`)).join('');
-    else if (cat === 1) body = (d.total_practice || []).map((it, i) => row(it, i, num(it.value, '次'), `<div class="st">累计 ${it.value} 次练习</div>`)).join('');
-    else if (cat === 2) body = (d.today_turns || []).map((it, i) => row(it, i, num(it.value, '轮'), `<div class="st">今日 ${it.value} 轮对话</div>`)).join('');
-    else if (cat === 3) body = (d.today_conversations || []).map((it, i) => row(it, i, num(it.value, '个'), `<div class="st">今日 ${it.value} 个对话</div>`)).join('');
-    else if (cat === 4) {
-      const quizSel = this.classQuizId || (d.quizzes && d.quizzes[0] && d.quizzes[0].quiz_id) || null;
-      const quizChips = (d.quizzes || []).map(q => `<div class="c ${quizSel === q.quiz_id ? 'on' : ''}" onclick="Student.setClassQuiz('${q.quiz_id}')">${esc(q.title)}${q.version > 1 ? ` v${q.version}` : ''}</div>`).join('');
-      const board = (quizSel && d.quiz_boards && d.quiz_boards[quizSel]) || [];
-      body = `<div class="qp">${quizChips || '<div class="muted">暂无已发布测评</div>'}</div>` + board.map((it) => {
-        const isMe = it.user_id === me;
-        if (it.absent) {
-          return `<div class="rank-row ${isMe ? 'me' : ''}"><div class="rank-num rn">—</div>${av(it, isMe)}<div class="rank-meta">${name(it, isMe)}<div class="st">未参加本次测评</div></div><div class="rank-val"><div class="v">—</div><div class="k">未参加</div></div></div>`;
-        }
-        return `<div class="rank-row ${isMe ? 'me' : ''}"><div class="rank-num ${badge((it.rank || 1) - 1)}">${it.rank}</div>${av(it, isMe)}<div class="rank-meta">${name(it, isMe)}<div class="st">得分 ${it.score}</div></div><div class="rank-val"><div class="v">${it.score}</div><div class="k">/100</div></div></div>`;
-      }).join('');
-    } else {
-      body = (d.mastery || []).map((it, i) => {
-        const isMe = it.user_id === me;
-        const sub = it.avg_m == null ? '<div class="st">未评估</div>' : `<div class="st">平均 M ${it.avg_m}% · 已掌握 ${it.mastered_count} 章</div>`;
-        const val = it.avg_m == null ? '—' : it.avg_m;
-        return `<div class="rank-row ${isMe ? 'me' : ''}"><div class="rank-num ${badge(i)}">${i + 1}</div>${av(it, isMe)}<div class="rank-meta">${name(it, isMe)}${sub}</div><div class="rank-val"><div class="v">${val}</div><div class="k">%</div></div></div>`;
-      }).join('');
-    }
+    const body = card('今日对话次数', 'chat', d.today_conversations, '个', (it) => `今日 ${it.value} 个对话`)
+      + card('今日练习次数', 'target', d.today_practice, '次', (it) => `今日 ${it.value} 次练习`);
     return appbar('班级', '全班学习排行榜 · 仅同班同学') + `<div class="content">
-      <div class="pill-wrap" style="margin-bottom:12px">${chips}</div>
-      ${body || '<div class="muted">暂无数据</div>'}
+      ${body}
+      <button class="btn ghost" style="margin-top:4px" onclick="Student.openClassMore()">${ic('pin')}更多排行榜 · 累计 / 测评 / 掌握度</button>
     </div>` + tabbar();
   },
-  setClassCat(i) { this.classCat = i; render(); },
-  setClassQuiz(id) { this.classQuizId = id; this.classCat = 4; render(); },
+  /* 其它排行榜（累计对话轮 / 累计练习 / 测评分数 / 掌握度）收进底部弹出层，点「关闭」收起 */
+  openClassMore() {
+    const d = this.classData || { total_turns: [], total_practice: [], mastery: [], quizzes: [], quiz_boards: {} };
+    const me = (App.state.user && App.state.user.id) || d.me_user_id;
+    const rows = (entries, unit, subFn) => (entries || []).map((it, i) => this._rankRow(it, i, me, this._rankVal(it.value, unit), `<div class="st">${subFn(it)}</div>`)).join('') || '<div class="muted">暂无数据</div>';
+    // 测评分数榜：默认选第一个已发布测评，chip 切换后重开弹层
+    const quizSel = this.classQuizId || (d.quizzes && d.quizzes[0] && d.quizzes[0].quiz_id) || null;
+    const quizChips = (d.quizzes || []).map(q => `<div class="c ${quizSel === q.quiz_id ? 'on' : ''}" onclick="Student.setClassQuiz('${q.quiz_id}')">${esc(q.label || q.title)}${q.version > 1 ? ` v${q.version}` : ''}</div>`).join('');
+    const board = (quizSel && d.quiz_boards && d.quiz_boards[quizSel]) || [];
+    const quizRows = board.map((it) => {
+      const isMe = it.user_id === me;
+      if (it.absent) {
+        return `<div class="rank-row ${isMe ? 'me' : ''}"><div class="rank-num rn">—</div><div class="rank-av ${isMe ? 'b' : ''}">${esc((it.display_name || '?').charAt(0))}</div><div class="rank-meta"><div class="nm">${esc(it.display_name)}${isMe ? '<span class="me-tag">我</span>' : ''}</div><div class="st">未参加本次测评</div></div><div class="rank-val"><div class="v">—</div><div class="k">未参加</div></div></div>`;
+      }
+      return this._rankRow(it, (it.rank || 1) - 1, me, `<div class="v">${it.score}</div><div class="k">/100</div>`, `<div class="st">得分 ${it.score}</div>`);
+    }).join('') || '<div class="muted">暂无数据</div>';
+    const masteryRows = (d.mastery || []).map((it, i) => {
+      const sub = it.avg_m == null ? '<div class="st">未评估</div>' : `<div class="st">平均 M ${it.avg_m}% · 已掌握 ${it.mastered_count} 章</div>`;
+      const val = it.avg_m == null ? '—' : it.avg_m;
+      return this._rankRow(it, i, me, `<div class="v">${val}</div><div class="k">%</div>`, sub);
+    }).join('') || '<div class="muted">暂无数据</div>';
+    const sec = (t) => `<div class="sec-head">${t}</div>`;
+    openSheet(`<div class="row" style="font-weight:700;cursor:default">${ic('pin')}更多排行榜</div>
+      <div style="text-align:left;padding:4px 14px;max-height:52vh;overflow-y:auto">
+        ${sec('累计对话轮')}${rows(d.total_turns, '轮', (it) => `累计 ${it.value} 轮对话`)}
+        ${sec('累计练习')}${rows(d.total_practice, '次', (it) => `累计 ${it.value} 次练习`)}
+        ${sec('测评分数')}<div class="qp">${quizChips || '<div class="muted">暂无已发布测评</div>'}</div>${quizRows}
+        ${sec('掌握度')}${masteryRows}
+      </div>
+      <div class="row cancel" onclick="closeSheet()">关闭</div>`);
+  },
+  setClassQuiz(id) { this.classQuizId = id; this.openClassMore(); },
 };

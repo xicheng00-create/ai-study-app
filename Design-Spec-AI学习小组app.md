@@ -563,6 +563,13 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 
 > - **PROG-005（薄弱点改独立页，✅）**：学生端进度页底部「薄弱点（带错题依据）」由内嵌折叠大卡改为**入口卡**（「📌 薄弱点 · N 章 · M 道错题 ›」），点击进入独立薄弱点页（新 hash `#weak`，`Student.viewWeak()`）。独立页为**章节纵向列表**（掌握度 M + 错题数）→ 点章展开 → 章内按**「练习错题 / 测评错题（第X周 第Y节，用 `/api/quizzes` quizMap 反查 session 标题）」分组** → 点组**向下滚动展开全部错题**（复用 `fmtWrongCard` 纵向排列，杜绝横向滚动/横向卡片）。交互状态：`weakOpen`（展开章）+ `weakGroupOpen`（`${chapter_id}:${quiz_id|practice}` 组级展开）。后端 `_wrong_evidence`/`_practice_wrong` 去掉 `limit=5` 截断、全量返回错题依据（聚合逻辑不变）。
 
+### 12.14 实现状态回写（v1.15.0，2026-09-08）
+
+> - **CLASS-003 强化（今日练习次数，✅）**：`GET /api/class/leaderboard` 新增 `today_practice`（`practice_sessions.created_at` 按 UTC+8「今天」过滤，`_sorted_entries` 排序）；班级页 `viewClass()` 主屏改为**两张排行榜卡片**（① 今日对话次数 `today_conversations` ② 今日练习次数 `today_practice`），前 3 名金/银/铜奖牌（内联 SVG，非 emoji）、第 4 名起普通序号；其余排行榜（累计对话轮/累计练习/测评分数/掌握度）收进底部弹出层（`openClassMore` 复用 `openSheet`，点「关闭」收起，测评分数 chip 切换后重开弹层）——数据后端全保留、仅 UI 收进弹层。
+> - **CHAT-004 强化（模式切换吸顶，✅）**：学习页「引导式/直接讲解」segmented control 从内容流提出、包 `.seg-sticky`（`position:sticky;top:74px`），对话滚动时固定顶部、始终可见，不遮挡 appbar。
+> - **MAT-004 强化（资料库「越新越左」，✅）**：`GET /api/chapters` 返回补 `created_at`，`viewLearn()` 按 `created_at` 倒序渲染章节卡片（最新添加排最左），选中态/「N 篇」徽章/单章竖排·多章横滑不变。
+> - **输入框钉底根治（UI 修复，✅）**：`body` 移除 `-webkit-overflow-scrolling:touch`（该属性在 body 滚动时会让 iOS `position:fixed` 的 `.composer`/`.tabbar` 跟随回弹），输入框稳定钉在 `.tabbar`（78px）正上方；headless Chrome 实测滚动前后 `.composer` `getBoundingClientRect().y` 恒定。
+
 ## 十三、NFR 与已知盲区（融合 PRD §13 + architecture §十三）
 
 ### 13.1 NFR（REQ-NFR）

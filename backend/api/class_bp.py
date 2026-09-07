@@ -125,7 +125,7 @@ def _parse_ids(raw):
 @class_bp.route("/leaderboard", methods=["GET"])
 @jwt_required
 def leaderboard():
-    """全班排行榜 6 类（REQ-CLASS-001~006），student / teacher 均可访问。"""
+    """全班排行榜（REQ-CLASS-001~006）：6 类 + 今日练习次数，student / teacher 均可访问。"""
     con = get_db()
     students = _student_map(con)
     is_teacher = g.role == "teacher"
@@ -157,6 +157,12 @@ def leaderboard():
     for r in con.execute("SELECT user_id, created_at FROM conversations").fetchall():
         if timeutil.shanghai_date(r["created_at"]) == today:
             today_convs[r["user_id"]] += 1
+
+    # 今日（UTC+8）练习次数：practice_sessions.created_at 落今天（班级页主屏指标）
+    today_practice = Counter()
+    for r in con.execute("SELECT user_id, created_at FROM practice_sessions").fetchall():
+        if timeutil.shanghai_date(r["created_at"]) == today:
+            today_practice[r["user_id"]] += 1
 
     # 5) 每次测评分数榜：列出全体学生分数与排名，未参加标注「未参加」
     quizzes = con.execute(
@@ -222,6 +228,7 @@ def leaderboard():
         "total_practice": _sorted_entries(total_practice, students),
         "today_turns": _sorted_entries(dict(today_turns), students),
         "today_conversations": _sorted_entries(dict(today_convs), students),
+        "today_practice": _sorted_entries(dict(today_practice), students),
         "mastery": mastery_rows,
         "quizzes": quiz_list,
         "quiz_boards": quiz_boards,

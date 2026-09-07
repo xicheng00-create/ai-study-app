@@ -2,6 +2,18 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.15.0] - 2026-09-08
+
+### 新功能
+- **班级页新增「今日练习次数」指标（REQ-CLASS-003 强化）**：`GET /api/class/leaderboard` 新增 `today_practice`（按 UTC+8「今天」过滤 `practice_sessions.created_at`，复用 `timeutil.shanghai_date`，与 `today_turns`/`today_conversations` 一致），返回 `_sorted_entries` 排序结果。
+- **班级页主屏改「两张排行榜卡片 + 其余收进弹出层」**：学生端 `viewClass()` 由 6 个分类 chips 横向切换改为主屏直接展示 **① 今日对话次数 ② 今日练习次数** 两张卡片，每卡前 3 名显示**金/银/铜奖牌**（新增 `app.js` `ICO.medal` 内联 SVG + `.rank-num.medal.{gold,silver,bronze}` 圆形徽章，替代 emoji），第 4 名起普通序号；其余排行榜（累计对话轮 / 累计练习 / 测评分数 / 掌握度）收进底部弹出层（复用 `.sheet-mask`/`openSheet`），点「更多排行榜」打开、点「关闭」收起。测评分数榜 chip 切换后重开弹层。
+
+### 修复 / UI 优化
+- **学习页「引导式/直接讲解」toggle 吸顶（REQ-CHAT-004 强化）**：`.seg` 从内容流中提出、包进 `.seg-sticky`（`position:sticky;top:74px` 对齐 appbar 底），对话滚动时模式切换固定顶部、始终可见，不遮挡 appbar（appbar z-index 20 > seg 15）。
+- **学习页资料库「越新的在越左边」（REQ-MAT-004 强化）**：`GET /api/chapters` 返回补 `created_at`，前端 `viewLearn()` 按 `created_at` 倒序渲染章节卡片（最新添加排最左），不影响选中态 /「N 篇」徽章 / 单章竖排·多章横滑逻辑。
+- **输入框彻底钉底（关键 bug 根治）**：v1.14.2 把滚动从 `.screen` 移到 `body` 后，`body` 仍保留 `-webkit-overflow-scrolling:touch` —— iOS 下该属性会让 `position:fixed` 的 `.composer`/`.tabbar` 跟随滚动容器回弹/被挤走。修复：删除 `body` 的 `-webkit-overflow-scrolling:touch`，使 body 正常滚动时 fixed 输入框稳定钉在 `.tabbar`（高 78px）正上方；`.composer` 无 transform/filter/will-change/overflow 祖先（headless Chrome 实测滚动前后 `getBoundingClientRect().y` 恒定）。
+- sw.js `CACHE` bump `v30→v31`。
+
 ## [1.14.2] - 2026-09-07
 
 ### 修复

@@ -16,6 +16,8 @@ def _chapter_row(row) -> dict:
         "name": row["name"],
         "order_no": row["order_no"],
         "created_by": row["created_by"],
+        # 学习页资料库「越新的在越左边」排序键（最新添加排最左）
+        "created_at": row["created_at"],
     }
 
 
