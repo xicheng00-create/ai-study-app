@@ -425,10 +425,34 @@ const Student = {
     const qs = (this.practiceResult.detail && this.practiceResult.detail.questions) || [];
     const rows = qs.map((q, i) => {
       const ok = q.correct === 1;
+      let opts = q.options || [];
+      if (typeof opts === 'string') { try { opts = JSON.parse(opts); } catch (e) { opts = []; } }
+      opts = [].concat(opts).map(String);
+      const typ = q.type;
+      const your = String(q.user_answer != null ? q.user_answer : '');
+      const key = String(q.answer_key != null ? q.answer_key : '');
+      let optHtml = '';
+      if (typ === 'bool') {
+        optHtml = ['正确', '错误'].map(v => {
+          const isAns = (key === v), isYour = (your === v);
+          const cls = isAns ? ' style="border-color:var(--green);background:#eefaf0"' : (isYour ? ' style="border-color:var(--red);background:#fdecea"' : '');
+          const mark = isAns ? ' ✅' : (isYour ? ' ❌' : '');
+          return `<div class="opt"${cls}><span class="dot"></span>${v}${mark}</div>`;
+        }).join('');
+      } else if (typ === 'choice' && opts.length) {
+        const yi = parseInt(your, 10), ai = parseInt(key, 10);
+        optHtml = opts.map((o, j) => {
+          const isAns = (j === ai), isYour = (j === yi);
+          const cls = isAns ? ' style="border-color:var(--green);background:#eefaf0"' : (isYour ? ' style="border-color:var(--red);background:#fdecea"' : '');
+          const mark = isAns ? ' ✅ 正确答案' : (isYour ? ' ❌ 你的答案' : '');
+          return `<div class="opt"${cls}><span class="dot"></span>${String.fromCharCode(65 + j)}. ${esc(o)}${mark}</div>`;
+        }).join('');
+      } else {
+        optHtml = `<div style="font-size:13px;margin-top:5px"><span style="color:${ok ? 'var(--green)' : 'var(--red)'}">你的答案：${esc(your || '未作答')}（得 ${q.score} 分）</span></div><div class="muted" style="margin-top:4px">参考：${esc(key || '—')}</div>`;
+      }
       return `<div class="card sm" style="border-color:${ok ? '#E2F0E6' : '#FAD9D6'}">
-        <div style="font-size:13px"><b>${i + 1}. ${ok ? '✅' : '❌'}</b> ${esc(q.content)} <b class="pts">${q.points} 分</b></div>
-        ${q.user_answer !== undefined ? `<div style="font-size:13px;margin-top:5px"><span style="color:${ok ? 'var(--green)' : 'var(--red)'}">你的答案：${esc(q.user_answer || '未作答')}（得 ${q.score} 分）</span></div>` : ''}
-        <div class="muted" style="margin-top:4px">参考：${esc(q.answer_key || '')}</div>
+        <div style="font-size:13px"><b>${i + 1}. ${ok ? '✅' : '❌'}</b> ${esc(q.content)} <b class="pts">${q.points} 分</b> <span class="muted" style="font-size:12px">· 得 ${q.score} 分</span></div>
+        ${optHtml}
       </div>`;
     }).join('');
     return appbar('自主练习', '批改完成') + `<div class="content">
