@@ -1,4 +1,6 @@
 """引导式对话编排（CHAT-004/005，F5 输出门控，两层 Fallback）。"""
+import json
+
 from ai import agents, fallback, mastery, rag, video_link
 from ai.prompts import TUTOR_SYSTEM
 
@@ -53,22 +55,49 @@ def _history(con, conversation_id: str, turn: int) -> list[dict]:
     return [{"role": r["role"], "content": r["content"]} for r in rows]
 
 
+def _choice_label(val, opts):
+    """choice：索引字符串 -> '字母.选项文本'；bool/文本/越界回退原值。"""
+    try:
+        idx = int(val)
+        if 0 <= idx < len(opts):
+            return f"{chr(65 + idx)}.{opts[idx]}"
+    except (TypeError, ValueError):
+        pass
+    return val
+
+
 def _format_wrong_ctx(wrong_ctx) -> str:
-    """将已作答错题压缩为 TUTOR 可用上下文。"""
+    """将已作答错题压缩为 TUTOR 可用上下文（含完整选项 + 字母标注，供输出结构化解析）。"""
     if not wrong_ctx:
         return "（本次未提供错题）"
+    if not isinstance(wrong_ctx, list):
+        wrong_ctx = [wrong_ctx]
     rows = []
-    for item in wrong_ctx[:20]:
+    for i, item in enumerate(wrong_ctx[:20], 1):
         if not isinstance(item, dict):
             continue
         content = str(item.get("content") or "").strip()
         if not content:
             continue
-        rows.append(
-            f"- 题目：{content}\n"
-            f"  学生作答：{item.get('your_answer') or '未作答'}\n"
-            f"  正确答案：{item.get('answer_key') or '未提供'}"
-        )
+        opts = item.get("options") or []
+        if isinstance(opts, str):
+            try:
+                opts = json.loads(opts)
+            except (json.JSONDecodeError, ValueError, TypeError):
+                opts = []
+        opts = [str(o) for o in opts]
+        typ = item.get("type")
+        opt_txt = "｜".join(f"{chr(65 + j)}.{o}" for j, o in enumerate(opts)) if opts else ""
+        your_txt = _choice_label(item.get('your_answer'), opts) if (typ == "choice" and opts) else str(item.get('your_answer') or "未作答")
+        key_txt = _choice_label(item.get('answer_key'), opts) if (typ == "choice" and opts) else str(item.get('answer_key') or "未提供")
+        line = f"- 第{i}题：{content}"
+        if opt_txt:
+            line += f"\n  选项：{opt_txt}"
+        line += f"\n  学生选：{your_txt}"
+        line += f"\n  正确：{key_txt}"
+        if item.get("sub_concept"):
+            line += f"\n  考点：{item['sub_concept']}"
+        rows.append(line)
     return "\n".join(rows) or "（本次未提供有效错题）"
 
 
