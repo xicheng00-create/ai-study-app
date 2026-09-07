@@ -2,6 +2,13 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.13.3] - 2026-09-07
+
+### 变更
+- **资料下载改分块流式 + 进度百分比**：`api.js` `download` 由一次 `resp.blob()`（等全量拉完才有反应，大文件看起来卡死）改为 `ReadableStream` 分块流式读取。边下边更新进度条（`#dlProgress`）：有 `Content-Length` 显示「下载中 N%」+ 进度条宽度；无总长退化为显示已下载 MB。「已开始下载」toast 保留，延迟 revoke 保留（防 load failed）。
+- 新增下载进度条 DOM（index.html）+ 样式（style.css）；无流式能力的老浏览器退化为一次 blob。
+- sw.js `CACHE` bump `v22→v23`。
+
 ## [1.13.2] - 2026-09-07
 
 ### 修复

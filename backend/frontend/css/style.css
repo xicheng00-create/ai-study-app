@@ -143,6 +143,11 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text)}
 .global-loading{position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:99;display:flex;align-items:center;gap:8px;background:rgba(29,29,31,.92);color:#fff;padding:8px 15px;border-radius:20px;font-size:12.5px;box-shadow:0 4px 16px rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:opacity .18s;white-space:nowrap}
 .global-loading.show{opacity:1}
 .global-loading .spin{border-color:rgba(255,255,255,.35);border-top-color:#fff;width:13px;height:13px}
+/* 资料下载进度条：分块流式下载时悬浮显示百分比 + 进度条 */
+#dlProgress{display:none;position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:99;align-items:center;gap:8px;background:rgba(29,29,31,.92);color:#fff;padding:8px 15px;border-radius:14px;font-size:12.5px;box-shadow:0 4px 16px rgba(0,0,0,.18);pointer-events:none;white-space:nowrap}
+#dlProgress .dl-spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite;vertical-align:-2px}
+#dlProgressBar{width:70px;height:5px;background:rgba(255,255,255,.22);border-radius:3px;overflow:hidden}
+#dlProgressPct{height:100%;width:0%;background:var(--coral,#F2714E);border-radius:3px;transition:width .15s}
 /* TUTOR 思考气泡：三点加载动画 */
 .typing{display:inline-flex;gap:4px;align-items:center;padding:2px 0}
 .typing span{width:7px;height:7px;border-radius:50%;background:var(--text-3,#999);animation:typing 1.1s infinite ease-in-out}
