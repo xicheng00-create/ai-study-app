@@ -120,8 +120,15 @@ def post_message(conversation_id):
     chapter_id = (data.get("chapter_id") or "").strip() or None
     concept_tags = data.get("concept_tags") or []
     chapter_ids = data.get("chapter_ids") or []
-    if not isinstance(concept_tags, list) or not isinstance(chapter_ids, list):
-        return e_input("concept_tags / chapter_ids 需为数组")
+    wrong_ctx = data.get("wrong_ctx") or []
+    if (not isinstance(concept_tags, list) or not isinstance(chapter_ids, list)
+            or not isinstance(wrong_ctx, list)):
+        return e_input("concept_tags / chapter_ids / wrong_ctx 需为数组")
+    if len(wrong_ctx) > 20:
+        return e_input("wrong_ctx 最多 20 题")
+    for item in wrong_ctx:
+        if not isinstance(item, dict):
+            return e_input("wrong_ctx 每项需为对象")
 
     con = get_db()
     conv = _own_conversation(con, conversation_id)
@@ -145,8 +152,10 @@ def post_message(conversation_id):
         (models.new_id(), conversation_id, content, now),
     )
 
-    result = tutor.tutor_orchestrate(con, user_row, conv, content, chapter_id,
-                                     concept_tags=concept_tags, chapter_ids=chapter_ids)
+    result = tutor.tutor_orchestrate(
+        con, user_row, conv, content, chapter_id, concept_tags=concept_tags,
+        chapter_ids=chapter_ids, wrong_ctx=wrong_ctx
+    )
     con.execute(
         "INSERT INTO messages (id, conversation_id, role, content, cite, turn, created_at)"
         " VALUES (?, ?, 'assistant', ?, ?, ?, ?)",

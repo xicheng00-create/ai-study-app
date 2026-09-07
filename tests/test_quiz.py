@@ -105,3 +105,25 @@ def test_teacher_review_attempt(client, teacher_headers):
     resp = client.put(f"/api/attempts/{first['id']}/review",
                       json={"score": first["points"] + 1}, headers=teacher_headers)
     assert resp.status_code == 400
+
+
+def test_teacher_student_errors_only_lists_attempted_students(client, teacher_headers):
+    cid = _chapter(client, teacher_headers)
+    qid = _draft_and_publish(client, teacher_headers, cid)
+    sid = make_student(client, teacher_headers, "alice")
+    alice = login(client, "alice", "student123")
+    h = {"Authorization": f"Bearer {alice}"}
+    qs = client.get(f"/api/quizzes/{qid}", headers=h).get_json()["data"]["questions"]
+    client.post(f"/api/quizzes/{qid}/attempts", json={
+        "answers": [{"question_id": q["id"], "answer": ""} for q in qs]
+    }, headers=h)
+
+    resp = client.get(f"/api/quizzes/{qid}/student-errors", headers=teacher_headers)
+    assert resp.status_code == 200, resp.get_json()
+    students = resp.get_json()["data"]["students"]
+    assert len(students) == 1
+    assert students[0]["user_id"] == sid
+    assert students[0]["errors"]
+    assert {"content", "type", "options", "your_answer", "answer_key"} <= set(students[0]["errors"][0])
+
+    assert client.get(f"/api/quizzes/{qid}/student-errors", headers=h).status_code == 403

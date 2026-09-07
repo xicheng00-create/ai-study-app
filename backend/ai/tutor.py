@@ -53,8 +53,27 @@ def _history(con, conversation_id: str, turn: int) -> list[dict]:
     return [{"role": r["role"], "content": r["content"]} for r in rows]
 
 
+def _format_wrong_ctx(wrong_ctx) -> str:
+    """将已作答错题压缩为 TUTOR 可用上下文。"""
+    if not wrong_ctx:
+        return "（本次未提供错题）"
+    rows = []
+    for item in wrong_ctx[:20]:
+        if not isinstance(item, dict):
+            continue
+        content = str(item.get("content") or "").strip()
+        if not content:
+            continue
+        rows.append(
+            f"- 题目：{content}\n"
+            f"  学生作答：{item.get('your_answer') or '未作答'}\n"
+            f"  正确答案：{item.get('answer_key') or '未提供'}"
+        )
+    return "\n".join(rows) or "（本次未提供有效错题）"
+
+
 def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str | None,
-                      concept_tags=None, chapter_ids=None) -> dict:
+                      concept_tags=None, chapter_ids=None, wrong_ctx=None) -> dict:
     """返回 {content, cite, turn, fallback, related_videos}。"""
     user_id = user_row["id"]
     turn = _current_turn(con, conversation["id"])
@@ -93,6 +112,7 @@ def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str
         weak_chapters=weak_txt,
         retrieved_chunks=chunk_txt[:4000],
         related_videos=related_txt,
+        wrong_ctx=_format_wrong_ctx(wrong_ctx),
         turn=turn,
     )
     reply = agents.tutor_reply(system, _history(con, conversation["id"], turn))

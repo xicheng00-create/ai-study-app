@@ -353,7 +353,7 @@ const Teacher = {
       <div style="display:flex;gap:8px"><button class="btn teacher sm" style="flex:1" onclick="Teacher.preview('${q.id}')">👁 预览</button><button class="btn teacher sm" style="flex:1" onclick="Teacher.publish('${q.id}')">确认发布</button><button class="mini-btn danger" onclick="Teacher.dropQuiz('${q.id}')">放弃</button></div></div>`).join('');
     const published = quizzes.filter(q => q.status === "published").map(q => `<div class="card sm" style="display:flex;justify-content:space-between;align-items:center">
       <div><div style="font-weight:700">${q.version > 1 ? `<span class="badge ver">v${q.version}</span> ` : ''}${esc(q.title)}</div><div class="muted">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')} · ${q.total_points} 分</div></div>
-      <div style="display:flex;gap:6px"><span class="mini-btn teacher" onclick="Teacher.preview('${q.id}')">👁 预览</span><span class="mini-btn teacher" onclick="Teacher.revise('${q.id}')">重出</span></div></div>`).join('');
+      <div style="display:flex;gap:6px"><span class="mini-btn teacher" onclick="Teacher.preview('${q.id}')">👁 预览</span><span class="mini-btn teacher" onclick="Teacher.openStudentErrors('${q.id}')">👁 学生错题</span><span class="mini-btn teacher" onclick="Teacher.revise('${q.id}')">重出</span></div></div>`).join('');
     const cfg = this.quizConfig || {};
     const presetHtml = this.QUIZ_PRESETS.map(p => {
       const on = (cfg.choice || 0) === (p.cfg.choice || 0) && (cfg.bool || 0) === (p.cfg.bool || 0);
@@ -420,7 +420,23 @@ const Teacher = {
       ${rows}
       <div style="display:flex;gap:8px;margin-top:12px">${isPub ? '' : `<button class="btn teacher" style="flex:1" onclick="closeSheet();Teacher.publish('${q.id}')">确认发布</button>`}<button class="mini-btn" onclick="closeSheet()">关闭</button></div>`);
   },
-  async revise(id) { try { await API.post(`/api/quizzes/${id}/revision`, {}); toast("已重出为新草稿（旧版保留）"); render(); } catch (e) { toast(e.message); } },
+  async openStudentErrors(id) {
+    let d = null;
+    try { d = await API.get(`/api/quizzes/${id}/student-errors`); }
+    catch (e) { toast(e.message); return; }
+    const rows = (d.students || []).map((s, i) =>
+      `<div class="row" onclick="Teacher.showStudentErrors(${i})">${esc(s.display_name)}<span class="muted" style="margin-left:8px">${s.score} 分 · ${s.errors.length} 道错题</span></div>`
+    ).join('') || '<div class="row muted" style="cursor:default">暂无学生作答</div>';
+    this.studentErrors = d.students || [];
+    openSheet(`<div class="row" style="font-weight:700;cursor:default">学生错题 · ${esc(d.quiz.title)}</div>${rows}<div class="row cancel" onclick="closeSheet()">关闭</div>`);
+  },
+  showStudentErrors(index) {
+    const student = (this.studentErrors || [])[index];
+    if (!student) return;
+    const errors = student.errors.map(w => fmtWrongCard(w)).join('')
+      || '<div class="muted" style="padding:12px">该学生全对</div>';
+    openSheet(`<div class="row" style="font-weight:700;cursor:default">${esc(student.display_name)} · ${student.score} 分</div>${errors}<div class="row cancel" onclick="closeSheet()">返回</div>`);
+  },
 
   /* ===== 全班进度 ===== */
   async viewProgress() {

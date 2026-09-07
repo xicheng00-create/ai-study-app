@@ -1,6 +1,6 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1**）  
+> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v1.12.0（2026-09-07）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
 > 日期：2026-09-02  
 > 状态：设计评审  
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）  
@@ -156,6 +156,7 @@
 | CHAT-007 | student | P1 | SSE 流式逐 token |
 | CHAT-008 | student | P1 | 创建/切换/删除本人对话 |
 | CHAT-009 | student | P2 | 引用标注资料原文 |
+| CHAT-010 | student | P1 | 选择已作答测评错题交 TUTOR，按错题引导讲解与巩固 |
 
 **Technical**
 - 编排（architecture §5.2）：人设加载 → 选章 → ChromaDB 召回(`chapter_id` 过滤, top-k=5, cosine≥0.4) → 注入 TUTOR_SYSTEM + 历史(≤12 轮) → DeepSeek → 写回 conversations/messages。
@@ -178,6 +179,7 @@
 | QUIZ-007 | teacher | P1 | 重出生成新 version |
 | QUIZ-008 | teacher | P1 | 发布态管理（draft/published） |
 | QUIZ-009 | teacher | P1 | AI 评分后教师可覆核/改分（graded_by/is_reviewed）|
+| QUIZ-010 | teacher | P1 | 已发布测评按已作答学生查看完整错题与得分 |
 
 **Technical**
 - **百分制评分模型（QUIZ-003/005）**：**v1.10.0 起取消问答题（essay）**——固定 20 道题，题型仅限选择题（choice）与是非题（bool），每题 5 分、合计 100 分；`questions.points` 按题型写入，`quizzes.total_points=100`（由 QUIZZER 按 QUIZ-005 配置生成，预设 20 选择/20 是非）。`POINTS` 仍保留 `essay=10` 仅兼容库里旧题数据。学生单题得分 `attempts.score∈[0,points]`。
@@ -544,6 +546,12 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 ### 12.10 实现状态回写（v1.11.0，2026-09-07）
 
 > - **QUIZ-002/004 + PROG-005（学生端错题完整展示 + 测评一次作答，前后端）**：① 错题改为完整渲染题目+全部选项，绿标「✅正确答案」红标「❌你的答案」（choice 索引→文本、bool 正确/错误、essay 你的回答 vs 参考答案）——`report.wrong` 与 `weak-points evidence` 补 `type`/`options` 字段；② 测评**一次作答**：`submit_attempt` 加「该测评已作答」限制（400），`report`/`list_quizzes` 取成绩改 `MIN(created_at)`（首次），`openQuiz` 对已作答测评恒显示该次结果（分数+错题）不重做；③ 进度页薄弱点错题完整展示（去除 `slice(0,2)` 摘要），测评错题+练习错题都完整显示（✅）。
+
+### 12.11 实现状态回写（v1.12.0，2026-09-07）
+
+> - **QUIZ-010（教师看学生错题，✅）**：`GET /api/quizzes/:id/student-errors` 仅教师可调用，按当前测评版本的首次作答汇总，只返回有 attempt 的学生；每人返回得分与题目、选项、学生答案、正确答案。已发布卡片新增「👁 学生错题」，学生列表可进入完整错题展示。
+> - **CHAT-010（咨询错题辅导，✅）**：学习页新增「💡 咨询错题」，仅列本人已作答测评，并显示命中 published session 的「第 X 周 第 Y 节 · 标题」（未命中标为未关联）；选中后取本人 report 错题，以受限 `wrong_ctx` 随下一条消息传入 TUTOR。TUTOR 提示词优先逐题引导正确思路与巩固，发送成功即清空上下文，避免误带。
+> - **测评课程标注（✅）**：`GET /api/quizzes` 基于 quiz `chapter_ids` 与已发布 session 的 `chapter_ids` 首个交集补充 `session`，未命中返回 `null`。
 
 ## 十三、NFR 与已知盲区（融合 PRD §13 + architecture §十三）
 

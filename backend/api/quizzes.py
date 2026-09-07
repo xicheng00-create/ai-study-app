@@ -34,15 +34,28 @@ def _parse_ids(raw: str) -> list[str]:
         return json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         return []
-
-
+def _quiz_session(con, chapter_ids: list[str]):
+    """返回首个关联章节命中的已发布周/节。"""
+    rows = con.execute(
+        "SELECT week_no, session_no, title, chapter_ids FROM sessions"
+        " WHERE status='published' ORDER BY week_no, session_no, order_no"
+    ).fetchall()
+    wanted = set(chapter_ids)
+    for row in rows:
+        if wanted.intersection(_parse_ids(row["chapter_ids"])):
+            return {"week_no": row["week_no"], "session_no": row["session_no"],
+                    "title": row["title"]}
+    return None
+def _wrong_dict(row) -> dict:
+    return {
+        "content": row["q_content"],
+        "type": row["q_type"],
+        "options": _parse_ids(row["q_options"]),
+        "your_answer": row["answer"],
+        "answer_key": row["q_answer_key"],
+    }
 def _get_quiz_or_404(con, quiz_id: str):
-    row = con.execute("SELECT * FROM quizzes WHERE id=?", (quiz_id,)).fetchone()
-    if row is None:
-        return None
-    return row
-
-
+    return con.execute("SELECT * FROM quizzes WHERE id=?", (quiz_id,)).fetchone()
 @quizzes_bp.route("", methods=["GET"])
 @jwt_required
 def list_quizzes():
@@ -56,6 +69,7 @@ def list_quizzes():
     out = []
     for r in rows:
         d = _quiz_dict(r, with_status=True)
+        d["session"] = _quiz_session(con, d["chapter_ids"])
         if g.role == "student":
             # 学生视角：一次作答取首次成绩（QUIZ-002）
             latest = con.execute(
@@ -205,6 +219,45 @@ def revision_quiz(quiz_id):
     con.execute("UPDATE quizzes SET status='superseded' WHERE id=?", (quiz_id,))
     con.commit()
     return ok({"id": new_id, "version": new_version})
+@quizzes_bp.route("/<quiz_id>/student-errors", methods=["GET"])
+@jwt_required
+@role_required("teacher")
+def student_errors(quiz_id):
+    """教师按已作答学生查看某测评错题。"""
+    con = get_db()
+    quiz = _get_quiz_or_404(con, quiz_id)
+    if quiz is None:
+        return e_not_found("测评不存在")
+    rows = con.execute(
+        "SELECT a.*, u.display_name, u.username, q.content AS q_content, q.type AS q_type,"
+        " q.options AS q_options, q.answer_key AS q_answer_key, q.points AS q_points"
+        " FROM attempts a JOIN users u ON u.id=a.user_id"
+        " JOIN questions q ON q.id=a.question_id"
+        " WHERE a.quiz_id=? AND a.quiz_version=? AND a.created_at=("
+        " SELECT MIN(first_a.created_at) FROM attempts first_a"
+        " WHERE first_a.user_id=a.user_id AND first_a.quiz_id=a.quiz_id"
+        " AND first_a.quiz_version=a.quiz_version) ORDER BY a.created_at, a.rowid",
+        (quiz_id, quiz["version"]),
+    ).fetchall()
+    students = {}
+    for row in rows:
+        student = students.setdefault(row["user_id"], {
+            "user_id": row["user_id"],
+            "display_name": row["display_name"] or row["username"], "earned": 0.0,
+            "possible": 0.0, "errors": [],
+        })
+        earned = row["reviewed_score"] if row["is_reviewed"] else row["score"]
+        student["earned"] += float(earned or 0)
+        student["possible"] += float(row["q_points"] or 0)
+        if not row["correct"]:
+            student["errors"].append(_wrong_dict(row))
+    out = []
+    for student in students.values():
+        possible = student.pop("possible")
+        earned = student.pop("earned")
+        student["score"] = round(earned / possible * 100, 1) if possible else 0.0
+        out.append(student)
+    return ok({"quiz": {"id": quiz["id"], "title": quiz["title"]}, "students": out})
 
 
 @quizzes_bp.route("/<quiz_id>", methods=["GET"])
@@ -229,8 +282,6 @@ def get_quiz(quiz_id):
             d.pop("answer_key", None)
         qs.append(d)
     return ok({"quiz": _quiz_dict(row, with_status=True), "questions": qs})
-
-
 @quizzes_bp.route("/<quiz_id>", methods=["DELETE"])
 @jwt_required
 @role_required("teacher")

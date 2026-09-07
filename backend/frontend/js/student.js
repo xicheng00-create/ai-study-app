@@ -32,6 +32,7 @@ const Student = {
   quiz: null,
   answers: {},
   result: null,
+  wrongCtx: null,      // 本次待咨询的已作答错题，仅随下一条消息发送
   practiceView: false,   // 自主练习入口（与教师测评列表并列）
   practice: null,        // 当前练习会话（含 questions，无 answer_key）
   practiceResult: null,  // {summary, detail}：批改结果
@@ -99,7 +100,7 @@ const Student = {
       <div class="chat">${msgs}</div>
       ${relatedHtml}
     </div>
-    <div class="composer"><input id="chatInput" placeholder="回答引导问题，或追问…" onkeydown="if(event.key==='Enter')Student.send()"/><button class="send" onclick="Student.send()">↑</button></div>` + tabbar();
+    <div class="composer"><div style="display:flex;gap:6px;margin-bottom:5px"><button class="mini-btn" onclick="Student.openWrongConsult()">💡 咨询错题</button>${this.wrongCtx ? `<span class="muted" style="font-size:12px;align-self:center">已选 ${this.wrongCtx.length} 道错题，随本条发送</span>` : ''}</div><div style="display:flex;gap:8px"><input id="chatInput" style="flex:1" placeholder="回答引导问题，或追问…" onkeydown="if(event.key==='Enter')Student.send()"/><button class="send" onclick="Student.send()">↑</button></div></div>` + tabbar();
   },
   selectChapter(id) { App.activeChapter = id; render(); },
   selectConv(id) {
@@ -142,7 +143,28 @@ const Student = {
       render(); toast("已新建对话");
     } catch (e) { toast(e.message); }
   },
-  async send() {
+  async openWrongConsult() {
+    let quizzes = [];
+    try { quizzes = (await API.get("/api/quizzes")).quizzes || []; }
+    catch (e) { toast(e.message); return; }
+    const taken = quizzes.filter(q => q.taken);
+    const rows = taken.map(q => {
+      const s = q.session;
+      const label = s ? `第${s.week_no}周 第${s.session_no}节 · ${s.title}` : '未关联';
+      return `<div class="row" onclick="Student.selectWrongConsult('${q.id}')"><div>${esc(q.title)}</div><div class="muted" style="font-size:12px">${esc(label)}</div></div>`;
+    }).join('');
+    openSheet(`<div class="row" style="font-weight:700;cursor:default">💡 咨询错题</div>${rows || '<div class="row muted" style="cursor:default">暂无已作答测评</div>'}<div class="row cancel" onclick="closeSheet()">取消</div>`);
+  },
+  async selectWrongConsult(id) {
+    try {
+      const d = await API.get(`/api/quizzes/${id}/report`);
+      if (!d.wrong || !d.wrong.length) { toast('该测评没有错题'); return; }
+      this.wrongCtx = d.wrong.map(w => ({ content: w.content, type: w.type,
+        options: w.options, your_answer: w.your_answer, answer_key: w.answer_key }));
+      closeSheet(); toast(`已选择 ${this.wrongCtx.length} 道错题`); render();
+    } catch (e) { toast(e.message); }
+  },
+
     const input = document.getElementById("chatInput");
     const content = (input.value || "").trim();
     if (!content) return;
@@ -158,7 +180,9 @@ const Student = {
         payload.chapter_ids = this.askCtx.chapter_ids || [];
         payload.concept_tags = this.askCtx.concept_tags || [];
       }
+      if (this.wrongCtx) payload.wrong_ctx = this.wrongCtx;
       const d = await API.post(`/api/conversations/${this.convId}/message`, payload);
+      this.wrongCtx = null;
       this.messages.push({ role: "assistant", content: d.reply });
       this.turn = d.turn;
       this.relatedVideos = d.related_videos || [];
