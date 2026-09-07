@@ -2,6 +2,12 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.10.1] - 2026-09-07
+
+### 修复
+- 学生端测评答题页「返回列表」按钮无响应：`viewQuizTake()` 内联 `onclick` 只清无关的 `App.activeQuiz`（`Student.render()` 不用它分派），未清 `Student.quiz/answers/result`，而 `Student.render()` 按 `this.quiz` 分派 → 点击后仍停留答题页。改为清 `Student.quiz=null; Student.answers={}; Student.result=null`（与结果页「返回测评列表」一致），返回测评列表生效。
+- sw.js `CACHE` bump `v12→v13` 强制手机端缓存失效拉取新版。
+
 ## [1.10.0] - 2026-09-03
 
 ### Changed

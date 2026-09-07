@@ -231,7 +231,7 @@ const Student = {
     return appbar('测评', esc(q.title)) +
     `<div class="content"><div class="card sm" style="margin-bottom:12px">覆盖章节：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(c => `<span class="pill" style="margin-right:6px">${esc(c)}</span>`).join('')}</div>
       ${qs}<button class="btn" onclick="Student.submit()">提交并批改</button>
-      <button class="btn ghost" style="margin-top:8px" onclick="App.activeQuiz=null;render()">返回列表</button></div>` + tabbar();
+      <button class="btn ghost" style="margin-top:8px" onclick="Student.quiz=null;Student.answers={};Student.result=null;App.activeQuiz=null;render()">返回列表</button></div>` + tabbar();
   },
   pick(qid, val) {
     // val：choice 传选项索引、bool 传「正确/错误」文本；统一存字符串供后端比对
