@@ -97,13 +97,14 @@ const Student = {
       </div>` : '';
 
     const isGuide = this.tutorMode === 'guide';
-    return appbar('学习', isGuide ? '引导式辅导 · 不直接给答案' : '直接讲解 · 有问必答') +
-    `<div class="content chat-view">
-      <!-- 模式切换吸顶容器：滚动对话时 seg 固定顶部、始终可见（不遮挡 appbar） -->
-      <div class="seg-sticky"><div class="seg">
+    // 头部（appbar + 模式切换）合并为单一吸顶块：appbar 与 seg 成为同一不透明容器，始终一起钉在 top:0，
+    // 彻底消除 appbar 与 seg 之间的独立缝隙，iOS 滚动时内容不可能从中间漏出（不再依赖硬编码 top:74px）
+    return `<div class="chat-head">` + appbar('学习', isGuide ? '引导式辅导 · 不直接给答案' : '直接讲解 · 有问必答') +
+    `<div class="seg-wrap"><div class="seg">
         <button class="${isGuide ? 'on' : ''}" onclick="Student.setTutorMode('guide')">${ic('grad')}引导式</button>
         <button class="${isGuide ? '' : 'on'}" onclick="Student.setTutorMode('direct')">${ic('chat')}直接讲解</button>
-      </div></div>
+      </div></div></div>` +
+    `<div class="content chat-view">
       <!-- AI info 条：安静，不抢戏 -->
       <div class="ai-info">${ic('shield')}回答由 AI 生成，请核对资料原文 · 越界内容已拦截</div>
       <!-- 资料库：标题 + 篇数徽章 + 选中章左珊瑚条 -->

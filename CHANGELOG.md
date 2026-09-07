@@ -2,6 +2,12 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.16.2] - 2026-09-08
+
+### 修复
+- **学习页顶部缝隙彻底根治（根因：`.seg-sticky` 硬编码 `top:74px`，但 appbar 在 iOS 实际渲染高 71px，留 3px 透明带，滚动时内容（资料库横向卡片/对话消息）从中间漏出）**：把 appbar 与「引导式/直接讲解」模式切换合并为**同一个 `.chat-head` 吸顶块**（`position:sticky;top:0`），二者成为同一不透明容器、一起钉在 `top:0`，从结构上消灭「appbar 与 seg 之间的独立缝隙」——不再依赖任何硬编码 top 对位。`.chat-head .appbar{position:static}`（去掉 appbar 自身 sticky，避免与 chat-head 抢位），`.chat-head .seg-wrap{background:var(--bg)}`，去掉旧的 `.seg-sticky{top:74px}`。
+- **v1.16.1 修复不彻底的原因**：当时把 `.content.chat-view{padding-top:0}` 后只在桌面 headless 验证 `gap_px=0`，但桌面 appbar 恰渲染 74px、掩盖了 iOS 上 71px 的 3px 位移差。本次用 Playwright iPhone 13 profile + 注入 30 条真实对话 + 资料库横向卡片实测：`gapBetween=0`（appbar 底 71 与 seg 顶 71 完全相接）、逐 2px 扫描头顶不透明度 `leakCount=0`（全 opaque），path/progress/class/quiz 视图 appbar 保持 sticky 不受影响。
+
 ## [1.16.1] - 2026-09-08
 
 ### 修复

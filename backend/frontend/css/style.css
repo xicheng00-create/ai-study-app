@@ -220,9 +220,14 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text);overflow:hidde
 .seg{display:flex;background:var(--surface-2);border-radius:12px;padding:3px;margin-bottom:12px;gap:3px}
 .seg button{flex:1;border:none;background:transparent;border-radius:9px;padding:8px 10px;font-size:12.5px;font-weight:600;color:var(--text-2);font-family:var(--font);display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
 .seg button.on{background:var(--surface);color:var(--coral-strong);box-shadow:0 2px 8px rgba(0,0,0,.06)}
-/* 模式切换吸顶：滚动对话时 seg 固定顶部、始终可见（top 对齐 appbar 底 74px，appbar z-index:20 在上） */
-.seg-sticky{position:sticky;top:74px;z-index:15;background:var(--bg);padding-bottom:12px}
-.seg-sticky .seg{margin-bottom:0}
+/* 头部合并吸顶（学习页）：appbar + seg 是同一不透明块，一起钉在 top:0，绝无内容可从中间穿出。
+   chat-head 自身 z-index 高，内部 appbar/seg 不再各自 sticky（去掉它们对位依赖）。 */
+.chat-head{position:sticky;top:0;z-index:30;background:var(--bg);box-shadow:0 1px 0 var(--border)}
+.chat-head .appbar{position:static;border-bottom:none;padding-bottom:8px}
+.chat-head .seg-wrap{padding:0 20px 10px;background:var(--bg)}
+.chat-head .seg{margin-bottom:0}
+/* 学习页内容区顶部空出头部高度（appbar ~66px + seg ~44px）避免内容顶到头部底下 */
+.content.chat-view{padding-top:0}
 /* AI info 条：安静，不抢戏 */
 .ai-info{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-3);background:var(--surface-2);border-radius:10px;padding:8px 11px;margin-bottom:12px}
 /* 卡片标题行 + 计数徽章 */
