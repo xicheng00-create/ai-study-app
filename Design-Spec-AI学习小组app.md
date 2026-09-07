@@ -1,6 +1,6 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v1.13.7（2026-09-07）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
+> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v1.16.2（2026-09-08）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
 > 日期：2026-09-02  
 > 状态：设计评审  
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）  
@@ -575,6 +575,16 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 > - **自主练习出题全走兜底（根因修复，✅）**：生产 `.env` 的 `DEEPSEEK_MODEL` 由 `deepseek-v4-flash`（原生推理模型）改为 `deepseek-chat`（非推理）。实测推理模型对大 JSON 出题 prompt `finish_reason=length`、`content len=0`、`reasoning len=3612`、2000 completion_tokens 全烧在 reasoning → `_chat()` 拿空 content → `quizzer_generate()` 返回 None → 无条件兜底硬编码模板；改 `deepseek-chat` 后 `content len=4871`、`reasoning len=0`（真实资料题）。与四口之家 sikou「智能养护贴士」修法一致（短/结构化任务用 deepseek-chat）。
 > - **PRACTICE-001/002/003 重构（最多 5 道 + 资料驱动 + 难度 high + 同学生不重复，✅）**：`generate_practice_questions()` 不再强制 20 道/100 分，改为基于章节资料出 **2~5 道 choice/bool（difficulty=hard）**；端点放开 `total != 100` 校验，`total_points` 写实际分之和、`_session_dict` 按实际归一；LLM 真返空返回空列表、前端提示「生成失败，请重试」（不再硬塞通用模板）。`practice_questions` 新增 `content_hash`（题干规范化 hash），生成前查该学生历史题干注入提示词（避免重复 + 基于资料衍生变体）并在后端按 hash 过滤，同学生跨会话不重复、不同学生可相同。
 > - **前端文案（✅）**：练习入口/生成页/答题页「合计 100 分」改为「最多 5 题 · N 题 · 共 X 分」；sw.js `CACHE` bump `v31→v32`。
+
+### 12.16 实现状态回写（v1.14.0~v1.14.2，2026-09-07）
+
+> - **全局 UI 精修 + 信息层级重排（v1.14.0，CHAT-004 视图 / NFR-005 兼容强化，✅）**：用户明确拒绝「原味精修/方向A」后，落地**方向 B = 信息层级重排**（交付标准 = 一眼看出差异，而非代码更干净）。三件事：① 去 emoji → 共享内联 SVG 图标库（`app.js` `ICO` + `ic(name,cls)`，学生珊瑚/教师靛蓝自适应）；② 内联样式抽工具类（`.sec-title/.sec-head/.mt-*/.mb-*/.grow/.flex`）；③ 学习页层级重排（模式切换 pill → `.seg` segmented control、AI 声明 → `.ai-info` 安静小字、资料库加 `.card-count` 篇数徽章 + 选中章 `.chapter.active::before` 左珊瑚条、轮数 → `.row-meta` 进度行、底部咨询错题 → `.tool-btn` 珊瑚行动按钮）。sw.js CACHE bump。
+> - **MAT-003/004 强化（资料下载进度条修复，v1.14.1，✅）**：下载进度条始终不显示——前半空方法 `_dlProgress*` 开头 `if (typeof $ === "undefined" || !document.getElementById("dlProgress")) return;` 因**本项目从未引入 jQuery**，`typeof $ === "undefined"` 恒真 → 整个条件恒真 → 进度条逻辑每次直接 return 永不显示。修复 = 删掉 `typeof $` 守卫，只留 `document.getElementById("dlProgress")` 判存在；+ 节流优化（进度更新降频，避免大文件高频更新卡顿）。
+> - **CHAT-004 强化（对话区皮筋回弹 + 多轮上下文丢失，v1.14.2，✅）**：① 输入框皮筋回弹 = `.composer`/`.tabbar` 放在 `-webkit-overflow-scrolling:touch` 滚动容器内，iOS 滚动时 `position:fixed` 元素跟滚回弹 → 滚动改交 `body`（`body{overflow-y:auto}`、`.screen{overflow:visible}`），composer/tabbar 才真正相对 viewport、聊天内容 padding-bottom ≥ composer 实测高；② 对话多轮上下文丢失 = `tutor_orchestrate` 用**当前单条 content** 做 RAG 检索，学生发承接语（「你帮我展开」「继续」）检索 0 chunks 命中 `if not chunks and not wrong_ctx` gate 直接兜底、LLM 根本没被调 → 检索空回退 `_last_user_substantive(history)` 取最近一轮实质提问再检索 + gate 放宽为 `and not history`（有历史上下文就放行让 LLM 承接，不因单轮检索空打断）。
+
+### 12.17 实现状态回写（v1.16.1~v1.16.2，2026-09-08）
+
+> - **CHAT-004 视图（学习页 appbar 与模式切换顶部缝隙根治，✅）**：v1.16.1 定位 appbar 与「引导式/直接讲解」模式切换之间出现缝隙——`.seg-sticky{position:sticky;top:74px}` 硬编码 top 对齐，但 iOS appbar 实际渲染 **71px**，留 **3px 透明带**，滚动时资料库横向卡片/对话消息从缝隙漏出。v1.16.2 **根治**：把 appbar 与模式切换**合并为同一 `.chat-head` 吸顶块**（`position:sticky;top:0;z-index:30;background:var(--bg)`），二者成为同一不透明容器一起钉在 `top:0`——从结构上消灭「appbar 与 seg 独立缝隙」，不再依赖任何硬编码 top 对位；`.chat-head .appbar{position:static;border-bottom:none}`（去掉 appbar 自身 sticky、避免与 chat-head 抢位）。**教训**：`position:sticky` 用硬编码 top（如 `top:74px`）对齐另一个可变高度祖先/兄弟是**根本脆弱**——iOS/安卓字体度量差几像素即漏缝；要根治应把要一起固定的元素包进**同一不透明 sticky 容器**。诊断「顶部漏缝」用 `scripts/verify_header_no_leak.py`（iPhone profile + 逐 2px 扫 header 带 alpha），勿手写不同版本 headless 脚本。
 
 ## 十三、NFR 与已知盲区（融合 PRD §13 + architecture §十三）
 
