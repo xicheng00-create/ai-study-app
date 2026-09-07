@@ -2,6 +2,12 @@
 
 本项目遵循「版本号诚实规则」（CLAUDE.md §5）：任何产生 CHANGELOG 条目的改动，须同 commit 将 `backend/app.py` 的 `version` 常量 bump 到一致。
 
+## [1.12.1] - 2026-09-07
+
+### 修复
+- 学生端前端崩溃（`Can't find variable: Student`）：CC 交付 v1.12.0 时在 `student.js` 插入「咨询错题」方法时误删了 `send()` 的方法声明（`async send() {`），导致 `send()` 函数体散落成非法语法、整个 `student.js` 解析失败 → `Student` 未定义、前端白屏报错。已补回 `async send() {`（前端 JS 语法修复）。
+- sw.js `CACHE` bump `v16→v17`。
+
 ## [1.12.0] - 2026-09-07
 
 ### 新增

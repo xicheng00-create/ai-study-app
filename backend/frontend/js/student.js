@@ -164,7 +164,7 @@ const Student = {
       closeSheet(); toast(`已选择 ${this.wrongCtx.length} 道错题`); render();
     } catch (e) { toast(e.message); }
   },
-
+  async send() {
     const input = document.getElementById("chatInput");
     const content = (input.value || "").trim();
     if (!content) return;
