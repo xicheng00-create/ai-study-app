@@ -103,7 +103,7 @@ def _wrong_evidence(con, user_id, chapter_id, limit=5):
     if latest > 0:
         rows = con.execute(
             "SELECT a.answer, a.score, q.content AS q_content, q.answer_key AS q_answer_key,"
-            " q.type AS q_type, q.options AS q_options FROM attempts a JOIN questions q ON q.id=a.question_id"
+            " q.type AS q_type, q.options AS q_options, a.quiz_id AS quiz_id FROM attempts a JOIN questions q ON q.id=a.question_id"
             " WHERE a.user_id=? AND a.chapter_id=? AND a.quiz_version=? AND a.correct=0"
             " ORDER BY a.created_at DESC LIMIT ?",
             (user_id, chapter_id, latest, limit),
@@ -114,6 +114,7 @@ def _wrong_evidence(con, user_id, chapter_id, limit=5):
             "options": json.loads(r["q_options"] or "[]"),
             "your_answer": r["answer"],
             "answer_key": r["q_answer_key"],
+            "quiz_id": r["quiz_id"],
             "source": "quiz",
         } for r in rows])
     out.extend(_practice_wrong(con, user_id, chapter_id, limit))

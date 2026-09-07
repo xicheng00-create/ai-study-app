@@ -437,6 +437,8 @@ const Student = {
   },
 
   /* ===== 进度 ===== */
+  toggleWeak(cid) { this.weakOpen = (this.weakOpen === cid) ? null : cid; this.weakPick = {}; render(); },
+  pickWeakQuiz(cid, qid) { this.weakPick[cid] = (this.weakPick[cid] === qid) ? null : qid; render(); },
   async viewProgress() {
     let mastery = { chapters: [], counts: { master: 0, progress: 0, weak: 0, na: 0 } };
     let weak = { weak_points: [] };
@@ -445,6 +447,10 @@ const Student = {
     let weekly = { stats: {}, weak_chapters: [] };
     try { mastery = await API.get("/api/progress/mastery"); } catch (e) {}
     try { weak = await API.get("/api/progress/weak-points"); } catch (e) {}
+    let quizzes = [];
+    try { quizzes = (await API.get("/api/quizzes")).quizzes || []; } catch (e) {}
+    const quizMap = {};
+    quizzes.forEach(function (qq) { quizMap[qq.id] = qq; });
     try { reviews = await API.get("/api/progress/review-items"); } catch (e) {}
     try { advice = await API.get("/api/progress/advice"); } catch (e) {}
     try { weekly = await API.get("/api/progress/weekly-stats"); } catch (e) {}
@@ -455,9 +461,34 @@ const Student = {
     }).join('') || '<div class="muted">暂无章节</div>';
     const weakHtml = (weak.weak_points || []).map(w => {
       const mLabel = w.m == null ? '未测评' : `M=${w.m}%`;
-      const tag = w.from_practice ? '<span class="badge prog" style="margin-left:6px">练习错题</span>' : '';
-      const evs = (w.evidence || []).map(e => fmtWrongCard({ content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept })).join('');
-      return `<div class="weak"><span class="badge weak" style="flex-shrink:0">${esc(w.name)}</span><div><div style="font-weight:600;font-size:13.5px">${mLabel}${tag}</div>${evs}</div></div>`;
+      const evs = w.evidence || [];
+      const quizErr = {}, practiceErr = [];
+      evs.forEach(function (e) {
+        if (e.source === 'practice' || !e.quiz_id) practiceErr.push(e);
+        else { (quizErr[e.quiz_id] = quizErr[e.quiz_id] || []).push(e); }
+      });
+      const qids = Object.keys(quizErr);
+      const open = this.weakOpen === w.chapter_id;
+      // 章头（可点击展开/收起）
+      let head = `<div class="weak" style="cursor:pointer" onclick="Student.toggleWeak('${w.chapter_id}')"><span class="badge weak" style="flex-shrink:0">${esc(w.name)}</span><div style="flex:1"><div style="font-weight:600;font-size:13.5px">${mLabel} · ${evs.length} 道错题 · 来自 ${qids.length} 份测评</div></div><span>${open ? '▾' : '▸'}</span></div>`;
+      let body = '';
+      if (open) {
+        const groups = [];
+        qids.forEach(function (qid) {
+          const q = quizMap[qid] || {};
+          const sess = q.session;
+          const label = sess ? `测评 · 第${sess.week_no}周 第${sess.session_no}节` : (q.title || '测评');
+          const picked = this.weakPick[w.chapter_id] === qid;
+          const errs = quizErr[qid].map(function (e) { return fmtWrongCard({ content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept }); }).join('');
+          groups.push(`<div class="weak" style="margin-left:12px"><div style="cursor:pointer;font-weight:600;font-size:13px;color:var(--coral-strong)" onclick="Student.pickWeakQuiz('${w.chapter_id}','${qid}')">${esc(label)} <span class="muted">(${quizErr[qid].length} 道)</span></div>${picked ? errs : ''}</div>`);
+        }, this);
+        if (practiceErr.length) {
+          const pe = practiceErr.map(function (e) { return fmtWrongCard({ content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept }); }).join('');
+          groups.push(`<div class="weak" style="margin-left:12px"><div style="font-weight:600;font-size:13px">练习错题 <span class="muted">(${practiceErr.length} 道)</span></div>${pe}</div>`);
+        }
+        body = groups.join('') || '<div class="muted" style="margin-left:12px">暂无错题依据</div>';
+      }
+      return head + body;
     }).join('') || '<div class="muted">暂无薄弱章节 🎉</div>';
     const revHtml = (reviews.review_items || []).map(r => `<div class="rev-item ${r.status === 'done' ? 'done' : ''}">
       <span class="badge ${r.status === 'done' ? 'master' : 'weak'}">${esc(App.chapterName(r.chapter_id))}</span>
