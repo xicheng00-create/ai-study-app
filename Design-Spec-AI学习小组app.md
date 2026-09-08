@@ -1,6 +1,6 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v1.19.0（2026-09-08）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
+> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v2.0.0（2026-09-08）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
 > 日期：2026-09-02  
 > 状态：设计评审  
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）  
@@ -223,7 +223,7 @@
 - **AI 抽取**：新增 `backend/ai/knowledge.py` `generate_knowledge_cards(chapter_ids)` + `prompts.py` `KNOWLEDGE_SYSTEM`（要求 JSON `[{front, back, sub_concept}]`，遍布全章、覆盖不同子概念、back 含答案/解析/一句示例）；LLM 真返空返空列表、端点提示「生成失败请重试」。
 - **路由（去掉「学生手动生成」主路径）**：`POST /api/knowledge/generate`（保留为**懒加载兜底**：卡片缺失时教师/系统可触发，学生一般不必点）、`GET /api/knowledge/:chapter`（卡组+该生复习态，学生首次打开自动懒建 review 行）、`POST /api/knowledge/:card/review`（body `{remembered: true|false}` → 更新该生 learn_count/interval/status/next_review）、`GET /api/knowledge/overview`（各章该生掌握进度：已掌握/学习中/未学/今日待复习）。学生本人，越权 403；蓝图 `knowledge_bp` 注册进 app.py。
 - **⚠️ 自动生成钩子（v1.17.x，核心）**：`knowledge.ensure_chapter_cards(chapter_id)`（查 `knowledge_cards` 该章已有卡则复用返 True，无则 LLM 生成 + 入库返 False；LLM 失败返回 False，由懒加载兜底）。在**学习路径发布**（`curriculum_bp` 发布 session → 对其 `chapter_ids` 逐个 `ensure_chapter_cards`）与**资料发布**（`materials_bp` 发布 material → 其 `chapter_id` `ensure_chapter_cards`）处调用。同步调用 + try/except（发布请求可容忍 ~秒级 LLM 延迟，3 学生规模可接受）。
-- **前端（v1.19.0 导航重构）**：「学习」tab = **学习主菜单 hub**（资料库竖排选章 + **对话/知识卡片两入口大卡**）；「对话」子页（原学习对话页，appbar「←」回主菜单）；点「知识卡片」→ 独立知识点卡片页（`Student` 状态 `learnChat`/`knowledgeIdx`/`knowledgeDeck` + `viewLearnHome()`/`viewLearnChat()`/`viewKnowledge()`/`viewKnowledgeDeck()`）；卡片 3D `flip` + 左右滑动判 remember（touchmove 阈值 + 兜底按钮）。**退出/暂停**：卡片列表页 appbar「←」退出；复习卡组顶部返回 + 底部「暂停退出（保存进度）」按钮——进度存 localStorage（`aistudy_kc_progress`），再次「开始复习」弹「继续上次复习？」（继续/重新开始），完成自动清；离开学习区（切其它 tab）自动退出卡片全屏态。改前端须 bump sw.js CACHE + app.py version。
+- **前端（v2.0.0 导航+多选+动画重构）**：「学习」tab = **学习主菜单 hub**（资料库**可滚动多选 list**——每章圆形勾选框 + 已选计数 + 全选/清空，勾选记忆 localStorage `aistudy_sel_chapters`；对话页原横滑选章卡已撤除，选章统一在此）；「对话」子页（多选集驱动**跨章检索**：`post_message` 带 `chapter_ids` → `tutor._retrieve_multi` 逐章 RAG 合并去重、片段【章名】标注）；点「知识卡片」→ **跨章卡片列表页**（所选各章全部卡按章分组折叠、点章头展开卡网格，「开始复习」按钮置顶）+ 复习 deck（每卡标章名，跨章合并）。复习进度 localStorage `aistudy_kc_progress` 存**章 id 集签名 `ids`**（兼容旧 `{cid}` 单章格式），暂停退出/续学；换选集不误续旧进度。**卡片动画**：翻转 = 同一 DOM 切 `is-flipped` class 驱动 3D 过渡（非整页 render）；touch/mouse 跟手拖拽（`translateX + rotate`，拖拽期 `.dragging` 关 transition），超 70px 甩出判定（右滑=记住了/左滑=没记住，播 `.out-r/.out-l` 飞出）否则弹回；按钮点击同样先飞后提交；换卡 `.kc-in` 入场动画。`Student` 状态 `learnChat`/`knowledgeIdx`/`knowledgeDeck`/`selChapters` + `viewLearnHome()`/`viewLearnChat()`/`viewKnowledge()`/`viewKnowledgeDeck()`。改前端须 bump sw.js CACHE + app.py version。
 
 ### 3.5 进度/掌握度/巩固 — `progress_bp` + `review_sched`（L3，REQ-PROG，AI: QUIZZER）
 **Functional**
@@ -614,7 +614,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 | NFR-003 | 并发 | 峰值 4 人；SQLite WAL + waitress 4 线程 |
 | NFR-004 | 容量 | 资料 ≤500MB |
 | NFR-005 | 兼容 | iOS15+/Android10+；PWA 主屏 |
-| NFR-006 | 限速 | ≤60 LLM 调用/用户/天、单请求 ≤120s；超限 429 |
+| NFR-006 | 限速 | ≤60 LLM 调用/用户/天、单请求 ≤120s；超限 429；**v1.19.0 起按 (user_id, endpoint) 独立计数**（知识卡 GET/review 摘除限流，纯读写无 LLM） |
 | NFR-007 | 可观测 | /health + 自动拉起 |
 
 ### 13.2 已知盲区（显式登记）
@@ -726,3 +726,9 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 ### 12.19 实现状态回写（v1.19.0，2026-09-08）
 - **REQ-KNOW-002 导航补全（学习主菜单 + 复习可退出）**：「学习」tab = 学习主菜单 hub（资料库竖排选章 + **对话/知识卡片两入口大卡**）；对话/知识卡片页均带 appbar「←」随时退回主菜单（再次点学习 tab 亦回主菜单）。复习卡组顶部返回 + 底部「**暂停退出（保存进度）**」，进度存 localStorage，再次开始复习弹「继续上次复习？」（继续/重新开始），完成自动清进度；离开学习区自动退出卡片全屏态——解决「复习中途无退出、无法回对话」缺陷。
 - **NFR-006 限流结构修复（429 误伤根因）**：`rate_limit` 由「全端点共享 user_id 桶」改为「**(user_id, endpoint) 桶**」——各端点 60/天独立互不挤占；知识卡 `GET /knowledge/:chapter`（纯读）与 `POST /knowledge/:card/review`（翻卡状态机，无 LLM）摘除限流。学生正常对话/练习/翻卡不再触发「操作过于频繁」。
+
+### 12.20 实现状态回写（v2.0.0，2026-09-08）
+- **MAT 选章 = hub 可滚动多选 list（REQ-KNOW/CHAT 检索范围升级）**：学习主菜单资料库每章加圆形勾选框，列表超屏可滚，已选计数 + 全选/清空，勾选集记忆 localStorage（`aistudy_sel_chapters`）；对话页横滑选章卡撤除，选章统一在学习页。多选集驱动：① 对话 `post_message` 带 `chapter_ids` → 新 `tutor._retrieve_multi` 逐章 RAG 检索、按 chunk_id 去重合并、片段【章名】标注（防跨章资料混淆）；路径提问（askCtx）仍按 session 章节优先。② 知识卡片跨章合并：列表按章分组折叠（点章头展开网格）、「开始复习」置顶跨章复习、deck 每卡标章名；复习进度签名改 `ids`（章集），兼容旧 `{cid}`。
+- **REQ-KNOW-002 翻卡交互动画**：翻转由整页 render 重建改为同一 DOM 切 `is-flipped` class → CSS 3D 过渡真正生效；touch/mouse **跟手拖拽**（横向位移+倾斜、竖向滚动不劫持），超 70px 甩出（右滑=记住了/左滑=没记住）播 `.out-r/.out-l` 飞出动画后提交，未超阈值弹性回位；按钮点击同样先飞后提交；换卡 `.kc-in` 入场动画。
+- **PROG-007 掌握度口径扩展（知识卡计入 M）**：`compute_mastery` JOIN 该章 `knowledge_reviews`（status='mastered' 且 last_review_at 非空）每张按 5 分满分 × 时间衰减权重 w(last_review_at) 计入分子分母，attempts 同步累加；**仅奖不罚**——new/learning/reviewing 卡不进分母，不因未掌握卡拉低 M（示例：quiz 40% + 30 张 mastered 卡 ≈ M 76%）。进度页新增「知识卡片（计入掌握度）」块（`GET /api/knowledge/overview`）：各章已掌握/总数、学习中/未学/今日待复习、进度条 + 百分比徽章。
+

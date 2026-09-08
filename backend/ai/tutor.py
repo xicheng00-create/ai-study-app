@@ -121,6 +121,26 @@ def _format_wrong_ctx(wrong_ctx) -> str:
     return "\n".join(rows) or "（本次未提供有效错题）"
 
 
+def _retrieve_multi(con, content: str, chapter_id, chapter_ids, top_k=5) -> list:
+    """多选集 RAG 检索（v2.0.0）：学习主菜单多选章后，TUTOR 在所选章资料内检索。
+
+    scope = chapter_ids(去空) + 归属 chapter_id(未在列则插首)；每章 retrieve top_k 后合并去重。
+    单章/无选集 → 维持原单章行为。
+    """
+    scope = [c for c in (chapter_ids or []) if c]
+    if chapter_id and chapter_id not in scope:
+        scope.insert(0, chapter_id)
+    if len(scope) <= 1:
+        return rag.retrieve(content, chapter_id, top_k=top_k)
+    merged, seen = [], set()
+    for cid in scope:
+        for ch in rag.retrieve(content, cid, top_k=top_k):
+            if ch["chunk_id"] not in seen:
+                seen.add(ch["chunk_id"])
+                merged.append(ch)
+    return merged[: top_k * 3]
+
+
 def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str | None,
                       concept_tags=None, chapter_ids=None, wrong_ctx=None,
                       tutor_mode: str = "direct") -> dict:
@@ -143,13 +163,22 @@ def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str
 
     # 多轮历史：提前取出（含刚写入的当前用户消息），供检索回退 + gate 判断 + LLM 承接
     history = _history(con, conversation["id"], turn)
-    # 检索当前消息；承接语单独检索会空，回退用上一轮实质提问（保证多轮上下文不丢）
-    chunks = rag.retrieve(content, chapter_id, top_k=5)
+    # 检索当前消息（多选集 → 逐章检索合并，跨章资料都能答）；承接语单独检索会空，回退用上一轮实质提问
+    chunks = _retrieve_multi(con, content, chapter_id, chapter_ids)
     if not chunks:
         last_q = _last_user_substantive(history)
         if last_q and last_q != content:
-            chunks = rag.retrieve(last_q, chapter_id, top_k=5)
-    chunk_txt = "\n".join(f"- {c['text'][:300]}" for c in chunks) if chunks else "（无相关片段）"
+            chunks = _retrieve_multi(con, last_q, chapter_id, chapter_ids)
+    if chunks:
+        # 多章来源时给每条片段标注【章名】，避免 LLM 混淆资料归属
+        src_chapters = sorted({c["chapter_id"] for c in chunks})
+        multi = len(src_chapters) > 1
+        chunk_txt = "\n".join(
+            f"- {('【' + chapter_name(con, c['chapter_id']) + '】') if multi else ''}{c['text'][:300]}"
+            for c in chunks
+        )
+    else:
+        chunk_txt = "（无相关片段）"
 
     # 门控 a/b：越界或敏感 → 兜底，不调用 LLM
     if fallback.detect_sensitive(content):

@@ -264,3 +264,26 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text);overflow:hidde
 .kc-summary{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}.kc-summary span{font-size:13px;color:var(--text-2)}
 .kc-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-bottom:16px}.kc-mini{padding:11px;border:1px solid var(--border);border-radius:12px;background:#f4f4f6}.kc-mini b{display:block;font-size:13px}.kc-mini small{color:var(--text-2)}.kc-mini.learning{background:var(--indigo-soft);border-color:#cfcff4}.kc-mini.reviewing{background:var(--coral-soft);border-color:#f5c9bf}.kc-mini.mastered{background:#eefaf0;border-color:#bfe6c7}
 .kc-progress{height:5px;background:var(--border);border-radius:6px;margin:8px 0 20px}.kc-progress i{display:block;height:100%;background:var(--coral);border-radius:6px}.kc-scene{perspective:1000px;min-height:320px}.kc-card{position:relative;min-height:320px;transform-style:preserve-3d;transition:transform .45s;cursor:pointer}.kc-card.is-flipped{transform:rotateY(180deg)}.kc-face{position:absolute;inset:0;padding:28px;border:1px solid var(--border);border-radius:20px;background:var(--surface);backface-visibility:hidden;display:flex;flex-direction:column;justify-content:center;gap:16px;box-shadow:0 8px 22px #0000000a}.kc-face small{color:var(--coral-strong);font-weight:700}.kc-face b{font-size:21px;line-height:1.55}.kc-face span{font-size:13px;color:var(--text-2)}.kc-back{transform:rotateY(180deg);background:var(--coral-soft)}.kc-actions{display:flex;gap:10px;margin-top:18px}.kc-actions .btn{flex:1}.btn.ghost{background:var(--surface);color:var(--text);border:1px solid var(--border)}
+/* ===== v2.0：知识卡片动画（跟手拖拽/甩出/弹回/入场）+ 跨章分组 + hub 多选 ===== */
+.kc-card.dragging{transition:none;cursor:grabbing;user-select:none;-webkit-user-select:none}
+.kc-card.out-r{transform:translateX(135%) rotate(16deg);opacity:.35;transition:transform .32s ease-in,opacity .32s ease-in;pointer-events:none}
+.kc-card.out-l{transform:translateX(-135%) rotate(-16deg);opacity:.35;transition:transform .32s ease-in,opacity .32s ease-in;pointer-events:none}
+@keyframes kcIn{from{transform:translateY(26px) scale(.94);opacity:0}to{transform:none;opacity:1}}
+.kc-card.kc-in{animation:kcIn .34s cubic-bezier(.2,.8,.3,1)}
+.kc-hint{text-align:center;font-size:12px;color:var(--text-3);margin-top:14px}
+.kc-bar{height:4px;border-radius:4px;background:var(--border);margin-top:8px;max-width:230px;overflow:hidden}
+.kc-bar i{display:block;height:100%;border-radius:4px;background:var(--coral)}
+.kc-ch{border:1px solid var(--border);border-radius:14px;padding:2px 14px;margin-bottom:10px;background:var(--surface)}
+.kc-ch-head{display:flex;align-items:center;gap:10px;padding:10px 0;cursor:pointer;text-align:left;width:100%;background:none;border:none;font-family:var(--font)}
+.kc-ch-head b{font-size:14px}.kc-ch-head small{display:block;color:var(--text-2);font-size:12px;margin-top:3px;line-height:1.45}
+.kc-ch .caret{color:var(--text-3);font-size:13px}
+.kc-ch .kc-grid{margin:0 0 12px}
+/* hub 资料库多选 list：可滚动 + checkbox */
+.lib-list{max-height:38vh;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-right:2px}
+.lib-list .chapter .chk{width:22px;height:22px;border-radius:50%;border:1.6px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;background:var(--surface)}
+.lib-list .chapter .chk svg{width:13px;height:13px}
+.lib-list .chapter .chk.on{border-color:var(--coral);background:var(--coral)}
+.lib-tools{display:flex;gap:6px;justify-content:flex-end;margin:-4px 0 8px}
+.lib-tools .mini-btn{height:26px;min-width:0;padding:0 12px;border-radius:13px;font-size:12px;background:var(--surface)}
+.sel-count{color:var(--coral-strong)}
+.scope-bar{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-2);padding:2px 2px 10px;line-height:1.4}

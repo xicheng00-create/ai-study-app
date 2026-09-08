@@ -160,3 +160,72 @@ def test_compute_mastery_combines_quiz_and_practice(client):
         # 测评 5/5 + 练习 0/5 → M=50%，作答次数=2
         assert m["m"] == 50.0
         assert m["attempts"] == 2
+
+
+def _seed_card(con, user_id, chapter_id, status="mastered", days_ago=0):
+    """建共享知识卡 + 学生复习状态行（v2.0.0 知识卡计入 M）。"""
+    cid = models.new_id()
+    con.execute("INSERT INTO knowledge_cards (id, chapter_id, sub_concept, front, back, created_at)"
+                " VALUES (?, ?, '', 'front', 'back', ?)", (cid, chapter_id, models.utcnow()))
+    last = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+    con.execute(
+        "INSERT INTO knowledge_reviews (id, card_id, user_id, learn_count, interval_days,"
+        " next_review_at, status, last_review_at, created_at)"
+        " VALUES (?, ?, ?, 3, 7, ?, ?, ?, ?)",
+        (models.new_id(), cid, user_id, last, status, last, models.utcnow()),
+    )
+    return cid
+
+
+def test_mastered_cards_contribute_to_mastery(client):
+    """测评全错 + 1 张 mastered 卡 → M=50%（卡 5 分满分计入，拉高且 attempts 计数）。"""
+    from data.db import get_db
+    with _db(client):
+        con = get_db()
+        cid = _seed_chapter(con)
+        uid = _seed_user(con, 'dave')
+        _seed_quiz(con, [cid], version=1)
+        _seed_attempt(con, uid, cid, 1, score=0.0, days_ago=0)   # 0/5
+        _seed_card(con, uid, cid, status="mastered", days_ago=0)  # 5/5
+        m = mastery.compute_mastery(con, uid, cid)
+        assert m["m"] == 50.0
+        assert m["attempts"] == 2
+        assert mastery.mastery_state(m["m"], m["attempts"]) == "progress"  # 无卡时 0% 为 weak
+
+
+def test_mastered_card_age_decay(client):
+    """卡按 last_review_at 衰减：28 天前掌握的卡权重 0.5^4=0.0625。"""
+    from data.db import get_db
+    with _db(client):
+        con = get_db()
+        cid = _seed_chapter(con)
+        uid = _seed_user(con, 'erin')
+        _seed_quiz(con, [cid], version=1)
+        _seed_attempt(con, uid, cid, 1, score=5.0, days_ago=28)  # 老成绩也衰减
+        _seed_card(con, uid, cid, status="mastered", days_ago=28)
+        m = mastery.compute_mastery(con, uid, cid)
+        # 5w + 5w(同为 28 天前) → M=100 但用衰减权重检验 attempts 照计
+        assert m["m"] == 100.0
+        assert m["attempts"] == 2
+
+
+def test_learning_cards_do_not_penalize_mastery(client):
+    """非 mastered 卡不进分子也不进分母：全对测评 + learning 卡 → M 仍 100；只有 learning 卡无作答 → na。"""
+    from data.db import get_db
+    with _db(client):
+        con = get_db()
+        cid = _seed_chapter(con)
+        uid = _seed_user(con, 'frank')
+        _seed_quiz(con, [cid], version=1)
+        _seed_attempt(con, uid, cid, 1, score=5.0, days_ago=0)
+        _seed_card(con, uid, cid, status="learning", days_ago=0)
+        m = mastery.compute_mastery(con, uid, cid)
+        assert m["m"] == 100.0
+        assert m["attempts"] == 1
+        # 只有未掌握卡、无任何作答 → 维持 na，不因卡产生虚假掌握度
+        cid2 = _seed_chapter(con, name="线性回归")
+        uid2 = _seed_user(con, 'grace')
+        _seed_card(con, uid2, cid2, status="learning", days_ago=0)
+        m2 = mastery.compute_mastery(con, uid2, cid2)
+        assert m2["m"] is None and m2["attempts"] == 0
+        assert mastery.mastery_state(m2["m"], m2["attempts"]) == "na"

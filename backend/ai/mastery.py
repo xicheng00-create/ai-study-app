@@ -93,6 +93,22 @@ def compute_mastery(con, user_id: str, chapter_id: str) -> dict:
         total_w += w * pts
     attempts += len(prows)
 
+    # 知识卡片（v2.0.0，REQ-KNOW-003 → PROG-007）：该章已掌握(mastered)的共享卡按 5 分满分计入，
+    # 按 last_review_at 时间衰减（与作答同口径）；仅奖不罚——新卡/学习中卡不进分母，避免拉低 M。
+    # 效果示例：quiz 40% + 30 张 mastered 卡 ≈ M 76%（卡片掌握有实质贡献但不主导）
+    krows = con.execute(
+        "SELECT kr.last_review_at FROM knowledge_reviews kr"
+        " JOIN knowledge_cards kc ON kc.id=kr.card_id"
+        " WHERE kr.user_id=? AND kc.chapter_id=? AND kr.status='mastered'"
+        " AND kr.last_review_at IS NOT NULL",
+        (user_id, chapter_id),
+    ).fetchall()
+    for r in krows:
+        w = _weight(r["last_review_at"])
+        earned_w += w * 5.0
+        total_w += w * 5.0
+    attempts += len(krows)
+
     if attempts == 0:
         return {"m": None, "attempts": 0, "latest_version": latest}
     m = round(earned_w / total_w * 100, 1) if total_w > 0 else None
