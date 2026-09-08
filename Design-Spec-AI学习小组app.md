@@ -45,6 +45,7 @@
 | DM | 数据模型 | PRD §7 |
 | ARCH | 架构/横切 | architecture §二/§四 |
 | NFR | 非功能/盲区 | PRD §13 + architecture §十三 |
+| KNOW | 知识卡片（知识点→翻转卡片+左滑右滑判记住没记住+间隔复习） | CR-2026-0908-KNOW |
 
 > 每条 REQ 标注 **P0/P1/P2** 并绑定**技术模块**（Blueprint / AI Agent / 层 / 状态机），见 §三与 §十四追溯矩阵。
 
@@ -195,17 +196,33 @@
 **Functional**
 | REQ | 角色 | 优先级 | 说明 |
 |-----|------|--------|------|
-| PRACTICE-001 | student | P1 | 选章 → AI 生成练习（difficulty=hard、最多 5 道选择/是非、基于章节资料、同学生跨会话不重复；v1.10.0 取消问答、v1.16.0 起不再强制 20 道/100 分）|
+| PRACTICE-001 | student | P1 | 选章 → AI 生成练习（difficulty=hard、最多 5 道选择/是非、基于章节资料、**覆盖不同知识点（sub_concept 去重，材料足时 5 题各考不同点）**、同学生跨会话不重复、同考点不同问法不算重复；v1.10.0 取消问答、v1.16.0 起不再强制 20 道/100 分、v1.16.x 起检索全章多样化抽样）|
 | PRACTICE-002 | student | P0 | 在线作答 + GRADER 批改 + 提供正确答案 |
 | PRACTICE-003 | student | P1 | 练习错题进入薄弱点/巩固练习依据（v1.9.0 起练习同时计入掌握度 M）|
 
 **Technical**
 - **独立数据层**：`practice_sessions`（user_id/chapter_ids/difficulty/total_points/config_json）+ `practice_questions`（session_id/chapter_id/sub_concept/type/content/options/answer_key/points/content_hash/correct/user_answer/score/reason/answered_at）。练习是学生**个人即席生成**，**不进老师 draft→publish 状态机**，不写 quizzes/questions/attempts；**v1.9.0 起练习（已作答）与测评同权重计入掌握度 M（任务书定义 A），不再是「不污染 M」**。
-- **最多 5 道 + 资料驱动 + 难度 high + 同学生不重复（v1.16.0 起）**：`quizzer.generate_practice_questions()` 基于章节资料出 **2~5 道 choice/bool**（**v1.10.0 起取消 essay**、v1.16.0 起不再强制 20 道/100 分），difficulty=hard；不再凑 100 分，`total_points` 写各题实际分之和，`_session_dict` 按实际 total_points 归一。RAG 检索章节资料正文注入 QUIZZER_SYSTEM；LLM 真返空时返回空列表、由端点提示「生成失败，请重试」（不再硬塞通用模板）。**同学生跨会话去重**：`practice_questions.content_hash`（题干规范化 hash，去空格/标点/大小写）存 `hash(q.content)`，生成前查该学生历史题干注入提示词「避免重复、基于资料衍生变体」，后端 `_cap_to_max` 再按规范化 hash 过滤已出题干；不同学生可相同、同考点不同问法不算重复。
+- **最多 5 道 + 资料驱动 + 难度 high + 同学生不重复 + 知识点覆盖（v1.16.0 起，v1.16.x 强化覆盖）**：`quizzer.generate_practice_questions()` 基于章节资料出 **2~5 道 choice/bool**（**v1.10.0 起取消 essay**、v1.16.0 起不再强制 20 道/100 分），difficulty=hard；不再凑 100 分，`total_points` 写各题实际分之和，`_session_dict` 按实际 total_points 归一。RAG 检索章节资料正文注入 QUIZZER_SYSTEM；LLM 真返空时返回空列表、由端点提示「生成失败，请重试」（不再硬塞通用模板）。**同学生跨会话去重**：`practice_questions.content_hash`（题干规范化 hash，去空格/标点/大小写）存 `hash(q.content)`，生成前查该学生历史题干注入提示词「避免重复、基于资料衍生变体」，后端 `_cap_to_max` 再按规范化 hash 过滤已出题干；不同学生可相同、同考点不同问法不算重复。**⚠️ 知识点覆盖（v1.16.x 新增）**：`_retrieve_chunks` 对练习**不再只取 material_id/chunk_idx 排序前 5 条**（那样 82-chunk 的 md 主体内容一条都进不去、5 题全撞同批知识点），改为**跨全章多样化抽样**（按 material 分层 + chunk 分段各取若干，喂料上限 ~6000 字符，保证大 md 全覆盖）；`_cap_to_max` 在题干 hash 之外**加 sub_concept 维度去重**——材料知识点足够时强制 5 题各考不同知识点，只有知识点不足才允许同点变体。
 - **难度 hard**：`QUIZZER_SYSTEM` 注入 `{difficulty}`（normal/hard 指示）；练习固定 `difficulty='hard'`（综合运用/多步推理/概念辨析/跨知识点），老师测评默认 `normal` 不受影响。
 - **批改复用 GRADER**：与测评一致（客观题确定性判分；essay AI 三档/启发式分支保留以兼容旧数据，v1.10.0 起不再产生）；`practice_questions` 写 `correct/score/user_answer/reason/answered_at`。
 - **错题联动（PROG-005/006）**：`progress_bp._practice_wrong` 读取本人练习错题（correct=0 或 score<points）作为薄弱点依据（`from_practice`）与巩固练习来源章/聚焦子概念；v1.9.0 起练习同时计入 M（全错→M 下降→薄弱），错题联动逻辑保留。
 - 路由：`GET /api/practice`、`POST /api/practice/generate`、`GET /api/practice/:id`、`POST /api/practice/:id/submit`（学生本人，越权 403）。
+
+### 3.4.2 知识卡片（知识点→翻转卡片+左滑右滑判记住没记住+间隔复习）— `knowledge_bp`（L3，REQ-KNOW，AI: QUIZZER）
+
+**Functional**
+| REQ | 角色 | 优先级 | 说明 |
+|-----|------|--------|------|
+| KNOW-001 | student | P1 | 选章 → AI 从章节资料抽取知识点生成知识卡片（正面=知识点/问题，背面=答案/解析+一句示例），每章每次生成一组（≥20 知识点，与练习同源全章覆盖） |
+| KNOW-002 | student | P1 | 点卡 3D 翻转看答案；**左滑=没记住、右滑=记住了**（底部兜底按钮 ←没记住\|记住了→）；顶部进度 第N/总数 + 每卡状态色 |
+| KNOW-003 | student | P1 | 系统记录每知识点**学习次数（learn_count）**+ **复习状况**（new/learning/reviewing/mastered + 间隔 1→3→7）；每日「待复习」队列优先，再学新卡 |
+
+**Technical**
+- **独立数据层**：`knowledge_cards`（id, user_id, chapter_id, sub_concept, front, back, source_chunk_id, learn_count, interval_days, next_review_at, status CHECK(new/learning/reviewing/mastered), last_review_at, created_at）。每学生**首次打开该章卡组** → AI 抽取生成（复用 QUIZZER 全章多样化抽样喂料，一次出二三十个知识点→二三十张卡）；内容是学生个人即席生成、独立于教师发布状态机。
+- **状态机复用 `review_sched`**（architecture §5.4）：记住了 → `learn_count++`、`interval_days = next_interval(True, cur)`（1→3→7 封顶）、状态上移（new→learning→reviewing→mastered）、`next_review_at` 按间隔顺延；没记住 → `learn_count++`、`interval_days=1`、状态降回 learning、`next_review_at` 次日重排。同卡片跨会话复习。**先翻转看答案再判 remember，不在 open 期强行判定**。
+- **AI 抽取**：新增 `backend/ai/knowledge.py` `generate_knowledge_cards(chapter_ids)` + `prompts.py` `KNOWLEDGE_SYSTEM`（要求 JSON `[{front, back, sub_concept}]`，遍布全章、覆盖不同子概念、back 含答案/解析/一句示例）；LLM 真返空返空列表、端点提示「生成失败请重试」。
+- **路由**：`POST /api/knowledge/generate`（选章→生成该章卡片）、`GET /api/knowledge/:chapter`（卡组+每卡状态）、`POST /api/knowledge/:card/review`（body `{remembered: true|false}` → 更新 learn_count/interval/status/next_review）、`GET /api/knowledge/overview`（各章掌握进度：已掌握/学习中/未学/今日待复习）。学生本人，越权 403；蓝图 `knowledge_bp` 注册进 app.py。
+- **前端**：学习页「知识卡片」入口 → 独立知识点卡片页（`Student` 状态 `knowledgeIdx`/`knowledgeDeck` + `viewKnowledge()`/`viewKnowledgeDeck()`，沿用 practice 视图模式）；卡片 3D `flip` + 左右滑动判 remember（touchmove 阈值 + 兜底按钮）；学习页显示打卡进度。改前端须 bump sw.js CACHE + app.py version。
 
 ### 3.5 进度/掌握度/巩固 — `progress_bp` + `review_sched`（L3，REQ-PROG，AI: QUIZZER）
 **Functional**
