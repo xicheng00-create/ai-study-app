@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.18.1] - 2026-09-08
+
+### Changed
+- **练习跨会话知识点去重强化（PRACTICE-001）**：`quizzer._practice_system` 提示词改为「每题必须来自不同子概念 + 禁止清单」，`generate_practice_questions` 排除已练知识点后仍不足 count 时自动重试（最多 2 次）补齐——确保「这次 5 题 ≠ 下次 5 题」，约 4-5 次练习才重复。
+
 ## [1.18.0] - 2026-09-08
 
 ### Added

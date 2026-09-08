@@ -514,17 +514,20 @@ def _avoid_block(exclude_contents: list[str]) -> str:
 def _practice_system(chapter_ids: list[str], sub_concepts: str, chunk_txt: str,
                      exclude_contents: list[str] | None = None,
                      exclude_sub_concepts: set | None = None, count: int = 5) -> str:
-    spec = f"最多 {count} 道题（5~{count} 道），只允许选择题（choice）和是非题（bool），难度 hard"
+    spec = (f"出 {count} 道题，每题来自一个【不同】的子概念（知识点）——从资料里挑 {count} 个不同的知识点各出一题；"
+            f"只允许选择题（choice）和是非题（bool），难度 hard")
+    excl = ""
+    if exclude_sub_concepts:
+        excl = ("\n\n【必须遵守 · 跨会话知识点不重复】以下子概念该学生【已练过】，本次【禁止】再出这些子概念。"
+                "请从资料中其它子概念里，尽量挑【不同】且【不在清单内】的子概念出题，凑满 " + str(count)
+                + " 道：\n- " + "\n- ".join(sorted(exclude_sub_concepts)))
     return QUIZZER_SYSTEM.format(
         chapter_ids=",".join(chapter_ids),
         sub_concepts=sub_concepts or "不限",
         spec=spec,
         retrieved_chunks=chunk_txt[:6000],
         difficulty="hard",
-    ) + _avoid_block(exclude_contents or []) + (
-        "\n\n本次请避开以下已练知识点（子概念），从资料中其它知识点出题：" + "、".join(sorted(exclude_sub_concepts))
-        if exclude_sub_concepts else ""
-    )
+    ) + _avoid_block(exclude_contents or []) + excl
 
 
 def generate_practice_questions(chapter_ids: list[str], sub_concepts: str = "",
@@ -548,8 +551,18 @@ def generate_practice_questions(chapter_ids: list[str], sub_concepts: str = "",
     qs = [_norm_practice(q) for q in (agents.quizzer_generate(system) or [])]
     if not qs:
         return []
-    return _cap_to_max(qs, exclude_hashes=exclude_hashes,
-                       exclude_sub_concepts=exclude_sub_concepts, max_q=count)
+    cap = _cap_to_max(qs, exclude_hashes=exclude_hashes,
+                      exclude_sub_concepts=exclude_sub_concepts, max_q=count)
+    # LLM 常聚在热门子概念；排除已练后需重试逼它挖更多【不同】子概念，凑满 count。
+    for _ in range(2):
+        if len(cap) >= count:
+            break
+        retry = _practice_system(chapter_ids, sub_concepts, chunk_txt, exclude_contents,
+                                 exclude_sub_concepts, count)
+        extra = [_norm_practice(q) for q in (agents.quizzer_generate(retry) or [])]
+        cap = _cap_to_max(cap + extra, exclude_hashes=exclude_hashes,
+                          exclude_sub_concepts=exclude_sub_concepts, max_q=count)
+    return cap
 
 
 def generate_questions(chapter_ids: list[str], sub_concepts: str = "", spec: str = "",
