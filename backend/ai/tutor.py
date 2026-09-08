@@ -143,11 +143,13 @@ def _retrieve_multi(con, content: str, chapter_id, chapter_ids, top_k=5) -> list
 
 def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str | None,
                       concept_tags=None, chapter_ids=None, wrong_ctx=None,
-                      tutor_mode: str = "direct") -> dict:
+                      tutor_mode: str = "direct", kc_ctx=None) -> dict:
     """返回 {content, cite, turn, fallback, related_videos}。
 
     tutor_mode：普通提问（无错题）的辅导模式，`direct` 直接讲解 / `guide` 苏格拉底引导。
     带错题（wrong_ctx 非空）时强制直接解析，不受 tutor_mode 影响。
+    kc_ctx（v2.1.0）：知识卡片「去问 TUTOR」携带的 {front,back,sub_concept,chapter_id}，
+    卡片答案作为可靠上下文注入 system，并强制直接模式做发散讲解。
     """
     user_id = user_row["id"]
     turn = _current_turn(con, conversation["id"])
@@ -195,18 +197,29 @@ def tutor_orchestrate(con, user_row, conversation, content: str, chapter_id: str
                 "fallback": True, "related_videos": related}
 
     # 检索不到且无错题、且无任何历史上下文（首问即空）→ 才兜底。
-    # 有历史上下文时放行让 LLM 承接（学生可能用承接语继续，不能因单轮检索空就打断上下文）
-    if not chunks and not wrong_ctx and not history:
+    # 有历史上下文时放行让 LLM 承接（学生可能用承接语继续，不能因单轮检索空就打断上下文）。
+    # 知识卡片提问（kc_ctx）不受此限：卡片答案本身就是可靠上下文，可脱离资料单独发散。
+    if not chunks and not wrong_ctx and not kc_ctx and not history:
         return {"content": fallback.fallback_reply("empty", chapter_name(con, chapter_id)),
                 "cite": "", "turn": turn, "fallback": True, "related_videos": related}
 
-    # 错题辅导强制直接解析；普通提问按学生开关选择模式（非法值回退直接讲解）
-    mode = "direct" if wrong_ctx else (tutor_mode if tutor_mode in ("guide", "direct") else "direct")
+    # 错题辅导/知识卡片发散强制直接讲解；普通提问按学生开关选择模式（非法值回退直接讲解）
+    mode = "direct" if (wrong_ctx or kc_ctx) else (tutor_mode if tutor_mode in ("guide", "direct") else "direct")
     mode_label = "直接讲解" if mode == "direct" else "引导式"
+
+    # 知识卡片上下文（v2.1.0）：front/back 注入 system，供 TUTOR 发散讲解
+    kc_txt = "（无）"
+    if kc_ctx:
+        kc_txt = (
+            f"知识点：{str(kc_ctx.get('front') or '')[:800]}\n"
+            f"卡片答案要点：{str(kc_ctx.get('back') or '')[:2000]}\n"
+            f"来源章节：{chapter_name(con, str(kc_ctx.get('chapter_id') or chapter_id or ''))}"
+        )
 
     system = TUTOR_SYSTEM.format(
         weak_chapters=weak_txt,
         retrieved_chunks=chunk_txt[:4000],
+        knowledge_card=kc_txt,
         related_videos=related_txt,
         wrong_ctx=_format_wrong_ctx(wrong_ctx),
         tutor_mode=mode_label,

@@ -46,3 +46,37 @@ def test_advice_is_per_student(client, teacher_headers):
     alice = login(client, "alice", "student123")
     resp = client.get("/api/progress/advice", headers={"Authorization": f"Bearer {alice}"})
     assert resp.get_json()["data"]["has_advice"] is False
+
+
+def test_advice_generate_once_per_day(client, teacher_headers):
+    """点击生成今日建议：首次生成（generated=True），当天再点幂等不重生成（generated=False）。"""
+    make_student(client, teacher_headers, "alice")
+    alice = login(client, "alice", "student123")
+    h = {"Authorization": f"Bearer {alice}"}
+    # 首次生成：无 LLM key 环境走模板兜底，建议非空
+    resp = client.post("/api/progress/advice/generate", json={}, headers=h)
+    assert resp.status_code == 200, resp.get_json()
+    d = resp.get_json()["data"]
+    assert d["generated"] is True and d["has_advice"] is True
+    assert d["advice_date"] == timeutil.today_str()
+    assert d["advice"].strip() != ""
+    # 当天再点 → 直接返回已有（一天最多一次，不重复调用 AI）
+    resp2 = client.post("/api/progress/advice/generate", json={}, headers=h)
+    d2 = resp2.get_json()["data"]
+    assert d2["generated"] is False
+    assert d2["advice"] == d["advice"]
+    # GET 同步可见
+    resp3 = client.get("/api/progress/advice", headers=h)
+    assert resp3.get_json()["data"]["has_advice"] is True
+
+
+def test_advice_generate_is_per_student(client, teacher_headers):
+    """A 生成后不影响 B：B 首次生成仍是 generated=True（按人隔离）。"""
+    make_student(client, teacher_headers, "alice")
+    make_student(client, teacher_headers, "bob")
+    alice = login(client, "alice", "student123")
+    bob = login(client, "bob", "student123")
+    client.post("/api/progress/advice/generate", json={}, headers={"Authorization": f"Bearer {alice}"})
+    resp = client.post("/api/progress/advice/generate", json={}, headers={"Authorization": f"Bearer {bob}"})
+    assert resp.get_json()["data"]["generated"] is True
+

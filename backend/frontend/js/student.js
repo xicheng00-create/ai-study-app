@@ -56,6 +56,9 @@ const Student = {
   weakGroupOpen: {},  // 薄弱点页展开的「章→组」键：`${chapter_id}:${quiz_id|practice}`
   _pressTimer: null,  // 长按手势定时器
   _pressX: 0, _pressY: 0, _touchTs: 0, _suppressClick: false,
+  _noReload: false,   // 发送后重绘期间跳过服务器消息重拉（保住即时上屏）
+  _adviceBusy: false, // 生成今日建议异步锁
+  _swSuppress: false, // 练习历史左滑结束补发 click 的抑制
 
   async render() {
     const h = App.state.hash;
@@ -170,7 +173,9 @@ const Student = {
     const sel = this.selChapterIds();
     if (!this.askCtx && (!App.activeChapter || sel.indexOf(App.activeChapter) < 0)) App.activeChapter = sel[0] || null;
     if (!this.convId && convs.length) this.convId = convs[0].id;
-    if (this.convId) {
+    // 发送后重绘期间（_noReload）跳过服务器重拉：本地已含刚上屏的用户消息，
+    // 重拉会把未落库消息冲掉 → 输入的问题要等 TUTOR 回复才出现（v2.1.0 修）
+    if (!this._noReload && this.convId) {
       try { const d = await API.get("/api/conversations/" + this.convId); this.messages = d.messages || []; } catch (e) { this.messages = []; }
     }
     const convChips = convs.map(c => `<span class="pill ${this.convId === c.id ? 'active' : ''}" style="cursor:pointer" onclick="Student.selectConv('${c.id}')" onmousedown="Student.pressStart(event,'${c.id}')" onmouseup="Student.pressEnd(event)" onmouseleave="Student.pressEnd(event)" ontouchstart="Student.pressStart(event,'${c.id}')" ontouchend="Student.pressEnd(event)" ontouchmove="Student.pressMove(event)" ontouchcancel="Student.pressEnd(event)"><span class="pill-t">${esc(c.title)}</span></span>`).join('')
@@ -207,7 +212,7 @@ const Student = {
       <div class="chat">${msgs}</div>
       ${relatedHtml}
     </div>
-    <div class="composer"><div class="composer-body"><div class="flex"><button class="tool-btn" onclick="Student.openWrongConsult()">${ic('lightbulb')}咨询错题</button><button class="tool-btn" onclick="Student.enterKnowledge()">${ic('cards')}知识卡片</button></div>${this.wrongCtx ? `<div class="muted" style="font-size:12px;margin-bottom:4px">已选 ${this.wrongCtx.length} 道错题，随本条发送</div>` : ''}<div class="flex"><input id="chatInput" class="grow" placeholder="回答引导问题，或追问…" onkeydown="if(event.key==='Enter')Student.send()"/><button class="send" onclick="Student.send()">${ic('arrowUp')}</button></div></div></div>` + tabbar();
+    <div class="composer"><div class="composer-body"><div class="flex"><button class="tool-btn" onclick="Student.openWrongConsult()">${ic('lightbulb')}咨询错题</button></div>${this.wrongCtx ? `<div class="muted" style="font-size:12px;margin-bottom:4px">已选 ${this.wrongCtx.length} 道错题，随本条发送</div>` : ''}<div class="flex"><input id="chatInput" class="grow" placeholder="回答引导问题，或追问…" onkeydown="if(event.key==='Enter')Student.send()"/><button class="send" onclick="Student.send()">${ic('arrowUp')}</button></div></div></div>` + tabbar();
   },
   async enterKnowledge() {
     const sel = this.selChapterIds();
@@ -251,7 +256,7 @@ const Student = {
         <div class="kc-ch-head" onclick="Student.toggleKnowledgeGroup('${g.cid}')">
           <div style="flex:1"><b>${esc(g.name)}</b><small>${gc.length} 张 · 已掌握 ${gcount('mastered')} · 学习中 ${gcount('learning') + gcount('reviewing')} · 未学 ${gcount('new')} · 今日待复习 ${gdue}</small></div>
           <span class="caret">${open ? '▾' : '▸'}</span></div>
-        ${open ? `<div class="kc-grid">${gc.map(c => `<div class="kc-mini ${c.status}"><b>${esc(c.front)}</b><small>${esc(c.sub_concept || '知识点')}</small></div>`).join('')}</div>` : ''}</div>`;
+        ${open ? `<div class="kc-grid">${gc.map(c => `<div class="kc-mini ${c.status}" onclick="Student.kcDetail('${c.id}')"><b>${esc(c.front)}</b><small>${esc(c.sub_concept || '知识点')}</small></div>`).join('')}</div>` : ''}</div>`;
     }).join('');
     return appbar('知识卡片', `已选 ${sel.length} 章 · 共 ${cardsAll.length} 张`, 'Student.leaveKnowledge()') + `<div class="content">
       <button class="btn" style="width:100%;margin-bottom:14px" onclick="Student.startKnowledgeDeck()">${ic('cards')}开始复习（${cardsAll.length} 张${due ? ` · 今日待复习 ${due}` : ''}）</button>
@@ -260,6 +265,33 @@ const Student = {
     </div>` + tabbar();
   },
   toggleKnowledgeGroup(cid) { this.knowledgeGroupOpen[cid] = !this.knowledgeGroupOpen[cid]; render(); },
+  kcStatusBadge(st) {
+    const m = { mastered: ['master', '已掌握'], reviewing: ['prog', '复习中'], learning: ['prog', '学习中'], new: ['weak', '未学'] };
+    const x = m[st] || m.new;
+    return `<span class="badge ${x[0]}">${x[1]}</span>`;
+  },
+  // 点卡片 → 详情 sheet（正/反面 + 去问 TUTOR）
+  kcDetail(id) {
+    const c = (this.knowledgeCards || []).find(x => x.id === id); if (!c) return;
+    openSheet(`<div class="row" style="font-weight:700;cursor:default;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${ic('cards')}知识卡片${c.chName ? `<span class="muted" style="font-size:12px;font-weight:500">${esc(c.chName)}</span>` : ''}${this.kcStatusBadge(c.status)}</div>
+      <div class="sheet-txt"><b>${esc(c.front)}</b></div>
+      <div class="sheet-txt dim">${esc(c.back)}</div>
+      <div class="row" onclick="Student.askKcTutor('${c.id}')">${ic('chat')}去问 TUTOR · 就这个知识点深入讲解</div>
+      <div class="row cancel" onclick="closeSheet()">关闭</div>`);
+  },
+  // 知识卡片 → 对话（v2.1.0）：跳到对话页并自动提问该卡知识点；
+  // kc_ctx 带卡片答案进 payload，TUTOR 基于它发散讲解（卡片内容不进聊天历史文本）
+  async askKcTutor(id) {
+    const c = (this.knowledgeCards || []).find(x => x.id === id); if (!c) return;
+    closeSheet();
+    this.askCtx = null;                 // 卡片自带章节范围，不继承「路径」上下文
+    this.learnChat = true; this.knowledgeIdx = false; this.knowledgeDeck = false;
+    App.activeChapter = c.chapter_id;
+    await this.doSend(
+      `请围绕「${c.front}」这个知识点详细展开讲解：它是什么意思、核心要点、具体例子，以及容易搞错的地方。`,
+      (p) => { p.chapter_ids = [c.chapter_id]; p.kc_ctx = { front: c.front, back: c.back, sub_concept: c.sub_concept || '', chapter_id: c.chapter_id }; }
+    );
+  },
   async generateKnowledge() {
     try { const d = await API.post('/api/knowledge/generate', { chapter_ids: this.selChapterIds() }); this.knowledgeCards = d.cards || []; toast('知识卡片已生成'); render(); } catch (e) { toast(e.message); }
   },
@@ -357,7 +389,7 @@ const Student = {
     if (!pt.dragging) return;                                          // tap → 交给 click 翻转
     el.style.transform = '';                                           // 先回规则态再决定飞/弹（同一帧 → 过渡衔接）
     this._suppressClick = true;
-    if (Math.abs(pt.dx) > 70) this.reviewKnowledge(pt.dx < 0);         // 左滑=没记住 / 右滑=记住了
+    if (Math.abs(pt.dx) > 70) this.reviewKnowledge(pt.dx > 0);         // 右滑=记住了 / 左滑=没记住（v2.1.0 修方向反）
     // 未超阈值：transform 已清空 → CSS transition 弹回原位
   },
   // mouse 拖拽（桌面调试/教师机）：mousedown 起全局监听，up 解绑
@@ -393,7 +425,7 @@ const Student = {
     el.classList.remove('dragging');
     el.style.transform = '';
     this._suppressClick = true;
-    if (Math.abs(pt.dx) > 70) this.reviewKnowledge(pt.dx < 0);
+    if (Math.abs(pt.dx) > 70) this.reviewKnowledge(pt.dx > 0);
   },
   // 暂停退出：存进度 + 退出复习视图（落回来源：对话或主菜单）
   pauseKnowledge() {
@@ -491,13 +523,8 @@ const Student = {
     const input = document.getElementById("chatInput");
     const content = (input.value || "").trim();
     if (!content) return;
-    if (!this.convId) { await this.newConv(); }
-    input.value = "";
-    this.messages.push({ role: "user", content });
-    this.pendingReply = true;   // 显示思考气泡（即时反馈）
-    render();
-    try {
-      const payload = { content, chapter_id: App.activeChapter, tutor_mode: this.tutorMode || "direct" };
+    if (input) input.value = "";
+    await this.doSend(content, (payload) => {
       // 检索范围：从「路径」提问 → 用该 session 的章；普通提问勾选 >1 章 → 多选集跨章检索
       if (this.askCtx) {
         payload.chapter_ids = this.askCtx.chapter_ids || [];
@@ -507,15 +534,30 @@ const Student = {
         if (sel.length > 1) payload.chapter_ids = sel;
       }
       if (this.wrongCtx) payload.wrong_ctx = this.wrongCtx;
+    });
+  },
+  // 发送消息公共通道：先本地即时上屏（pendingReply 思考气泡），再等 TUTOR 回复。
+  // v2.1.0：知识卡片「去问 TUTOR」也走这里（decorate 注入 kc_ctx）。
+  async doSend(content, decorate) {
+    if (!this.convId) { await this.newConv(); }
+    this.messages.push({ role: "user", content });
+    this.pendingReply = true;   // 显示思考气泡（即时反馈）
+    this._noReload = true;      // 本次重绘不重拉消息，保住刚上屏的用户消息
+    render();
+    try {
+      const payload = { content, chapter_id: App.activeChapter, tutor_mode: this.tutorMode || "direct" };
+      if (decorate) decorate(payload);
       const d = await API.post(`/api/conversations/${this.convId}/message`, payload);
       this.wrongCtx = null;
       this.messages.push({ role: "assistant", content: d.reply });
       this.turn = d.turn;
       this.relatedVideos = d.related_videos || [];
       this.pendingReply = false;
+      this._noReload = false;
       render();
     } catch (e) {
       this.pendingReply = false;
+      this._noReload = false;
       toast(e.message); render();
     }
   },
@@ -587,7 +629,7 @@ const Student = {
         <div style="text-align:right">${badge}</div></div>`;
     }).join('') || '<div class="muted">老师尚未发布测评</div>';
     const practiceEntry = `<div class="qcard" style="border-color:var(--coral)" onclick="Student.enterPractice()"><div class="ic">${ic('target')}</div>
-      <div class="meta"><div class="t">自主练习</div><div class="s">根据资料 AI 出题 · 最多 5 题 · 即答即批</div></div></div>`;
+      <div class="meta"><div class="t">自主练习</div><div class="s">根据资料 AI 出题 · 5-10 题自选 · 即答即批</div></div></div>`;
     return appbar('测评', '教师发布 · 全班同题') + `<div class="content">${practiceEntry}${list}</div>` + tabbar();
   },
   async openQuiz(id) {
@@ -662,6 +704,58 @@ const Student = {
     this.practiceSessions = [];
     render();
   },
+  /* ===== 练习历史左滑删除（swipe-row 结构：swipe-main 内容 + swipe-del 底层红按钮）===== */
+  swStart(e, id) {
+    if (this._sw) return;
+    if (e.type === "mousedown" && this._touchTs && Date.now() - this._touchTs < 700) return;  // 忽略触摸派生的合成 mouse
+    const p = (e.touches && e.touches[0]) || e;
+    const row = document.getElementById("sw_" + id); if (!row) return;
+    const main = row.querySelector(".swipe-main");
+    this._sw = { id, x: p.clientX, y: p.clientY, dx: 0, base: row.classList.contains("open") ? -84 : 0, dragging: false, main };
+    if (e.type === "mousedown") e.preventDefault();
+  },
+  swMove(e) {
+    const s = this._sw; if (!s) return;
+    const p = (e.touches && e.touches[0]) || e;
+    const dx0 = p.clientX - s.x, dy = p.clientY - s.y;
+    if (!s.dragging) {
+      if (Math.abs(dx0) < 6) return;                                  // 未到阈值：交给 tap
+      if (Math.abs(dy) > Math.abs(dx0)) { this._sw = null; return; }  // 竖向滚动 → 放弃横拖
+      s.dragging = true;
+      s.main.style.transition = "none";                               // 拖动期跟手
+    }
+    if (e.cancelable) e.preventDefault();
+    s.dx = Math.max(-84, Math.min(0, s.base + dx0));                  // 仅向左展开（已开时右拉回收）
+    s.main.style.transform = `translateX(${s.dx}px)`;
+  },
+  swEnd(e, id) {
+    const s = this._sw; this._sw = null;
+    if (!s) return;
+    if (e.type === "touchend" || e.type === "touchcancel") this._touchTs = Date.now();
+    if (!s.dragging) return;                                          // tap → 交给 click
+    s.main.style.transition = "";
+    const row = document.getElementById("sw_" + id);
+    const open = s.dx < -40;
+    if (row) row.classList.toggle("open", open);
+    s.main.style.transform = open ? "translateX(-84px)" : "";
+    this._swSuppress = true;                                          // 抑制随后的 click 打开练习
+    setTimeout(() => { this._swSuppress = false; }, 350);
+  },
+  delPractice(id) {
+    const s = (this.practiceSessions || []).find(x => x.id === id);
+    openSheet(`<div class="row" style="font-weight:700">删除练习记录</div>
+      <div class="row" style="text-align:left;border:none;background:transparent;cursor:default;font-size:13px;color:var(--text-2)">确定删除${s && s.completed ? '' : '这条「进行中」'}练习？删除后不可恢复，其错题不再计入薄弱点。</div>
+      <div class="row danger" onclick="Student.confirmDelPractice('${id}')">删除</div>
+      <div class="row cancel" onclick="closeSheet()">取消</div>`);
+  },
+  async confirmDelPractice(id) {
+    closeSheet();
+    try {
+      await API.del("/api/practice/" + id);
+      this.practiceSessions = (this.practiceSessions || []).filter(x => x.id !== id);
+      toast("已删除练习记录"); render();
+    } catch (e) { toast(e.message); }
+  },
   togglePracticeChapter(id) {
     const sel = this.practiceChapters || [];
     const i = sel.indexOf(id);
@@ -676,15 +770,19 @@ const Student = {
     const chapters = App.chapters;
     const sel = this.practiceChapters || [];
     const chapterSel = chapters.map(c => `<div class="chapter ${sel.includes(c.id) ? 'active' : ''}" onclick="Student.togglePracticeChapter('${c.id}')"><div><div class="nm">${esc(c.name)}</div><div class="mt">${esc(c.folder || '未分组')}</div></div></div>`).join('') || '<div class="muted">暂无章节</div>';
+    // 历史条目：左滑露出删除（v2.1.0），完成后/进行中均可删
     const hist = sessions.map(s => {
       const status = s.completed ? `<span class="badge master">已完成 ${s.score}</span>` : `<span class="badge prog">进行中</span>`;
-      return `<div class="qcard" onclick="Student.openPractice('${s.id}')"><div class="ic">${ic('target')}</div>
+      const body = `<div class="qcard" onclick="Student.openPractice('${s.id}')"><div class="ic">${ic('target')}</div>
         <div class="meta"><div class="t">练习 ${s.question_count} 题</div><div class="s">覆盖：${(s.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div></div>
         <div style="text-align:right">${status}</div></div>`;
+      return `<div class="swipe-row" id="sw_${s.id}" ontouchstart="Student.swStart(event,'${s.id}')" ontouchmove="Student.swMove(event)" ontouchend="Student.swEnd(event,'${s.id}')" ontouchcancel="Student.swEnd(event,'${s.id}')" onmousedown="Student.swStart(event,'${s.id}')" onmousemove="Student.swMove(event)" onmouseup="Student.swEnd(event,'${s.id}')" onmouseleave="Student.swEnd(event,'${s.id}')">
+        <div class="swipe-del" onclick="Student.delPractice('${s.id}')">${ic('trash')}删除</div>
+        <div class="swipe-main">${body}</div></div>`;
     }).join('') || '<div class="muted">暂无练习记录</div>';
     return appbar('自主练习', 'AI 出题 · 5-10 题 · 高难度') + `<div class="content">
       <div class="card sm"><div style="font-weight:700;font-size:13px;margin-bottom:8px">选择章节（可多选）</div>${chapterSel}
-        <label class="muted" style="display:block;margin-top:12px">题数：<select onchange="Student.practiceCount=Number(this.value)">${[5,6,7,8,9,10].map(n => `<option value="${n}" ${n === Student.practiceCount ? 'selected' : ''}>${n} 题</option>`).join('')}</select></label>
+        <label class="count-label">题数<select class="count-sel" onchange="Student.practiceCount=Number(this.value)">${[5,6,7,8,9,10].map(n => `<option value="${n}" ${n === Student.practiceCount ? 'selected' : ''}>${n} 题</option>`).join('')}</select></label>
         <button class="btn mt-12" onclick="Student.generatePractice()">${ic('target')}生成练习</button>
         <button class="btn ghost" style="margin-top:8px" onclick="Student.exitPractice()">返回测评列表</button></div>
       <div class="card"><div class="sec-title">练习历史</div>${hist}</div>
@@ -700,6 +798,7 @@ const Student = {
     } catch (e) { toast(e.message); }
   },
   async openPractice(id) {
+    if (this._swSuppress) { this._swSuppress = false; return; }   // 左滑结束补发的 click 抑制
     try {
       const d = await API.get("/api/practice/" + id);
       if (d.session && d.session.completed) {
@@ -819,11 +918,13 @@ const Student = {
       <span class="badge ${r.status === 'done' ? 'master' : 'weak'}">${esc(App.chapterName(r.chapter_id))}</span>
       <div style="flex:1;font-size:13px">${r.status === 'done' ? '已完成' : (r.due ? '已到期，可作答' : '下次复习 ' + r.interval_days + ' 天后')}</div>
       ${r.status === 'pending' && r.due ? `<button class="mini-btn" style="border-color:var(--coral);color:var(--coral-strong)" onclick="Student.openReview('${r.id}')">作答</button>` : ''}</div>`).join('') || '<div class="muted" style="font-size:12.5px">尚未生成复习计划</div>';
-    // AI 学习建议（RPT-003 改每日）：显示在掌握度下方
+    // AI 学习建议（RPT-003 改每日，v2.1.0：自动生成长期未生效 → 改为点击生成，一天最多一次）
     const adviceLines = (advice.advice || "").split("\n").filter(Boolean);
     const adviceHtml = advice.has_advice && adviceLines.length
       ? adviceLines.map(t => `<div class="ai-tip"><div class="ic">AI</div><div style="font-size:13.5px;line-height:1.5">${esc(t)}</div></div>`).join('')
-      : '<div class="muted">今日暂无建议（每天自动生成）</div>';
+        + `<div class="muted" style="font-size:11.5px;margin-top:6px">${esc(advice.advice_date || '')} 生成 · 每天最多生成一次</div>`
+      : `<div class="muted" style="margin-bottom:8px">还没有学习建议——点下方按钮立即生成：AI 根据你今天的对话、练习、测评与薄弱章节给出 3 条建议（每天一次）</div>
+         <button class="btn sm" onclick="Student.genAdvice()" ${this._adviceBusy ? 'disabled' : ''}>${ic('sparkle')}${this._adviceBusy ? '正在生成…' : '生成今日建议'}</button>`;
     // 本周概况 + 成绩分析（RPT-001/002 迁移）
     const s = weekly.stats || {};
     const weeklyHtml = `<div class="card"><div style="font-weight:700;margin-bottom:12px">本周概况</div>
@@ -846,7 +947,13 @@ const Student = {
             <div class="kc-bar"><i style="width:${pct}%"></i></div></div>
             <span class="badge ${ct.mastered === ct.total ? 'master' : (ct.mastered ? 'prog' : 'weak')}">${pct}%</span></div>`;
         }).join('')}
-      <div class="muted" style="font-size:12px;margin-top:6px">已掌握 ${kcMastered}/${kcTotal} 张 · 仅已掌握卡片计入掌握度（5 分/张，复习越近权重越高）</div></div>`
+      <div class="muted" style="font-size:12px;margin-top:6px">已掌握 ${kcMastered}/${kcTotal} 张 · 仅已掌握卡片计入掌握度（5 分/张，复习越近权重越高）</div>
+      <details class="kc-help"><summary>掌握度怎么算？（含知识卡片口径）</summary>
+        <div>掌握度 M =「已得权重分 ÷ 总分 × 100」，把三类学习成果合在一起：<br/>
+        <b>① 测评 / 练习</b>：按每次作答得分加权计入；<br/>
+        <b>② 知识卡片</b>：只有复习到「已掌握」的卡才计入，每张按满分 5 分算；学习中 / 复习中 / 未学的卡既不罚分也不计分；<br/>
+        <b>③ 卡片权重会随时间衰减</b>：距上次复习每满 1 周权重减半（×0.5^周），复习越近贡献越大，很久不复习的已掌握卡权重会趋近 0——所以要常回来翻卡；<br/>
+        <b>④ 等级</b>：M ≥ 80 且有效作答 ≥ 2 次 = 已掌握；50–80 = 进行中；&lt;50 = 薄弱；从未作答 = 未评估。</div></details></div>`
       : `<div class="card"><div class="sec-title">知识卡片（计入掌握度）</div><div class="muted" style="font-size:12.5px">还没有复习过知识卡片——去「学习」页勾选章节开始翻卡记忆</div></div>`;
     return appbar('进度', '按章节掌握度（仅本人）') + `<div class="content">
       <div class="stat-row"><div class="stat"><div class="v" style="color:var(--green)">${c.master}</div><div class="k">已掌握</div></div>
@@ -912,6 +1019,16 @@ const Student = {
   async genReview() {
     try { const d = await API.post("/api/progress/review-items/generate", {}); toast("已为 " + d.created + " 个薄弱章生成巩固练习"); render(); }
     catch (e) { toast(e.message); }
+  },
+  // 点击生成今日 AI 学习建议（一天最多一次，后端幂等：当天已有则直接返回）
+  async genAdvice() {
+    if (this._adviceBusy) return;
+    this._adviceBusy = true; render();
+    try {
+      const d = await API.post("/api/progress/advice/generate", {});
+      toast(d.generated ? "今日建议已生成" : "今天已生成过建议");
+    } catch (e) { toast(e.message); }
+    this._adviceBusy = false; render();
   },
   async openReview(id) {
     try {

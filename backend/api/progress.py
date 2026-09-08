@@ -5,7 +5,7 @@ v1.9.0 起并入：AI 每日学习建议（RPT-003 改每日）+ 本周概况/�
 import json
 from datetime import datetime, timedelta, timezone
 
-from ai import grader, mastery, quizzer, review_sched
+from ai import advice_gen, grader, mastery, quizzer, review_sched
 from auth.jwt_utils import jwt_required, role_required
 from data import models, timeutil
 from data.db import get_db
@@ -333,6 +333,52 @@ def advice():
         "stats": json.loads(row["stats"] or "{}"),
         "advice": row["advice"],
         "created_at": row["created_at"],
+    })
+
+
+@progress_bp.route("/advice/generate", methods=["POST"])
+@jwt_required
+@role_required("student")
+@rate_limit(limit=60)
+def advice_generate():
+    """点击生成今日建议（一天最多一次：当天已有则直接返回，不重复生成）。
+
+    v2.1.0：launchd 22:00 自动生成长期未生效（学生从未见到建议），
+    改为进度页手动点击生成——统计/文案逻辑与定时脚本共用 ai/advice_gen.py。
+    """
+    con = get_db()
+    today = timeutil.today_str()
+    row = con.execute(
+        "SELECT * FROM daily_advice WHERE user_id=? AND advice_date=?",
+        (g.user_id, today),
+    ).fetchone()
+    if row is not None:
+        return ok({
+            "has_advice": True,
+            "advice_date": row["advice_date"],
+            "stats": json.loads(row["stats"] or "{}"),
+            "advice": row["advice"],
+            "created_at": row["created_at"],
+            "generated": False,
+        })
+    stats, weak_names = advice_gen.today_stats(con, g.user_id)
+    advice = advice_gen.build_advice_text(con, stats, weak_names)
+    now = models.utcnow()
+    con.execute(
+        "INSERT INTO daily_advice (id, user_id, advice_date, stats, advice, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?)"
+        " ON CONFLICT(user_id, advice_date) DO UPDATE SET"
+        " stats=excluded.stats, advice=excluded.advice, created_at=excluded.created_at",
+        (models.new_id(), g.user_id, today, json.dumps(stats, ensure_ascii=False), advice, now),
+    )
+    con.commit()
+    return ok({
+        "has_advice": True,
+        "advice_date": today,
+        "stats": stats,
+        "advice": advice,
+        "created_at": now,
+        "generated": True,
     })
 
 

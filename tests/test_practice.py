@@ -193,3 +193,38 @@ def test_practice_isolation(client, teacher_headers, monkeypatch):
     resp = client.post(f"/api/practice/{sid}/submit", json={"answers": []},
                        headers={"Authorization": f"Bearer {bob}"})
     assert resp.status_code == 403
+
+
+def test_practice_delete_removes_session(client, teacher_headers, monkeypatch):
+    """删除练习（进行中/已完成均可）：会话与题目一并删除，列表不再出现。"""
+    cid = _chapter(client, teacher_headers)
+    make_student(client, teacher_headers, "alice")
+    token = login(client, "alice", "student123")
+    h = {"Authorization": f"Bearer {token}"}
+    _mock_generate(monkeypatch)
+    sid = _generate(client, h, [cid])["id"]
+
+    resp = client.delete(f"/api/practice/{sid}", headers=h)
+    assert resp.status_code == 200, resp.get_json()
+    assert resp.get_json()["data"]["deleted"] == 1
+    # 列表不再包含；详情 403（会话已不存在）
+    lst = client.get("/api/practice", headers=h).get_json()["data"]["sessions"]
+    assert all(s["id"] != sid for s in lst)
+    assert client.get(f"/api/practice/{sid}", headers=h).status_code == 403
+
+
+def test_practice_delete_isolation(client, teacher_headers, monkeypatch):
+    """学生 B 不能删除学生 A 的练习（F9）。"""
+    cid = _chapter(client, teacher_headers)
+    make_student(client, teacher_headers, "alice")
+    make_student(client, teacher_headers, "bob")
+    alice = login(client, "alice", "student123")
+    bob = login(client, "bob", "student123")
+    _mock_generate(monkeypatch)
+    sid = _generate(client, {"Authorization": f"Bearer {alice}"}, [cid])["id"]
+    resp = client.delete(f"/api/practice/{sid}", headers={"Authorization": f"Bearer {bob}"})
+    assert resp.status_code == 403
+    # A 的记录仍在
+    lst = client.get("/api/practice", headers={"Authorization": f"Bearer {alice}"}).get_json()["data"]["sessions"]
+    assert any(s["id"] == sid for s in lst)
+

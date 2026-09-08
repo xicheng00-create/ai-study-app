@@ -110,7 +110,7 @@ def _history_contents(con, user_id) -> list[str]:
 @role_required("student")
 @rate_limit(limit=60)
 def generate_practice():
-    """选章 → AI 出题（difficulty=hard、最多 5 道 choice/bool、基于资料、同学生不重复）→ 建会话。"""
+    """选章 → AI 出题（difficulty=hard、5-10 道可选题数 choice/bool、基于资料、同学生不重复）→ 建会话。"""
     data = request.get_json(silent=True) or {}
     chapter_ids = data.get("chapter_ids") or []
     if (not isinstance(chapter_ids, list) or not chapter_ids
@@ -260,3 +260,18 @@ def get_practice(session_id):
         "SELECT * FROM practice_questions WHERE session_id=? ORDER BY rowid", (session_id,)
     ).fetchall()
     return ok({"session": _session_dict(session, con), "questions": [_question_dict(r) for r in rows]})
+
+
+@practice_bp.route("/<session_id>", methods=["DELETE"])
+@jwt_required
+@role_required("student")
+def delete_practice(session_id):
+    """删除练习会话（含题目）：历史/进行中都可删；删除后其错题不再计入薄弱点依据。"""
+    con = get_db()
+    session = _get_session(con, session_id, g.user_id)
+    if session is None:
+        return e_forbidden("只能操作本人练习")
+    con.execute("DELETE FROM practice_questions WHERE session_id=?", (session_id,))
+    con.execute("DELETE FROM practice_sessions WHERE id=?", (session_id,))
+    con.commit()
+    return ok({"deleted": 1})

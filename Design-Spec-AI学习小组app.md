@@ -1,6 +1,6 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v2.0.0（2026-09-08）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
+> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v2.1.0（2026-09-08）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
 > 日期：2026-09-02  
 > 状态：设计评审  
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）  
@@ -731,4 +731,13 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 - **MAT 选章 = hub 可滚动多选 list（REQ-KNOW/CHAT 检索范围升级）**：学习主菜单资料库每章加圆形勾选框，列表超屏可滚，已选计数 + 全选/清空，勾选集记忆 localStorage（`aistudy_sel_chapters`）；对话页横滑选章卡撤除，选章统一在学习页。多选集驱动：① 对话 `post_message` 带 `chapter_ids` → 新 `tutor._retrieve_multi` 逐章 RAG 检索、按 chunk_id 去重合并、片段【章名】标注（防跨章资料混淆）；路径提问（askCtx）仍按 session 章节优先。② 知识卡片跨章合并：列表按章分组折叠（点章头展开网格）、「开始复习」置顶跨章复习、deck 每卡标章名；复习进度签名改 `ids`（章集），兼容旧 `{cid}`。
 - **REQ-KNOW-002 翻卡交互动画**：翻转由整页 render 重建改为同一 DOM 切 `is-flipped` class → CSS 3D 过渡真正生效；touch/mouse **跟手拖拽**（横向位移+倾斜、竖向滚动不劫持），超 70px 甩出（右滑=记住了/左滑=没记住）播 `.out-r/.out-l` 飞出动画后提交，未超阈值弹性回位；按钮点击同样先飞后提交；换卡 `.kc-in` 入场动画。
 - **PROG-007 掌握度口径扩展（知识卡计入 M）**：`compute_mastery` JOIN 该章 `knowledge_reviews`（status='mastered' 且 last_review_at 非空）每张按 5 分满分 × 时间衰减权重 w(last_review_at) 计入分子分母，attempts 同步累加；**仅奖不罚**——new/learning/reviewing 卡不进分母，不因未掌握卡拉低 M（示例：quiz 40% + 30 张 mastered 卡 ≈ M 76%）。进度页新增「知识卡片（计入掌握度）」块（`GET /api/knowledge/overview`）：各章已掌握/总数、学习中/未学/今日待复习、进度条 + 百分比徽章。
+
+### 12.21 实现状态回写（v2.1.0，2026-09-08，用户 9 项真机反馈集中修复）
+- **REQ-KNOW-002 甩出方向反了（bug 修复）**：拖拽判定原为 `dx<0 → reviewKnowledge(true)`，左滑被当成「记住了」向右飞出。改为 `dx > 0 → 记住了（.out-r 右飞）/ dx < 0 → 没记住（.out-l 左飞）`，touch + mouse 双路径一致，与按钮语义及 `.kc-hint` 文案对齐。
+- **对话即时上屏（CHAT-002 体验修复）**：根因 = `send()` 本地 push 用户消息后 `render()` → `viewLearnChat` 重拉服务器消息（POST 尚未落库）把本地消息冲掉，须等 TUTOR 回复才整体出现。新增发送期 `_noReload` 标志：等待回复期间重绘跳过 messages 重拉；`send()` 重构为公共 `doSend(content, decorate)`。
+- **REQ-KNOW 卡片 → 对话「去问 TUTOR」**：卡片列表点任意卡 → 详情 sheet（front/back + 复习状态徽章）→「去问 TUTOR」跳对话页自动提问该知识点；`post_message` 新增可选 `kc_ctx`（白名单字段 front/back/sub_concept/chapter_id，非 dict 400），`tutor_orchestrate` 注入 `TUTOR_SYSTEM.knowledge_card` 段并强制直接模式**发散详细讲解**（讲透概念 → 结合资料展开 → 例子 → 易错点 → 延伸问题，不受 ≤180 字限制）；kc 首问不因资料检索空而 fallback（卡片答案即可靠上下文）。对话页原「知识卡片」入口按钮撤除（卡片入口统一在 hub；卡片→对话为单向）。
+- **PRACTICE 历史左滑删除**：`DELETE /api/practice/<session_id>`（归属校验 F9，连同 practice_questions 级联删除，其错题不再计入薄弱点依据）；前端历史条目 swipe-row 结构（swipe-main + 底层红删除钮），左滑跟手露出、超 40px 吸附、点击确认 sheet 删除；拖动结束抑制补发 click。
+- **PRACTICE 题数选择放大**：原生 `<select>` 改大号 `.count-sel`（44px 高、16px 字重、大点按区）；入口卡「最多 5 题」文案与事实不符 → 「5-10 题自选」。
+- **RPT-003 建议改为点击生成（一天最多一次）**：原依赖 launchd 22:00 定时脚本，线上从未生效。新增 `POST /api/progress/advice/generate`——当天已有直接返回（幂等，`generated=False`），无则按当日（UTC+8）对话/练习/测评/薄弱章生成写库（UNIQUE(user_id, advice_date) upsert）；统计与文案逻辑收敛到新模块 `ai/advice_gen.py`（`today_stats`/`build_advice_text`），`daily_advice_gen.py` 定时脚本改为调用同一函数（消灭双份口径漂移）。进度页无建议时显示「生成今日建议」按钮，有建议显示日期 +「每天最多一次」。
+- **PROG-007 口径解释可视化**：进度页知识卡片块下新增可展开「掌握度怎么算？（含知识卡片口径）」：①测评/练习按得分加权；②卡片仅已掌握计入、每张 5 分满分，学习/复习/未学不罚不计；③权重按距上次复习周数减半（0.5^周）衰减、越近贡献越大；④M≥80 且作答≥2=已掌握 / 50–80 进行中 / <50 薄弱 / 无作答未评估。
 

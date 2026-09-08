@@ -51,3 +51,41 @@ def test_tutor_response_contains_related_videos(client, teacher_headers):
     rv = resp2.get_json()["data"]["related_videos"]
     assert any(v["title"] == "Transformer 讲解" for v in rv), f"问视频应返回相关视频，got {rv}"
     assert all("url" in v and "platform" in v for v in rv)
+
+
+def test_kc_ctx_message_accepted(client, teacher_headers):
+    """知识卡片「去问 TUTOR」（kc_ctx）消息被接受：200 + 有回复 + 用户/助教消息落库。"""
+    cid = _chapter(client, teacher_headers)
+    make_student(client, teacher_headers, "alice")
+    alice = login(client, "alice", "student123")
+    h = {"Authorization": f"Bearer {alice}"}
+    conv = client.post("/api/conversations", json={"title": "卡片提问", "chapter_id": cid}, headers=h)
+    conv_id = conv.get_json()["data"]["id"]
+    resp = client.post(f"/api/conversations/{conv_id}/message", json={
+        "content": "请围绕「大模型是什么」详细展开讲解",
+        "chapter_id": cid,
+        "chapter_ids": [cid],
+        "kc_ctx": {"front": "大模型是什么", "back": "大模型是参数规模巨大的神经网络…",
+                   "sub_concept": "概念扫盲", "chapter_id": cid},
+    }, headers=h)
+    assert resp.status_code == 200, resp.get_json()
+    data = resp.get_json()["data"]
+    assert data["reply"] and data["reply"].strip() != ""
+    msgs = client.get(f"/api/conversations/{conv_id}", headers=h).get_json()["data"]["messages"]
+    assert any(m["role"] == "user" for m in msgs)
+    assert any(m["role"] == "assistant" for m in msgs)
+
+
+def test_kc_ctx_rejects_non_dict(client, teacher_headers):
+    """kc_ctx 非对象（如字符串）→ 400 输入错误。"""
+    cid = _chapter(client, teacher_headers)
+    make_student(client, teacher_headers, "alice")
+    alice = login(client, "alice", "student123")
+    h = {"Authorization": f"Bearer {alice}"}
+    conv = client.post("/api/conversations", json={"title": "提问", "chapter_id": cid}, headers=h)
+    conv_id = conv.get_json()["data"]["id"]
+    resp = client.post(f"/api/conversations/{conv_id}/message", json={
+        "content": "讲讲", "chapter_id": cid, "kc_ctx": "not-a-dict",
+    }, headers=h)
+    assert resp.status_code == 400
+
