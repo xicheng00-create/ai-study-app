@@ -1087,16 +1087,17 @@ const Student = {
   },
   _rankVal(v, unit) { return `<div class="v">${v}</div><div class="k">${unit}</div>`; },
   async viewClass() {
-    let d = { total_turns: [], total_practice: [], today_turns: [], today_conversations: [], today_practice: [], mastery: [], quizzes: [], quiz_boards: {} };
+    let d = { total_turns: [], total_practice: [], today_turns: [], today_conversations: [], today_practice: [], today_knowledge: [], mastery: [], quizzes: [], quiz_boards: {} };
     try { d = await API.get("/api/class/leaderboard"); } catch (e) {}
     this.classData = d;  // 缓存，供「更多排行榜」弹层读取
     const me = (App.state.user && App.state.user.id) || d.me_user_id;
-    // 主屏两个排行榜卡片：① 今日对话次数 ② 今日练习次数（各卡片前 3 名奖牌）
+    // 主屏三张排行榜卡片：① 今日知识卡片 ② 今日对话次数 ③ 今日练习次数（各卡片前 3 名奖牌）
     const card = (title, icon, entries, unit, subFn) => {
       const rows = (entries || []).map((it, i) => this._rankRow(it, i, me, this._rankVal(it.value, unit), `<div class="st">${subFn(it)}</div>`)).join('');
       return `<div class="card"><div class="card-head"><div class="card-title">${ic(icon, 'coral')}${title}</div><span class="card-count">${(entries || []).length} 人</span></div>${rows || '<div class="muted">暂无数据</div>'}</div>`;
     };
-    const body = card('今日对话次数', 'chat', d.today_conversations, '个', (it) => `今日 ${it.value} 个对话`)
+    const body = card('今日知识卡片学习张数', 'cards', d.today_knowledge, '张', (it) => `今日 ${it.value} 张卡片`)
+      + card('今日对话次数', 'chat', d.today_conversations, '个', (it) => `今日 ${it.value} 个对话`)
       + card('今日练习次数', 'target', d.today_practice, '次', (it) => `今日 ${it.value} 次练习`);
     return appbar('班级', '全班学习排行榜 · 仅同班同学') + `<div class="content">
       ${body}

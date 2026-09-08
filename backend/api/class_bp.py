@@ -1,4 +1,4 @@
-"""班级 Blueprint（REQ-CLASS-001~006）：全班排行榜 6 类 + 共性薄弱（教师）。
+"""班级 Blueprint（REQ-CLASS-001~006）：全班排行榜 6 类 + 今日练习次数 + 今日知识卡片张数（教师）。
 
 归属：所有 active 学生（除 username='Hermestest' 测试账号）同属一个班级，仅展示
 实名（display_name）。排行榜本就是全班展示，student 只限定同班集合（即除测试号
@@ -125,7 +125,7 @@ def _parse_ids(raw):
 @class_bp.route("/leaderboard", methods=["GET"])
 @jwt_required
 def leaderboard():
-    """全班排行榜（REQ-CLASS-001~006）：6 类 + 今日练习次数，student / teacher 均可访问。"""
+    """全班排行榜（REQ-CLASS-001~006）：6 类 + 今日练习次数 + 今日知识卡片张数，student / teacher 均可访问。"""
     con = get_db()
     students = _student_map(con)
     is_teacher = g.role == "teacher"
@@ -163,6 +163,14 @@ def leaderboard():
     for r in con.execute("SELECT user_id, created_at FROM practice_sessions").fetchall():
         if timeutil.shanghai_date(r["created_at"]) == today:
             today_practice[r["user_id"]] += 1
+
+    # 今日（UTC+8）知识卡片学习张数：同卡今天复习多次仍只计 knowledge_reviews 一行
+    today_knowledge = Counter()
+    for r in con.execute(
+        "SELECT user_id, last_review_at FROM knowledge_reviews WHERE last_review_at IS NOT NULL"
+    ).fetchall():
+        if timeutil.shanghai_date(r["last_review_at"]) == today:
+            today_knowledge[r["user_id"]] += 1
 
     # 5) 每次测评分数榜：列出全体学生分数与排名，未参加标注「未参加」
     quizzes = con.execute(
@@ -229,6 +237,7 @@ def leaderboard():
         "today_turns": _sorted_entries(dict(today_turns), students),
         "today_conversations": _sorted_entries(dict(today_convs), students),
         "today_practice": _sorted_entries(dict(today_practice), students),
+        "today_knowledge": _sorted_entries(dict(today_knowledge), students),
         "mastery": mastery_rows,
         "quizzes": quiz_list,
         "quiz_boards": quiz_boards,

@@ -493,10 +493,10 @@ const Teacher = {
 
   /* ===== 班级活动 ===== */
   async viewClassActivity() {
-    let d = { total_turns: [], total_practice: [], today_turns: [], today_conversations: [], mastery: [], quizzes: [], quiz_boards: {}, common_weak_chapters: [] };
+    let d = { total_turns: [], total_practice: [], today_turns: [], today_conversations: [], today_knowledge: [], mastery: [], quizzes: [], quiz_boards: {}, common_weak_chapters: [] };
     try { d = await API.get("/api/class/leaderboard"); } catch (e) {}
     const cat = this.classCat || 0;
-    const cats = ["累计对话轮", "累计练习", "今日对话轮", "今日对话次数", "测评分数", "掌握度"];
+    const cats = ["今日知识卡片", "累计对话轮", "累计练习", "今日对话轮", "今日对话次数", "测评分数", "掌握度"];
     const chips = cats.map((t, i) => `<div class="chip teacher ${cat === i ? 'active' : ''}" onclick="Teacher.setClassCat(${i})">${t}</div>`).join('');
 
     const badge = (i) => i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : 'rn';
@@ -505,11 +505,12 @@ const Teacher = {
     const num = (v, unit) => `<div class="v">${v}</div><div class="k">${unit}</div>`;
 
     let body = '';
-    if (cat === 0) body = (d.total_turns || []).map((it, i) => row(it, i, num(it.value, '轮'), `<div class="st">累计 ${it.value} 轮对话</div>`)).join('');
-    else if (cat === 1) body = (d.total_practice || []).map((it, i) => row(it, i, num(it.value, '次'), `<div class="st">累计 ${it.value} 次练习</div>`)).join('');
-    else if (cat === 2) body = (d.today_turns || []).map((it, i) => row(it, i, num(it.value, '轮'), `<div class="st">今日 ${it.value} 轮对话</div>`)).join('');
-    else if (cat === 3) body = (d.today_conversations || []).map((it, i) => row(it, i, num(it.value, '个'), `<div class="st">今日 ${it.value} 个对话</div>`)).join('');
-    else if (cat === 4) {
+    if (cat === 0) body = (d.today_knowledge || []).map((it, i) => row(it, i, num(it.value, '张'), `<div class="st">今日 ${it.value} 张卡片</div>`)).join('');
+    else if (cat === 1) body = (d.total_turns || []).map((it, i) => row(it, i, num(it.value, '轮'), `<div class="st">累计 ${it.value} 轮对话</div>`)).join('');
+    else if (cat === 2) body = (d.total_practice || []).map((it, i) => row(it, i, num(it.value, '次'), `<div class="st">累计 ${it.value} 次练习</div>`)).join('');
+    else if (cat === 3) body = (d.today_turns || []).map((it, i) => row(it, i, num(it.value, '轮'), `<div class="st">今日 ${it.value} 轮对话</div>`)).join('');
+    else if (cat === 4) body = (d.today_conversations || []).map((it, i) => row(it, i, num(it.value, '个'), `<div class="st">今日 ${it.value} 个对话</div>`)).join('');
+    else if (cat === 5) {
       const quizSel = this.classQuizId || (d.quizzes && d.quizzes[0] && d.quizzes[0].quiz_id) || null;
       const quizChips = (d.quizzes || []).map(q => `<div class="c ${quizSel === q.quiz_id ? 'on' : ''}" onclick="Teacher.setClassQuiz('${q.quiz_id}')">${esc(q.label || q.title)}${q.version > 1 ? ` v${q.version}` : ''}</div>`).join('');
       const board = (quizSel && d.quiz_boards && d.quiz_boards[quizSel]) || [];
@@ -538,5 +539,5 @@ const Teacher = {
     </div>` + tabbar();
   },
   setClassCat(i) { this.classCat = i; render(); },
-  setClassQuiz(id) { this.classQuizId = id; this.classCat = 4; render(); },
+  setClassQuiz(id) { this.classQuizId = id; this.classCat = 5; render(); },
 };
