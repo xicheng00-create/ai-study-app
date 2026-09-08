@@ -568,9 +568,11 @@ const Student = {
     }
   },
   // render 为异步视图更新，下一帧再贴底才能覆盖思考气泡和 TUTOR 新回复。
+  // ⚠️ 真正的滚动容器是 #screen（.content.chat-view 会随内容增长、不滚动），
+  //    贴底必须操作 #screen 的 scrollTop，否则新消息落到可视区外被覆盖（2026-09-08 修）。
   scrollChatToBottom() {
     requestAnimationFrame(() => {
-      const el = document.querySelector('.content.chat-view');
+      const el = document.querySelector('.screen') || document.querySelector('#screen');
       if (el) el.scrollTop = el.scrollHeight;
     });
   },

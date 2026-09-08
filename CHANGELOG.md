@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.1.2] - 2026-09-08
+
+### Fixed
+- **对话自动贴底**：真正滚动的容器是 `#screen`（`.content.chat-view` 随内容增长、不滚动），改操作 `#screen.scrollTop`，发送上屏与 TUTOR 回复后新消息不再落到可视区外。
+
 ## [2.1.1] - 2026-09-08
 
 ### Fixed
