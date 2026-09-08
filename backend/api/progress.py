@@ -362,7 +362,7 @@ def advice_generate():
             "generated": False,
         })
     stats, weak_names = advice_gen.today_stats(con, g.user_id)
-    advice = advice_gen.build_advice_text(con, stats, weak_names)
+    advice = advice_gen.build_advice_text(con, g.user_id, stats, weak_names)
     now = models.utcnow()
     con.execute(
         "INSERT INTO daily_advice (id, user_id, advice_date, stats, advice, created_at)"

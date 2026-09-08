@@ -80,3 +80,47 @@ def test_advice_generate_is_per_student(client, teacher_headers):
     resp = client.post("/api/progress/advice/generate", json={}, headers={"Authorization": f"Bearer {bob}"})
     assert resp.get_json()["data"]["generated"] is True
 
+
+def test_advice_uses_recent_quiz_chapter_mastery_and_wrong_concept(client, teacher_headers):
+    """无 LLM 时，建议仍引用近 7 天的真实章节、错题和测评。"""
+    from datetime import timedelta
+    from ai import advice_gen
+    from data import models, timeutil
+    from data.db import get_db
+
+    uid = make_student(client, teacher_headers, "alice")
+    now = models.utcnow()
+    yesterday = (timeutil.shanghai_now() - timedelta(days=1)).astimezone().isoformat()
+    with client.application.app_context():
+        con = get_db()
+        con.execute(
+            "INSERT INTO chapters (id, folder, name, order_no, status, created_at)"
+            " VALUES ('ch-1', '模块一', '线性回归', 1, 'published', ?)", (now,)
+        )
+        con.execute(
+            "INSERT INTO quizzes (id, title, chapter_ids, version, status, created_at, published_at)"
+            " VALUES ('quiz-1', '回归测评', '[\"ch-1\"]', 1, 'published', ?, ?)",
+            (yesterday, yesterday),
+        )
+        con.execute(
+            "INSERT INTO questions (id, quiz_id, chapter_id, sub_concept, type, content, options, answer_key, points, created_at)"
+            " VALUES ('q-1', 'quiz-1', 'ch-1', '损失函数', 'choice', '损失函数题', '[]', '', 5, ?)",
+            (yesterday,),
+        )
+        con.execute(
+            "INSERT INTO attempts (id, user_id, quiz_id, question_id, chapter_id, quiz_version, correct, score, created_at)"
+            " VALUES ('a-1', ?, 'quiz-1', 'q-1', 'ch-1', 1, 0, 0, ?)",
+            (uid, yesterday),
+        )
+        con.commit()
+        context = advice_gen.recent_learning_context(con, uid)
+        text = advice_gen.build_advice_text(con, uid, {"quizzes": 0}, ["线性回归"])
+
+    assert context["has_recent_quiz"] is True
+    assert context["latest_quiz_chapter"] == "线性回归"
+    assert context["chapters"][0]["mastery"] == "薄弱"
+    assert "损失函数" in context["weak_concepts"]
+    assert "线性回归" in text
+    assert "最近一次测评" in text
+    assert "测评还没做" not in text
+

@@ -49,7 +49,7 @@ def main() -> int:
             uid = s["id"]
             # 当天（UTC+8）活动统计 + 薄弱章名（与进度页「生成今日建议」同一口径）
             stats, weak_names = today_stats(con, uid)
-            advice = build_advice_text(con, stats, weak_names)
+            advice = build_advice_text(con, uid, stats, weak_names)
             # upsert：同一天重复跑不产生重复行
             con.execute(
                 "INSERT INTO daily_advice (id, user_id, advice_date, stats, advice, created_at)"

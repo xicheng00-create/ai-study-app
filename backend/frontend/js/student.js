@@ -178,6 +178,7 @@ const Student = {
     if (!this._noReload && this.convId) {
       try { const d = await API.get("/api/conversations/" + this.convId); this.messages = d.messages || []; } catch (e) { this.messages = []; }
     }
+    this.scrollChatToBottom();
     const convChips = convs.map(c => `<span class="pill ${this.convId === c.id ? 'active' : ''}" style="cursor:pointer" onclick="Student.selectConv('${c.id}')" onmousedown="Student.pressStart(event,'${c.id}')" onmouseup="Student.pressEnd(event)" onmouseleave="Student.pressEnd(event)" ontouchstart="Student.pressStart(event,'${c.id}')" ontouchend="Student.pressEnd(event)" ontouchmove="Student.pressMove(event)" ontouchcancel="Student.pressEnd(event)"><span class="pill-t">${esc(c.title)}</span></span>`).join('')
       + `<span class="pill" style="cursor:pointer" onclick="Student.newConv()">＋ 新对话</span>`;
     const msgsHtml = this.messages.map(m => `<div class="msg ${m.role === 'user' ? 'user' : 'bot'}">${m.role === 'user' ? '' : '<div class="who">TUTOR</div>'}${esc(m.content)}</div>`).join('')
@@ -326,15 +327,15 @@ const Student = {
         <div class="row cancel" onclick="closeSheet()">取消</div>`);
       return;
     }
-    this.knowledgePos = 0; this.knowledgeFlipped = false; this.knowledgeDeck = true; render();
+    this.knowledgePos = 0; this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
   },
   resumeKnowledgeDeck() {
     const saved = this._kcLoad(); closeSheet();
     this.knowledgePos = this._kcSavedMatch(saved) ? saved.pos : 0;
-    this.knowledgeFlipped = false; this.knowledgeDeck = true; render();
+    this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
   },
   resetKnowledgeDeck() {
-    closeSheet(); this._kcClear(); this.knowledgePos = 0; this.knowledgeFlipped = false; this.knowledgeDeck = true; render();
+    closeSheet(); this._kcClear(); this.knowledgePos = 0; this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
   },
   viewKnowledgeDeck() {
     const c = this.knowledgeCards[this.knowledgePos];
@@ -389,6 +390,7 @@ const Student = {
     if (!pt.dragging) return;                                          // tap → 交给 click 翻转
     el.style.transform = '';                                           // 先回规则态再决定飞/弹（同一帧 → 过渡衔接）
     this._suppressClick = true;
+    setTimeout(() => { this._suppressClick = false; }, 400);
     if (Math.abs(pt.dx) > 70) this.reviewKnowledge(pt.dx > 0);         // 右滑=记住了 / 左滑=没记住（v2.1.0 修方向反）
     // 未超阈值：transform 已清空 → CSS transition 弹回原位
   },
@@ -425,6 +427,7 @@ const Student = {
     el.classList.remove('dragging');
     el.style.transform = '';
     this._suppressClick = true;
+    setTimeout(() => { this._suppressClick = false; }, 400);
     if (Math.abs(pt.dx) > 70) this.reviewKnowledge(pt.dx > 0);
   },
   // 暂停退出：存进度 + 退出复习视图（落回来源：对话或主菜单）
@@ -445,6 +448,7 @@ const Student = {
       this.knowledgeCards[this.knowledgePos] = d.card;
       this.knowledgePos++; this.knowledgeFlipped = false; this._kcBusy = false;
       if (this.knowledgePos >= this.knowledgeCards.length) this._kcClear(); else this._kcSave();
+      this._suppressClick = false;
       render();   // 新卡带 .kc-in 入场动画
     } catch (e) {
       if (el) { el.classList.remove('out-r', 'out-l'); el.style.pointerEvents = ''; el.style.transform = ''; }
@@ -544,6 +548,7 @@ const Student = {
     this.pendingReply = true;   // 显示思考气泡（即时反馈）
     this._noReload = true;      // 本次重绘不重拉消息，保住刚上屏的用户消息
     render();
+    this.scrollChatToBottom();
     try {
       const payload = { content, chapter_id: App.activeChapter, tutor_mode: this.tutorMode || "direct" };
       if (decorate) decorate(payload);
@@ -555,11 +560,19 @@ const Student = {
       this.pendingReply = false;
       this._noReload = false;
       render();
+      this.scrollChatToBottom();
     } catch (e) {
       this.pendingReply = false;
       this._noReload = false;
       toast(e.message); render();
     }
+  },
+  // render 为异步视图更新，下一帧再贴底才能覆盖思考气泡和 TUTOR 新回复。
+  scrollChatToBottom() {
+    requestAnimationFrame(() => {
+      const el = document.querySelector('.content.chat-view');
+      if (el) el.scrollTop = el.scrollHeight;
+    });
   },
   async delConv(id) {
     closeSheet();

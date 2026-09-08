@@ -41,11 +41,11 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text);overflow:hidde
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
 .card.sm{padding:13px 15px}
 .muted{color:var(--text-2);font-size:13px}
-.pill{display:inline-flex;align-items:center;gap:5px;background:var(--surface-2);color:var(--text-2);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:5px;background:var(--surface-2);color:var(--text-2);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;white-space:nowrap;flex:0 0 auto}
 .pill.active{background:var(--coral);color:#fff}
 /* 对话 pill 标题：单行不折行，超出省略（修复「新对/话」折行观感） */
 .pill-t{display:block;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pill-wrap{display:flex;gap:8px;overflow-x:auto;padding:2px 0 4px;scrollbar-width:none}
+.pill-wrap{display:flex;align-items:center;gap:8px;overflow-x:auto;padding:2px 0 4px;scrollbar-width:none}
 .pill-wrap::-webkit-scrollbar{display:none}
 .btn{background:var(--coral);color:#fff;border:none;border-radius:14px;padding:13px;width:100%;font-size:15px;font-weight:700;font-family:var(--font);cursor:pointer;transition:.15s}
 .btn:active{transform:scale(.98)}
