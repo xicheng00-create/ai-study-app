@@ -1,6 +1,6 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v1.18.1（2026-09-08）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
+> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v1.19.0（2026-09-08）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
 > 日期：2026-09-02  
 > 状态：设计评审  
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）  
@@ -223,7 +223,7 @@
 - **AI 抽取**：新增 `backend/ai/knowledge.py` `generate_knowledge_cards(chapter_ids)` + `prompts.py` `KNOWLEDGE_SYSTEM`（要求 JSON `[{front, back, sub_concept}]`，遍布全章、覆盖不同子概念、back 含答案/解析/一句示例）；LLM 真返空返空列表、端点提示「生成失败请重试」。
 - **路由（去掉「学生手动生成」主路径）**：`POST /api/knowledge/generate`（保留为**懒加载兜底**：卡片缺失时教师/系统可触发，学生一般不必点）、`GET /api/knowledge/:chapter`（卡组+该生复习态，学生首次打开自动懒建 review 行）、`POST /api/knowledge/:card/review`（body `{remembered: true|false}` → 更新该生 learn_count/interval/status/next_review）、`GET /api/knowledge/overview`（各章该生掌握进度：已掌握/学习中/未学/今日待复习）。学生本人，越权 403；蓝图 `knowledge_bp` 注册进 app.py。
 - **⚠️ 自动生成钩子（v1.17.x，核心）**：`knowledge.ensure_chapter_cards(chapter_id)`（查 `knowledge_cards` 该章已有卡则复用返 True，无则 LLM 生成 + 入库返 False；LLM 失败返回 False，由懒加载兜底）。在**学习路径发布**（`curriculum_bp` 发布 session → 对其 `chapter_ids` 逐个 `ensure_chapter_cards`）与**资料发布**（`materials_bp` 发布 material → 其 `chapter_id` `ensure_chapter_cards`）处调用。同步调用 + try/except（发布请求可容忍 ~秒级 LLM 延迟，3 学生规模可接受）。
-- **前端**：学习页「知识卡片」入口 → 独立知识点卡片页（`Student` 状态 `knowledgeIdx`/`knowledgeDeck` + `viewKnowledge()`/`viewKnowledgeDeck()`，沿用 practice 视图模式）；卡片 3D `flip` + 左右滑动判 remember（touchmove 阈值 + 兜底按钮）；学习页显示打卡进度。改前端须 bump sw.js CACHE + app.py version。
+- **前端（v1.19.0 导航重构）**：「学习」tab = **学习主菜单 hub**（资料库竖排选章 + **对话/知识卡片两入口大卡**）；「对话」子页（原学习对话页，appbar「←」回主菜单）；点「知识卡片」→ 独立知识点卡片页（`Student` 状态 `learnChat`/`knowledgeIdx`/`knowledgeDeck` + `viewLearnHome()`/`viewLearnChat()`/`viewKnowledge()`/`viewKnowledgeDeck()`）；卡片 3D `flip` + 左右滑动判 remember（touchmove 阈值 + 兜底按钮）。**退出/暂停**：卡片列表页 appbar「←」退出；复习卡组顶部返回 + 底部「暂停退出（保存进度）」按钮——进度存 localStorage（`aistudy_kc_progress`），再次「开始复习」弹「继续上次复习？」（继续/重新开始），完成自动清；离开学习区（切其它 tab）自动退出卡片全屏态。改前端须 bump sw.js CACHE + app.py version。
 
 ### 3.5 进度/掌握度/巩固 — `progress_bp` + `review_sched`（L3，REQ-PROG，AI: QUIZZER）
 **Functional**
@@ -500,7 +500,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 > - **RPT-001~003**：学生周报（概况/成绩/AI 建议）已实现（✅）；RPT-004 教师全班周报降维为聚合概览、RPT-005 导出 P2 未做
 > - **ADMIN-001~003**：学生账号管理（创建/重置/停用）+ 资料管理 + 全班概览已实现（✅）
 > - **DEP-003/001（F6）**：production 关闭 debug、waitress 单进程/4 线程、`/health` 探活已实现（✅）；LaunchDaemon 自启/隧道/备份脚本已就绪（deploy/、scripts/），部署动作待执行
-> - **NFR-006**：`@rate_limit(60/day)` LLM 限速已实现（✅）
+> - **NFR-006**：`@rate_limit(60/day)` LLM 限速已实现（✅）；**v1.19.0 起按 (user_id, endpoint) 独立计数**（原全端点共享一桶会互相挤占、误伤高频非 LLM 请求如知识卡翻卡），知识卡 GET/review 摘除限流
 
 ### 12.2 实现状态回写（v1.1.0，2026-09-02）
 
@@ -722,3 +722,7 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 ### 12.18 实现状态回写（v1.18.0，2026-09-08）
 - **REQ-KNOW-001/002/003 已实现升级**：章节卡片在学习路径或资料发布时自动生成并共享；`knowledge_reviews` 按学生记录懒建复习状态、学习次数与 1→3→7 状态机，学生不再需要手动生成。
 - **PRACTICE-001 已实现升级**：自主练习题数可选 **5-10（默认 5）**；除题干 hash 外，按当前章节过滤该学生跨会话已练 `sub_concept`，提示词和结果收敛均执行过滤。
+
+### 12.19 实现状态回写（v1.19.0，2026-09-08）
+- **REQ-KNOW-002 导航补全（学习主菜单 + 复习可退出）**：「学习」tab = 学习主菜单 hub（资料库竖排选章 + **对话/知识卡片两入口大卡**）；对话/知识卡片页均带 appbar「←」随时退回主菜单（再次点学习 tab 亦回主菜单）。复习卡组顶部返回 + 底部「**暂停退出（保存进度）**」，进度存 localStorage，再次开始复习弹「继续上次复习？」（继续/重新开始），完成自动清进度；离开学习区自动退出卡片全屏态——解决「复习中途无退出、无法回对话」缺陷。
+- **NFR-006 限流结构修复（429 误伤根因）**：`rate_limit` 由「全端点共享 user_id 桶」改为「**(user_id, endpoint) 桶**」——各端点 60/天独立互不挤占；知识卡 `GET /knowledge/:chapter`（纯读）与 `POST /knowledge/:card/review`（翻卡状态机，无 LLM）摘除限流。学生正常对话/练习/翻卡不再触发「操作过于频繁」。

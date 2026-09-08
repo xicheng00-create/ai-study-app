@@ -61,7 +61,6 @@ def overview():
 @knowledge_bp.route("/<chapter_id>", methods=["GET"])
 @jwt_required
 @role_required("student")
-@rate_limit(limit=60)
 def cards(chapter_id):
     con = get_db()
     if not _published(con, chapter_id): return e_not_found("章节不存在或未发布")
@@ -75,7 +74,6 @@ def cards(chapter_id):
 @knowledge_bp.route("/<card_id>/review", methods=["POST"])
 @jwt_required
 @role_required("student")
-@rate_limit(limit=60)
 def review(card_id):
     data = request.get_json(silent=True) or {}
     if not isinstance(data.get("remembered"), bool): return e_input("remembered 必须为布尔值")

@@ -95,8 +95,9 @@ function avatar() {
   const ch = (App.state.user && App.state.user.display_name || "?").charAt(0);
   return `<div class="avatar ${role === 'teacher' ? 'teacher' : ''}" onclick="openMenu()">${esc(ch)}</div>`;
 }
-function appbar(title, sub) {
-  return `<div class="appbar"><div><h1>${esc(title)}</h1>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>${avatar()}</div>`;
+function appbar(title, sub, onBack) {
+  const back = onBack ? `<button class="ab-back" onclick="${onBack}" aria-label="返回">${ic('back')}</button>` : '';
+  return `<div class="appbar"><div class="ab-l">${back}<div><h1>${esc(title)}</h1>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div></div>${avatar()}</div>`;
 }
 function tabbar() {
   const h = App.state.hash;
@@ -105,7 +106,8 @@ function tabbar() {
     return `<div class="tabbar">${tabs.map(([k, l, ic]) => `<button class="tab teacher ${h === k ? 'active' : ''}" onclick="go('${k}')">${ic}<span>${l}</span></button>`).join('')}</div>`;
   }
   const tabs = [["learn", "学习", ICONS.learn], ["path", "路径", ICONS.path], ["quiz", "测评", ICONS.quiz], ["progress", "进度", ICONS.progress], ["class", "班级", ICONS.class]];
-  return `<div class="tabbar">${tabs.map(([k, l, ic]) => `<button class="tab ${h === k ? 'active' : ''}" onclick="go('${k}')">${ic}<span>${l}</span></button>`).join('')}</div>`;
+  // 学习 tab：再次点击（已在学习区子视图：对话/知识卡片）→ 回学习主菜单
+  return `<div class="tabbar">${tabs.map(([k, l, ic]) => `<button class="tab ${h === k ? 'active' : ''}" onclick="${k === 'learn' ? 'Student.goLearn()' : `go('${k}')`}">${ic}<span>${l}</span></button>`).join('')}</div>`;
 }
 function go(h) { App.state.hash = h; if (h === "quiz") App.activeQuiz = null; location.hash = h; render(); }
 
