@@ -88,3 +88,10 @@ def grader_grade(system: str) -> dict | None:
     if isinstance(parsed, dict):
         return parsed
     return None
+
+
+def knowledge_generate(system: str) -> list[dict] | None:
+    """调用知识卡片 Agent，严格读取 cards 数组。"""
+    out = _chat([{"role": "system", "content": system}])
+    parsed = _parse_json(out) if out else None
+    return parsed["cards"] if isinstance(parsed, dict) and isinstance(parsed.get("cards"), list) else None

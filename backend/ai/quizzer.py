@@ -8,6 +8,7 @@
 """
 import hashlib
 import json
+import math
 import re
 
 from ai import agents, rag
@@ -398,19 +399,27 @@ def _missing(qs: list[dict], config: dict) -> dict:
 
 
 def _retrieve_chunks(chapter_ids: list[str], query: str) -> list[dict]:
-    """出题前检索章节资料正文；query 为空取整章片段，否则按子概念相关度召回。"""
+    """按材料分层、按位置均匀抽样，避免长资料被排序靠前的材料挤掉。"""
     chunks: list[dict] = []
     seen: set[str] = set()
     for cid in chapter_ids:
-        got = rag.retrieve(query, cid, top_k=5)
+        got = rag.retrieve(query, cid, top_k=1000)
         if not got and query:
-            # 子概念关键词未命中时，退化为整章资料片段（保证有资料喂给 DeepSeek）
-            got = rag.retrieve("", cid, top_k=5)
-        for c in got:
-            if c["chunk_id"] in seen:
-                continue
-            seen.add(c["chunk_id"])
-            chunks.append(c)
+            got = rag.retrieve("", cid, top_k=1000)
+        groups: dict[str, list[dict]] = {}
+        for chunk in got:
+            groups.setdefault(chunk.get("material_id", ""), []).append(chunk)
+        per_material = max(1, math.ceil(18 / max(len(groups), 1)))
+        for material_chunks in groups.values():
+            ordered = sorted(material_chunks, key=lambda c: c.get("chunk_idx", 0))
+            count = min(per_material, len(ordered))
+            indices = {round(i * (len(ordered) - 1) / max(count - 1, 1))
+                       for i in range(count)}
+            for idx in sorted(indices):
+                chunk = ordered[idx]
+                if chunk["chunk_id"] not in seen:
+                    seen.add(chunk["chunk_id"])
+                    chunks.append(chunk)
     return chunks
 
 
@@ -459,20 +468,29 @@ def _norm_practice(raw: dict) -> dict:
 
 def _cap_to_max(qs: list[dict], exclude_hashes: set | None = None,
                 max_q: int = MAX_PRACTICE_QUESTIONS) -> list[dict]:
-    """练习题目收敛：只留 choice/bool、按规范化 hash 去重、过滤同学生已出题干、裁剪到最多 max_q 道。"""
+    """优先不同子概念；可用子概念不足时才补同概念变体。"""
     exclude_hashes = exclude_hashes or set()
-    seen: set[str] = set()
-    out: list[dict] = []
+    seen_hashes: set[str] = set()
+    candidates = []
     for q in qs:
         if q.get("type") not in ("choice", "bool"):
             continue
         h = _content_hash(q.get("content", ""))
-        if h in seen or h in exclude_hashes:
-            continue
-        seen.add(h)
-        out.append(q)
-        if len(out) >= max_q:
-            break
+        if h and h not in seen_hashes and h not in exclude_hashes:
+            seen_hashes.add(h)
+            candidates.append(q)
+    out, seen_sub = [], set()
+    for q in candidates:
+        sub = (q.get("sub_concept") or "").strip()
+        if sub and sub not in seen_sub:
+            out.append(q); seen_sub.add(sub)
+            if len(out) >= max_q:
+                return out
+    for q in candidates:
+        if q not in out:
+            out.append(q)
+            if len(out) >= max_q:
+                break
     return out
 
 
@@ -495,7 +513,7 @@ def _practice_system(chapter_ids: list[str], sub_concepts: str, chunk_txt: str,
         chapter_ids=",".join(chapter_ids),
         sub_concepts=sub_concepts or "不限",
         spec=spec,
-        retrieved_chunks=chunk_txt[:4000],
+        retrieved_chunks=chunk_txt[:6000],
         difficulty="hard",
     ) + _avoid_block(exclude_contents or [])
 
@@ -530,7 +548,7 @@ def generate_questions(chapter_ids: list[str], sub_concepts: str = "", spec: str
         chapter_ids=",".join(chapter_ids),
         sub_concepts=sub_concepts or "不限",
         spec=spec_text,
-        retrieved_chunks=chunk_txt[:4000],
+        retrieved_chunks=chunk_txt[:6000],
         difficulty=difficulty,
     )
     qs = agents.quizzer_generate(system)
@@ -545,7 +563,7 @@ def generate_questions(chapter_ids: list[str], sub_concepts: str = "", spec: str
             chapter_ids=",".join(chapter_ids),
             sub_concepts=sub_concepts or "不限",
             spec=fill_spec,
-            retrieved_chunks=chunk_txt[:4000],
+            retrieved_chunks=chunk_txt[:6000],
             difficulty=difficulty,
         )
         extra = agents.quizzer_generate(fill_system)

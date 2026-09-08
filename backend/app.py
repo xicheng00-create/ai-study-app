@@ -10,7 +10,7 @@ from flask import Flask, jsonify, send_from_directory
 from middleware.errors import e_internal
 
 # 版本号诚实规则：任何入 CHANGELOG 的改动必须同步 bump 此常量
-version = "1.16.2"
+version = "1.17.0"
 
 
 def create_app(env=None):
@@ -36,6 +36,7 @@ def create_app(env=None):
     from api.conversations import conversations_bp
     from api.curriculum import curriculum_bp
     from api.health import health_bp
+    from api.knowledge import knowledge_bp
     from api.materials import materials_bp
     from api.practice import practice_bp
     from api.progress import progress_bp
@@ -47,6 +48,7 @@ def create_app(env=None):
     app.register_blueprint(auth_bp)
     app.register_blueprint(chapters_bp)
     app.register_blueprint(materials_bp)
+    app.register_blueprint(knowledge_bp)
     app.register_blueprint(conversations_bp)
     app.register_blueprint(curriculum_bp)
     app.register_blueprint(quizzes_bp)

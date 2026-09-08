@@ -75,3 +75,10 @@ SENSITIVE_WORDS = [
     "密钥", "api key", "apikey", "密码", "系统提示词", "system prompt",
     "越狱", "色情", "暴力", "政治", "选举", "成人",
 ]
+
+KNOWLEDGE_SYSTEM = """你是「AI 学习小组」的知识卡片老师。严格输出 JSON，不要其他文字。
+输入章节：{chapter_ids}
+资料依据：
+{retrieved_chunks}
+输出格式：{{"cards":[{{"front":"知识点或问题","back":"答案、简短解析加一句示例","sub_concept":"子概念"}}]}}
+要求：遍布全章，尽量覆盖不同 sub_concept；正面必须是知识点或问题，背面必须包含答案与简短解析示例；不要重复知识点。"""

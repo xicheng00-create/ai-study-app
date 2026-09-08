@@ -99,3 +99,22 @@ def test_generate_questions_dedup_content(monkeypatch):
     out = quizzer.generate_questions(["ch1"], config={"choice": 5})
     assert len(out) == 5
     assert len({q["content"] for q in out}) == 5
+
+
+def test_retrieve_chunks_samples_every_material(monkeypatch):
+    """长 md 不能再被 material 排序靠前的 PDF 挤出上下文。"""
+    def fake_retrieve(query, chapter_id, top_k=5):
+        return [{"chunk_id": f"pdf-{i}", "material_id": "pdf", "chunk_idx": i, "text": "pdf"}
+                for i in range(3)] + [{"chunk_id": f"md-{i}", "material_id": "md", "chunk_idx": i, "text": "md"}
+                for i in range(82)]
+    monkeypatch.setattr(rag, "retrieve", fake_retrieve)
+    out = quizzer._retrieve_chunks(["ch1"], "")
+    assert {c["material_id"] for c in out} == {"pdf", "md"}
+    assert any(c["chunk_id"] == "md-81" for c in out)
+
+
+def test_cap_to_max_prefers_distinct_sub_concepts():
+    qs = [{"type": "choice", "content": f"q{i}", "sub_concept": sub}
+          for i, sub in enumerate(["a", "a", "b", "c", "d", "e"])]
+    out = quizzer._cap_to_max(qs, max_q=5)
+    assert [q["sub_concept"] for q in out] == ["a", "b", "c", "d", "e"]

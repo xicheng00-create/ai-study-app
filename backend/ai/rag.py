@@ -36,13 +36,13 @@ def retrieve(query: str, chapter_id: str | None, top_k: int = 5) -> list[dict]:
 
     if chapter_id:
         rows = con.execute(
-            "SELECT id, material_id, chapter_id, text FROM chunks WHERE chapter_id = ?"
+            "SELECT id, material_id, chapter_id, chunk_idx, text FROM chunks WHERE chapter_id = ?"
             " ORDER BY material_id, chunk_idx",
             (chapter_id,),
         ).fetchall()
     else:
         rows = con.execute(
-            "SELECT id, material_id, chapter_id, text FROM chunks ORDER BY material_id, chunk_idx"
+            "SELECT id, material_id, chapter_id, chunk_idx, text FROM chunks ORDER BY material_id, chunk_idx"
         ).fetchall()
 
     if not q_tokens:
@@ -52,6 +52,7 @@ def retrieve(query: str, chapter_id: str | None, top_k: int = 5) -> list[dict]:
                 "chunk_id": r["id"],
                 "material_id": r["material_id"],
                 "chapter_id": r["chapter_id"],
+                "chunk_idx": r["chunk_idx"],
                 "text": r["text"][:800],
                 "score": 0.0,
             }
@@ -72,6 +73,7 @@ def retrieve(query: str, chapter_id: str | None, top_k: int = 5) -> list[dict]:
                     "chunk_id": row["id"],
                     "material_id": row["material_id"],
                     "chapter_id": row["chapter_id"],
+                    "chunk_idx": row["chunk_idx"],
                     "text": row["text"][:800],
                     "score": round(score, 4),
                 }

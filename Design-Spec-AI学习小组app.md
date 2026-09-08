@@ -1,6 +1,6 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v1.16.2（2026-09-08）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
+> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v1.17.0（2026-09-08）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
 > 日期：2026-09-02  
 > 状态：设计评审  
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）  
@@ -712,3 +712,8 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 ---
 
 > 本文档 v2.0 在 PRD v2.1 与 architecture-design.md v1.1 之上融合 Functional 与 Technical 设计：每条 REQ 绑定 Blueprint/AI Agent/数据表/状态机/部署约束，并已吸收架构再审 F1–F10（LaunchDaemon、wal_checkpoint、quiz_version、8GB 实测、TUTOR 门控、软删除、越权读 403、Evals 盲区）。待教师对架构与本文档签字后进入 P0 阶段一实现。
+
+
+### 12.7 v1.17.0（2026-09-08）
+- **REQ-KNOW-001/002/003 已实现**：按全章资料抽取个人知识卡片；独立卡片页支持 3D 翻转、左滑未记住/右滑记住及按钮兜底；记录学习次数和 1→3→7 间隔复习状态机。
+- **PRACTICE-001 已实现覆盖强化**：全章按材料、分段多样化抽样，并在收敛题目时按 `sub_concept` 去重；知识点充足时练习题互不重复。

@@ -39,6 +39,8 @@ const Student = {
   practiceResult: null,  // {summary, detail}：批改结果
   practiceChapters: [],  // 练习选章（可多选）
   practiceSessions: [],  // 练习历史列表
+  knowledgeIdx: false, knowledgeDeck: false, knowledgeCards: [], knowledgePos: 0,
+  knowledgeFlipped: false, knowledgeSwipe: null,
   relatedVideos: [],   // 最近一次对话返回的相关视频课（CHAT-010）
   askCtx: null,        // 从「路径」进入提问时携带的 chapter_ids/concept_tags
   curriculum: null,
@@ -53,6 +55,8 @@ const Student = {
 
   async render() {
     const h = App.state.hash;
+    if (this.knowledgeDeck) return this.viewKnowledgeDeck();
+    if (this.knowledgeIdx) return await this.viewKnowledge();
     if (h === "quiz") {
       if (this.result) return this.viewResult();
       if (this.quiz) return this.viewQuizTake();
@@ -119,7 +123,37 @@ const Student = {
       <div class="chat">${msgs}</div>
       ${relatedHtml}
     </div>
-    <div class="composer"><div class="composer-body"><div class="flex"><button class="tool-btn" onclick="Student.openWrongConsult()">${ic('lightbulb')}咨询错题</button></div>${this.wrongCtx ? `<div class="muted" style="font-size:12px;margin-bottom:4px">已选 ${this.wrongCtx.length} 道错题，随本条发送</div>` : ''}<div class="flex"><input id="chatInput" class="grow" placeholder="回答引导问题，或追问…" onkeydown="if(event.key==='Enter')Student.send()"/><button class="send" onclick="Student.send()">${ic('arrowUp')}</button></div></div></div>` + tabbar();
+    <div class="composer"><div class="composer-body"><div class="flex"><button class="tool-btn" onclick="Student.openWrongConsult()">${ic('lightbulb')}咨询错题</button><button class="tool-btn" onclick="Student.enterKnowledge()">${ic('cards')}知识卡片</button></div>${this.wrongCtx ? `<div class="muted" style="font-size:12px;margin-bottom:4px">已选 ${this.wrongCtx.length} 道错题，随本条发送</div>` : ''}<div class="flex"><input id="chatInput" class="grow" placeholder="回答引导问题，或追问…" onkeydown="if(event.key==='Enter')Student.send()"/><button class="send" onclick="Student.send()">${ic('arrowUp')}</button></div></div></div>` + tabbar();
+  },
+  async enterKnowledge() {
+    if (!App.activeChapter) return toast('请先选择章节');
+    this.knowledgeIdx = true; this.knowledgeDeck = false; await render();
+  },
+  async viewKnowledge() {
+    if (!App.activeChapter) return '';
+    try { this.knowledgeCards = (await API.get('/api/knowledge/' + App.activeChapter)).cards || []; }
+    catch (e) { toast(e.message); this.knowledgeCards = []; }
+    const cards = this.knowledgeCards;
+    const count = k => cards.filter(c => c.status === k).length;
+    const due = cards.filter(c => c.status !== 'mastered' && String(c.next_review_at || '').slice(0, 10) <= new Date().toISOString().slice(0, 10)).length;
+    const body = cards.length ? `<div class="kc-summary"><b>本章知识卡片</b><span>已掌握 ${count('mastered')} · 学习中 ${count('learning') + count('reviewing')} · 未学 ${count('new')} · 今日待复习 ${due}</span></div><div class="kc-grid">${cards.map(c => `<div class="kc-mini ${c.status}"><b>${esc(c.front)}</b><small>${esc(c.sub_concept || '知识点')}</small></div>`).join('')}</div><button class="btn" onclick="Student.startKnowledgeDeck()">${ic('cards')}开始复习</button>` : `<div class="note"><div class="big">${ic('cards')}</div>本章还没有知识卡片</div><button class="btn" onclick="Student.generateKnowledge()">生成知识卡片</button>`;
+    return appbar('知识卡片', App.chapterName(App.activeChapter)) + `<div class="content">${body}</div>` + tabbar();
+  },
+  async generateKnowledge() {
+    try { const d = await API.post('/api/knowledge/generate', {chapter_ids:[App.activeChapter]}); this.knowledgeCards = d.cards || []; toast('知识卡片已生成'); render(); } catch(e) { toast(e.message); }
+  },
+  startKnowledgeDeck() { this.knowledgePos = 0; this.knowledgeFlipped = false; this.knowledgeDeck = true; render(); },
+  viewKnowledgeDeck() {
+    const c = this.knowledgeCards[this.knowledgePos];
+    if (!c) { this.knowledgeDeck = false; return this.viewKnowledge(); }
+    return appbar('复习知识卡片', `第 ${this.knowledgePos + 1} / ${this.knowledgeCards.length} 张`) + `<div class="content"><div class="kc-progress"><i style="width:${(this.knowledgePos + 1) / this.knowledgeCards.length * 100}%"></i></div><div class="kc-scene" ontouchstart="Student.kcTouchStart(event)" ontouchend="Student.kcTouchEnd(event)"><div class="kc-card ${this.knowledgeFlipped ? 'is-flipped' : ''}" onclick="Student.flipKnowledge()"><div class="kc-face kc-front"><small>${esc(c.sub_concept || '知识点')}</small><b>${esc(c.front)}</b><span>点击翻转查看答案</span></div><div class="kc-face kc-back"><small>答案与解析</small><b>${esc(c.back)}</b></div></div></div><div class="kc-actions"><button class="btn ghost" onclick="Student.reviewKnowledge(false)">${ic('cross')}没记住</button><button class="btn" onclick="Student.reviewKnowledge(true)">记住了${ic('check')}</button></div></div>` + tabbar();
+  },
+  flipKnowledge() { this.knowledgeFlipped = !this.knowledgeFlipped; render(); },
+  kcTouchStart(e) { this.knowledgeSwipe = e.touches[0].clientX; },
+  kcTouchEnd(e) { const x = e.changedTouches[0].clientX - this.knowledgeSwipe; if (Math.abs(x) > 55) this.reviewKnowledge(x > 0); },
+  async reviewKnowledge(remembered) {
+    const c = this.knowledgeCards[this.knowledgePos]; if (!c) return;
+    try { const d = await API.post('/api/knowledge/' + c.id + '/review', {remembered}); this.knowledgeCards[this.knowledgePos] = d.card; this.knowledgePos++; this.knowledgeFlipped = false; render(); } catch(e) { toast(e.message); }
   },
   selectChapter(id) { App.activeChapter = id; render(); },
   setTutorMode(mode) {

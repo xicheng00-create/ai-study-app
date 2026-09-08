@@ -157,6 +157,17 @@ CREATE TABLE IF NOT EXISTS daily_advice (
 );
 
 -- 自主练习：学生个人即席生成，不进教师发布状态机（防污染测评掌握度 M）
+CREATE TABLE IF NOT EXISTS knowledge_cards (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    sub_concept TEXT DEFAULT '', front TEXT NOT NULL, back TEXT NOT NULL,
+    source_chunk_id TEXT, learn_count INTEGER NOT NULL DEFAULT 0,
+    interval_days INTEGER NOT NULL DEFAULT 1, next_review_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','learning','reviewing','mastered')),
+    last_review_at TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_user_chapter ON knowledge_cards(user_id, chapter_id);
+
 CREATE TABLE IF NOT EXISTS practice_sessions (
     id           TEXT PRIMARY KEY,
     user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
