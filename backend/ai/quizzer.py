@@ -436,7 +436,7 @@ def fallback_questions(chapter_ids: list[str], config: dict | None = None) -> li
 
 
 # 自主练习：最多 5 道 choice/bool，基于章节资料，不再凑 100 分
-MAX_PRACTICE_QUESTIONS = 5
+MAX_PRACTICE_QUESTIONS = 10
 
 
 def _content_hash(content: str) -> str:
@@ -467,15 +467,20 @@ def _norm_practice(raw: dict) -> dict:
 
 
 def _cap_to_max(qs: list[dict], exclude_hashes: set | None = None,
-                max_q: int = MAX_PRACTICE_QUESTIONS) -> list[dict]:
+                exclude_sub_concepts: set | None = None,
+                max_q: int = 5) -> list[dict]:
     """优先不同子概念；可用子概念不足时才补同概念变体。"""
     exclude_hashes = exclude_hashes or set()
+    exclude_sub_concepts = exclude_sub_concepts or set()
     seen_hashes: set[str] = set()
     candidates = []
     for q in qs:
         if q.get("type") not in ("choice", "bool"):
             continue
         h = _content_hash(q.get("content", ""))
+        sub = (q.get("sub_concept") or "").strip()
+        if sub and sub in exclude_sub_concepts:
+            continue
         if h and h not in seen_hashes and h not in exclude_hashes:
             seen_hashes.add(h)
             candidates.append(q)
@@ -507,33 +512,44 @@ def _avoid_block(exclude_contents: list[str]) -> str:
 
 
 def _practice_system(chapter_ids: list[str], sub_concepts: str, chunk_txt: str,
-                     exclude_contents: list[str] | None = None) -> str:
-    spec = "最多 5 道题（2~5 道），只允许选择题（choice）和是非题（bool），难度 hard"
+                     exclude_contents: list[str] | None = None,
+                     exclude_sub_concepts: set | None = None, count: int = 5) -> str:
+    spec = f"最多 {count} 道题（5~{count} 道），只允许选择题（choice）和是非题（bool），难度 hard"
     return QUIZZER_SYSTEM.format(
         chapter_ids=",".join(chapter_ids),
         sub_concepts=sub_concepts or "不限",
         spec=spec,
         retrieved_chunks=chunk_txt[:6000],
         difficulty="hard",
-    ) + _avoid_block(exclude_contents or [])
+    ) + _avoid_block(exclude_contents or []) + (
+        "\n\n本次请避开以下已练知识点（子概念），从资料中其它知识点出题：" + "、".join(sorted(exclude_sub_concepts))
+        if exclude_sub_concepts else ""
+    )
 
 
 def generate_practice_questions(chapter_ids: list[str], sub_concepts: str = "",
-                                exclude_contents: list[str] | None = None) -> list[dict]:
+                                exclude_contents: list[str] | None = None,
+                                exclude_sub_concepts: set | None = None, count: int = 5) -> list[dict]:
     """自主练习出题（difficulty=hard，最多 5 道 choice/bool，基于章节资料，同学生跨会话不重复）。
 
     LLM 真返空时返回空列表，由调用方提示「生成失败，请重试」——不再硬塞 20 道通用模板。
     """
+    try:
+        count = max(5, min(int(count or 5), 10))
+    except (TypeError, ValueError):
+        count = 5
     query = (sub_concepts or "").strip()
     chunk_txt = _chunk_text(_retrieve_chunks(chapter_ids, query))
     exclude_contents = exclude_contents or []
     exclude_hashes = {_content_hash(c) for c in exclude_contents}
 
-    system = _practice_system(chapter_ids, sub_concepts, chunk_txt, exclude_contents)
+    exclude_sub_concepts = exclude_sub_concepts or set()
+    system = _practice_system(chapter_ids, sub_concepts, chunk_txt, exclude_contents, exclude_sub_concepts, count)
     qs = [_norm_practice(q) for q in (agents.quizzer_generate(system) or [])]
     if not qs:
         return []
-    return _cap_to_max(qs, exclude_hashes=exclude_hashes)
+    return _cap_to_max(qs, exclude_hashes=exclude_hashes,
+                       exclude_sub_concepts=exclude_sub_concepts, max_q=count)
 
 
 def generate_questions(chapter_ids: list[str], sub_concepts: str = "", spec: str = "",

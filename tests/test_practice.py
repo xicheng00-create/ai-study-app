@@ -17,7 +17,7 @@ def _generate(client, h, chapter_ids):
 
 def _mock_generate(monkeypatch, n=3):
     """API 测试：mock 出题链路（返回 n 道 choice），隔离 LLM 与 RAG。"""
-    def fake_generate(chapter_ids, sub_concepts="", exclude_contents=None):
+    def fake_generate(chapter_ids, sub_concepts="", exclude_contents=None, exclude_sub_concepts=None, count=5):
         return [{"type": "choice", "content": f"练习{cid}{i}",
                  "options": ["A", "B", "C", "D"], "answer": "0",
                  "reason": "", "sub_concept": ""}

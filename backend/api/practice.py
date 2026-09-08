@@ -84,6 +84,16 @@ def list_practice():
     return ok({"sessions": [_session_dict(r, con) for r in rows]})
 
 
+def _history_sub_concepts(con, user_id, chapter_ids) -> set[str]:
+    """限定当前章节，避免已练子概念跨章节误过滤。"""
+    ph = ",".join("?" * len(chapter_ids))
+    rows = con.execute(
+        f"SELECT DISTINCT pq.sub_concept FROM practice_questions pq JOIN practice_sessions ps ON ps.id=pq.session_id WHERE ps.user_id=? AND pq.chapter_id IN ({ph}) AND TRIM(pq.sub_concept) != ''",
+        (user_id, *chapter_ids),
+    ).fetchall()
+    return {r["sub_concept"].strip() for r in rows}
+
+
 def _history_contents(con, user_id) -> list[str]:
     """该学生历史练习全部题干（跨会话，供去重与提示词注入）。"""
     rows = con.execute(
@@ -116,15 +126,19 @@ def generate_practice():
         if row is None:
             return e_not_found(f"章节不存在或未发布：{cid}")
 
+    try:
+        count = max(5, min(int(data.get("count", 5)), 10))
+    except (TypeError, ValueError):
+        count = 5
     raw_qs = quizzer.generate_practice_questions(
-        chapter_ids,
-        sub_concepts=data.get("sub_concepts", ""),
+        chapter_ids, sub_concepts=data.get("sub_concepts", ""),
         exclude_contents=_history_contents(con, g.user_id),
+        exclude_sub_concepts=_history_sub_concepts(con, g.user_id, chapter_ids), count=count,
     )
     if not raw_qs:
         return e_input("练习生成失败，请稍后重试")
-    if len(raw_qs) > quizzer.MAX_PRACTICE_QUESTIONS:
-        raw_qs = raw_qs[:quizzer.MAX_PRACTICE_QUESTIONS]
+    if len(raw_qs) > count:
+        raw_qs = raw_qs[:count]
     total = sum(quizzer.POINTS[q["type"]] for q in raw_qs)
 
     session_id = models.new_id()

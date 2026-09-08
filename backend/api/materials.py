@@ -4,7 +4,7 @@
 """
 import os
 
-from ai import parser
+from ai import knowledge, parser
 from auth.jwt_utils import jwt_required, role_required
 from data import models
 from data.db import get_db
@@ -125,6 +125,9 @@ def upload():
             (models.new_id(), uid, chapter_id, c["chunk_idx"], c["text"], now),
         )
     con.commit()
+    # 上传至已发布章节的资料立即可见，作为资料发布路径生成共享卡片。
+    if con.execute("SELECT 1 FROM chapters WHERE id=? AND status='published'", (chapter_id,)).fetchone():
+        knowledge.ensure_chapter_cards(chapter_id)
     return ok({"id": uid, "parse_status": parse_status, "chunk_count": len(chunk_list)})
 
 

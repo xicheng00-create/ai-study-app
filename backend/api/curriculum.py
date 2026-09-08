@@ -5,6 +5,7 @@
 """
 import json
 
+from ai import knowledge
 from auth.jwt_utils import jwt_required, role_required
 from data import models
 from data.db import get_db
@@ -248,6 +249,8 @@ def publish_session(session_id):
     con.execute("UPDATE sessions SET status='published' WHERE id=?", (session_id,))
     _sync_content_status(con, row, "published")
     con.commit()
+    for chapter_id in _json_list(row["chapter_ids"]):
+        knowledge.ensure_chapter_cards(chapter_id)
     return ok({"id": session_id, "status": "published"})
 
 

@@ -1,4 +1,4 @@
-"""学生个人知识卡片：生成、浏览和间隔复习。"""
+"""共享知识卡片及学生个人间隔复习状态。"""
 from ai import knowledge
 from ai.review_sched import next_interval, next_review_at_iso
 from auth.jwt_utils import jwt_required, role_required
@@ -13,11 +13,20 @@ knowledge_bp = Blueprint("knowledge_bp", __name__, url_prefix="/api/knowledge")
 
 def _card(row):
     return {k: row[k] for k in ("id", "chapter_id", "sub_concept", "front", "back",
-        "learn_count", "interval_days", "next_review_at", "status", "last_review_at", "created_at")}
+        "learn_count", "interval_days", "next_review_at", "status", "last_review_at")}
 
 
 def _published(con, chapter_id):
     return con.execute("SELECT id FROM chapters WHERE id=? AND status='published'", (chapter_id,)).fetchone()
+
+
+def _review(con, card_id):
+    row = con.execute("SELECT * FROM knowledge_reviews WHERE card_id=? AND user_id=?", (card_id, g.user_id)).fetchone()
+    if row is None:
+        now = models.utcnow()
+        con.execute("INSERT INTO knowledge_reviews (id,card_id,user_id,next_review_at,created_at) VALUES (?,?,?,?,?)", (models.new_id(), card_id, g.user_id, now, now))
+        row = con.execute("SELECT * FROM knowledge_reviews WHERE card_id=? AND user_id=?", (card_id, g.user_id)).fetchone()
+    return row
 
 
 @knowledge_bp.route("/generate", methods=["POST"])
@@ -25,42 +34,22 @@ def _published(con, chapter_id):
 @role_required("student")
 @rate_limit(limit=60)
 def generate():
-    data = request.get_json(silent=True) or {}
-    ids = data.get("chapter_ids") or []
-    if not isinstance(ids, list) or not ids or any(not isinstance(x, str) for x in ids):
-        return e_input("请至少选择一章")
+    data = request.get_json(silent=True) or {}; ids = data.get("chapter_ids") or []
+    if not isinstance(ids, list) or not ids or any(not isinstance(x, str) for x in ids): return e_input("请至少选择一章")
     con = get_db()
     for cid in ids:
-        if not _published(con, cid):
-            return e_not_found("章节不存在或未发布")
-    # 卡片按章保存，已有卡直接复用，避免重复调用 Agent。
+        if not _published(con, cid): return e_not_found("章节不存在或未发布")
+        knowledge.ensure_chapter_cards(cid)
     cid = ids[0]
-    rows = con.execute("SELECT * FROM knowledge_cards WHERE user_id=? AND chapter_id=?", (g.user_id, cid)).fetchall()
-    if rows:
-        return ok({"chapter_id": cid, "cards": [_card(r) for r in rows]})
-    cards = knowledge.generate_knowledge_cards([cid])
-    if not cards:
-        return e_input("生成失败请重试")
-    now = models.utcnow()
-    seen_fronts = set()
-    for card in cards:
-        if card["front"] in seen_fronts:
-            continue
-        seen_fronts.add(card["front"])
-        con.execute("INSERT INTO knowledge_cards (id,user_id,chapter_id,sub_concept,front,back,next_review_at,status,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (models.new_id(), g.user_id, cid, card["sub_concept"], card["front"], card["back"], now, "new", now))
-    con.commit()
-    rows = con.execute("SELECT * FROM knowledge_cards WHERE user_id=? AND chapter_id=?", (g.user_id, cid)).fetchall()
-    return ok({"chapter_id": cid, "cards": [_card(r) for r in rows]})
+    return cards(cid)
 
 
 @knowledge_bp.route("/overview", methods=["GET"])
 @jwt_required
 @role_required("student")
-@rate_limit(limit=60)
 def overview():
     con = get_db(); today = timeutil.today_str()
-    rows = con.execute("SELECT chapter_id,status,next_review_at FROM knowledge_cards WHERE user_id=?", (g.user_id,)).fetchall()
+    rows = con.execute("SELECT kc.chapter_id,kr.status,kr.next_review_at FROM knowledge_reviews kr JOIN knowledge_cards kc ON kc.id=kr.card_id WHERE kr.user_id=?", (g.user_id,)).fetchall()
     groups = {}
     for row in rows:
         d = groups.setdefault(row["chapter_id"], {"new": 0, "learning": 0, "reviewing": 0, "mastered": 0, "total": 0, "today_due": 0})
@@ -76,7 +65,10 @@ def overview():
 def cards(chapter_id):
     con = get_db()
     if not _published(con, chapter_id): return e_not_found("章节不存在或未发布")
-    rows = con.execute("SELECT * FROM knowledge_cards WHERE user_id=? AND chapter_id=? ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'learning' THEN 1 WHEN 'reviewing' THEN 2 ELSE 3 END, next_review_at", (g.user_id, chapter_id)).fetchall()
+    shared = con.execute("SELECT id FROM knowledge_cards WHERE chapter_id=?", (chapter_id,)).fetchall()
+    for card in shared: _review(con, card["id"])
+    con.commit()
+    rows = con.execute("SELECT kc.id,kc.chapter_id,kc.sub_concept,kc.front,kc.back,kr.learn_count,kr.interval_days,kr.next_review_at,kr.status,kr.last_review_at FROM knowledge_cards kc JOIN knowledge_reviews kr ON kr.card_id=kc.id WHERE kc.chapter_id=? AND kr.user_id=? ORDER BY CASE kr.status WHEN 'new' THEN 0 WHEN 'learning' THEN 1 WHEN 'reviewing' THEN 2 ELSE 3 END,kr.next_review_at", (chapter_id, g.user_id)).fetchall()
     return ok({"chapter_id": chapter_id, "cards": [_card(r) for r in rows]})
 
 
@@ -87,14 +79,12 @@ def cards(chapter_id):
 def review(card_id):
     data = request.get_json(silent=True) or {}
     if not isinstance(data.get("remembered"), bool): return e_input("remembered 必须为布尔值")
-    con = get_db(); row = con.execute("SELECT * FROM knowledge_cards WHERE id=? AND user_id=?", (card_id, g.user_id)).fetchone()
-    if row is None: return e_forbidden("只能复习本人卡片")
-    remembered = data["remembered"]
-    if remembered:
-        status = {"new":"learning", "learning":"reviewing", "reviewing":"mastered", "mastered":"mastered"}[row["status"]]
-    else:
-        status = "new" if row["status"] == "new" else "learning"
-    interval = next_interval(remembered, row["interval_days"])
-    now = models.utcnow()
-    con.execute("UPDATE knowledge_cards SET learn_count=learn_count+1,interval_days=?,status=?,next_review_at=?,last_review_at=? WHERE id=?", (interval, status, next_review_at_iso(interval), now, card_id)); con.commit()
-    return ok({"card": _card(con.execute("SELECT * FROM knowledge_cards WHERE id=?", (card_id,)).fetchone())})
+    con = get_db()
+    if con.execute("SELECT id FROM knowledge_cards WHERE id=?", (card_id,)).fetchone() is None: return e_forbidden("只能复习本人卡片")
+    row = _review(con, card_id); remembered = data["remembered"]
+    status = ({"new":"learning", "learning":"reviewing", "reviewing":"mastered", "mastered":"mastered"}[row["status"]]
+              if remembered else ("new" if row["status"] == "new" else "learning"))
+    interval = next_interval(remembered, row["interval_days"]); now = models.utcnow()
+    con.execute("UPDATE knowledge_reviews SET learn_count=learn_count+1,interval_days=?,status=?,next_review_at=?,last_review_at=? WHERE id=?", (interval, status, next_review_at_iso(interval), now, row["id"])); con.commit()
+    updated = con.execute("SELECT kc.id,kc.chapter_id,kc.sub_concept,kc.front,kc.back,kr.learn_count,kr.interval_days,kr.next_review_at,kr.status,kr.last_review_at FROM knowledge_cards kc JOIN knowledge_reviews kr ON kr.card_id=kc.id WHERE kr.id=?", (row["id"],)).fetchone()
+    return ok({"card": _card(updated)})

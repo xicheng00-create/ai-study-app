@@ -158,15 +158,23 @@ CREATE TABLE IF NOT EXISTS daily_advice (
 
 -- 自主练习：学生个人即席生成，不进教师发布状态机（防污染测评掌握度 M）
 CREATE TABLE IF NOT EXISTS knowledge_cards (
-    id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY,
     chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
     sub_concept TEXT DEFAULT '', front TEXT NOT NULL, back TEXT NOT NULL,
-    source_chunk_id TEXT, learn_count INTEGER NOT NULL DEFAULT 0,
-    interval_days INTEGER NOT NULL DEFAULT 1, next_review_at TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','learning','reviewing','mastered')),
-    last_review_at TEXT, created_at TEXT NOT NULL
+    source_chunk_id TEXT, created_at TEXT NOT NULL,
+    UNIQUE(chapter_id, front)
 );
-CREATE INDEX IF NOT EXISTS idx_knowledge_user_chapter ON knowledge_cards(user_id, chapter_id);
+CREATE TABLE IF NOT EXISTS knowledge_reviews (
+    id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES knowledge_cards(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    learn_count INTEGER NOT NULL DEFAULT 0, interval_days INTEGER NOT NULL DEFAULT 1,
+    next_review_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','learning','reviewing','mastered')),
+    last_review_at TEXT, created_at TEXT NOT NULL,
+    UNIQUE(card_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_chapter ON knowledge_cards(chapter_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_reviews_user ON knowledge_reviews(user_id);
 
 CREATE TABLE IF NOT EXISTS practice_sessions (
     id           TEXT PRIMARY KEY,
@@ -255,6 +263,29 @@ def migrate(con) -> None:
     """幂等迁移：老库补 status / 百分制评分模型列（DM-004/005/006）。"""
     for table in ("chapters", "materials"):
         _add_column(con, table, "status", "TEXT NOT NULL DEFAULT 'published'")
+
+    # v1.18.0：旧版个人卡片表为空，重建为共享卡片 + 每生复习态。
+    card_cols = {r["name"] for r in con.execute("PRAGMA table_info(knowledge_cards)").fetchall()}
+    if "user_id" in card_cols:
+        con.execute("DROP TABLE knowledge_cards")
+        con.execute("DROP INDEX IF EXISTS idx_knowledge_user_chapter")
+        con.executescript("""
+        CREATE TABLE IF NOT EXISTS knowledge_cards (
+            id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+            sub_concept TEXT DEFAULT '', front TEXT NOT NULL, back TEXT NOT NULL,
+            source_chunk_id TEXT, created_at TEXT NOT NULL, UNIQUE(chapter_id, front)
+        );
+        CREATE TABLE IF NOT EXISTS knowledge_reviews (
+            id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES knowledge_cards(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            learn_count INTEGER NOT NULL DEFAULT 0, interval_days INTEGER NOT NULL DEFAULT 1,
+            next_review_at TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','learning','reviewing','mastered')),
+            last_review_at TEXT, created_at TEXT NOT NULL, UNIQUE(card_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_chapter ON knowledge_cards(chapter_id);
+        CREATE INDEX IF NOT EXISTS idx_knowledge_reviews_user ON knowledge_reviews(user_id);
+        """)
 
     # 方案B（v1.4.0）：材料源文件绝对路径（serve 课件/ 源文件供下载）
     _add_column(con, "materials", "source_path", "TEXT")

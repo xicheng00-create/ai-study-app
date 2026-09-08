@@ -39,6 +39,7 @@ const Student = {
   practiceResult: null,  // {summary, detail}：批改结果
   practiceChapters: [],  // 练习选章（可多选）
   practiceSessions: [],  // 练习历史列表
+  practiceCount: 5,     // 每次练习题数
   knowledgeIdx: false, knowledgeDeck: false, knowledgeCards: [], knowledgePos: 0,
   knowledgeFlipped: false, knowledgeSwipe: null,
   relatedVideos: [],   // 最近一次对话返回的相关视频课（CHAT-010）
@@ -136,7 +137,7 @@ const Student = {
     const cards = this.knowledgeCards;
     const count = k => cards.filter(c => c.status === k).length;
     const due = cards.filter(c => c.status !== 'mastered' && String(c.next_review_at || '').slice(0, 10) <= new Date().toISOString().slice(0, 10)).length;
-    const body = cards.length ? `<div class="kc-summary"><b>本章知识卡片</b><span>已掌握 ${count('mastered')} · 学习中 ${count('learning') + count('reviewing')} · 未学 ${count('new')} · 今日待复习 ${due}</span></div><div class="kc-grid">${cards.map(c => `<div class="kc-mini ${c.status}"><b>${esc(c.front)}</b><small>${esc(c.sub_concept || '知识点')}</small></div>`).join('')}</div><button class="btn" onclick="Student.startKnowledgeDeck()">${ic('cards')}开始复习</button>` : `<div class="note"><div class="big">${ic('cards')}</div>本章还没有知识卡片</div><button class="btn" onclick="Student.generateKnowledge()">生成知识卡片</button>`;
+    const body = cards.length ? `<div class="kc-summary"><b>本章知识卡片</b><span>已掌握 ${count('mastered')} · 学习中 ${count('learning') + count('reviewing')} · 未学 ${count('new')} · 今日待复习 ${due}</span></div><div class="kc-grid">${cards.map(c => `<div class="kc-mini ${c.status}"><b>${esc(c.front)}</b><small>${esc(c.sub_concept || '知识点')}</small></div>`).join('')}</div><button class="btn" onclick="Student.startKnowledgeDeck()">${ic('cards')}开始复习</button>` : `<div class="note"><div class="big">${ic('cards')}</div>本章还没有知识卡片</div><div class="muted" style="text-align:center">知识卡片生成中，稍后下拉刷新</div>`;
     return appbar('知识卡片', App.chapterName(App.activeChapter)) + `<div class="content">${body}</div>` + tabbar();
   },
   async generateKnowledge() {
@@ -416,8 +417,9 @@ const Student = {
         <div class="meta"><div class="t">练习 ${s.question_count} 题</div><div class="s">覆盖：${(s.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div></div>
         <div style="text-align:right">${status}</div></div>`;
     }).join('') || '<div class="muted">暂无练习记录</div>';
-    return appbar('自主练习', 'AI 出题 · 最多 5 题 · 高难度') + `<div class="content">
+    return appbar('自主练习', 'AI 出题 · 5-10 题 · 高难度') + `<div class="content">
       <div class="card sm"><div style="font-weight:700;font-size:13px;margin-bottom:8px">选择章节（可多选）</div>${chapterSel}
+        <label class="muted" style="display:block;margin-top:12px">题数：<select onchange="Student.practiceCount=Number(this.value)">${[5,6,7,8,9,10].map(n => `<option value="${n}" ${n === Student.practiceCount ? 'selected' : ''}>${n} 题</option>`).join('')}</select></label>
         <button class="btn mt-12" onclick="Student.generatePractice()">${ic('target')}生成练习</button>
         <button class="btn ghost" style="margin-top:8px" onclick="Student.exitPractice()">返回测评列表</button></div>
       <div class="card"><div class="sec-title">练习历史</div>${hist}</div>
@@ -427,7 +429,7 @@ const Student = {
     const ids = (this.practiceChapters && this.practiceChapters.length) ? this.practiceChapters : [App.activeChapter];
     if (!ids || !ids.length) { toast("请先选择章节"); return; }
     try {
-      const d = await API.post("/api/practice/generate", { chapter_ids: ids });
+      const d = await API.post("/api/practice/generate", { chapter_ids: ids, count: this.practiceCount || 5 });
       this.practice = d; this.practiceResult = null; this.answers = {};
       render(); toast("已生成练习");
     } catch (e) { toast(e.message); }

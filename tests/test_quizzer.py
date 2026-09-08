@@ -118,3 +118,18 @@ def test_cap_to_max_prefers_distinct_sub_concepts():
           for i, sub in enumerate(["a", "a", "b", "c", "d", "e"])]
     out = quizzer._cap_to_max(qs, max_q=5)
     assert [q["sub_concept"] for q in out] == ["a", "b", "c", "d", "e"]
+
+
+def test_cap_to_max_excludes_history_sub_concepts():
+    qs = [{"type": "choice", "content": f"q{i}", "sub_concept": sub}
+          for i, sub in enumerate(["old", "new-a", "new-b"])]
+    assert [q["sub_concept"] for q in quizzer._cap_to_max(qs, { }, {"old"}, 5)] == ["new-a", "new-b"]
+
+
+def test_generate_practice_count_boundaries(monkeypatch):
+    monkeypatch.setattr(rag, "retrieve", lambda *args, **kwargs: [])
+    monkeypatch.setattr(agents, "quizzer_generate", lambda system: [
+        {"type": "choice", "content": f"题{i}", "options": [], "answer": "0", "sub_concept": str(i)}
+        for i in range(12)])
+    assert len(quizzer.generate_practice_questions(["c"], count=99)) == 10
+    assert len(quizzer.generate_practice_questions(["c"], count="bad")) == 5
