@@ -1,0 +1,5 @@
+# ruff 配置
+# backend/ai/usage_log.py 按「Token 账单看板对接契约」要求逐字保留 `try/except Exception: pass`
+# （写盘失败必须全量吞掉、绝不影响 AI 主流程），此处对本文件豁免 S110 / BLE001。
+[lint.per-file-ignores]
+"backend/ai/usage_log.py" = ["S110", "BLE001"]

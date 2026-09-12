@@ -477,7 +477,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 | 备份 | 每日 rsync（**先 wal_checkpoint**，F2） | 9.4 核查 + 演练 |
 | 日志 | Flask+waitress stderr → `logs/app.log` 按日轮转 | 异常可追溯 |
 | 监控告警 | 不做（4 人可接受，已知盲区） | — |
-| 成本 | 限速 60/天/用户 + 单请求 ≤120s | 超限 429 |
+| 成本 | 限速 60/天/用户 + 单请求 ≤120s；**v2.3.0 起每次 LLM 调用逐次用量记账**（`ai/usage_log.py` → `~/.hermes/app-usage/aistudy.jsonl`，供 Token 账单看板精确统计） | 超限 429 |
 
 ---
 
@@ -748,4 +748,13 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 
 ### 12.23 实现状态回写（v2.2.0，2026-09-08）
 - **CLASS-003 今日知识卡片学习张数（✅）**：`GET /api/class/leaderboard` 新增 `today_knowledge`，按 UTC+8 当日 `knowledge_reviews.last_review_at` 过滤并按 `user_id` 聚合；每张卡仅一条 review 状态行，同卡当天多次复习仍只计 1 张。学生班级页将「今日知识卡片学习张数」以 cards 图标置顶，教师班级活动将「今日知识卡片」设为首个且默认选中 chip；其余排行榜与学生端「更多排行榜」保持不变。
+
+### 12.24 实现状态回写（v2.3.0，2026-09-12）
+
+> **AI 层逐次调用用量记账（§7 AI 能力架构 + §11 可观测·成本，✅）**。此前「Token 账单」只能按库中消息条数推算各调用方花费（下限口径），无法精确对账。本次新增 `backend/ai/usage_log.py`（仅标准库），每次 **HTTP 成功且拿到 JSON** 的 DeepSeek 调用追加一行 JSONL 到 `~/.hermes/app-usage/aistudy.jsonl`（路径可由环境变量 `LLM_USAGE_LOG` 覆盖）；记录字段 `timestamp`(UTC+8)/`model`/`feature`/`prompt_tokens`/`prompt_cache_hit_tokens`/`completion_tokens`/`total_tokens`，与 Token 账单看板对接契约一致。
+> - `agents._chat` 新增 `feature` 参数（默认 `"unknown"`），在请求实发 `model` 上、`data` 解析成功后、`return` 之前调用 `log_usage(model, data.get("usage"), feature)`；四个 Agent 包装函数分别传 `tutor`/`quizzer`/`grader`/`knowledge`（`reports.py`、`advice_gen.py`、`daily_advice_gen.py` 经 `tutor_reply` 亦归 `tutor`）。
+> - **不记路径**：未配置 key / 5xx / 超时 / 异常（返回 `None`）一律不记，重试逻辑不动。
+> - **故障隔离**：`log_usage` 全程 `try/except` 吞异常，写盘失败绝不影响 AI 功能；未新增任何依赖。
+> - **测试隔离**：`tests/conftest.py` 新增全局 autouse fixture，将 `LLM_USAGE_LOG` 指向 `tmp_path`，避免既有测试污染真实 `~/.hermes/app-usage/aistudy.jsonl`；`tests/test_usage_log.py` 覆盖「成功记一行+字段齐全 / 四 feature 标签 / 失败不记 / 写盘失败不影响主流程」。
+> - **回写锚点**：本项无专属 REQ-ID，归属 §7（AI 层调用封装）与 §11（可观测·成本）横切能力；§11 表格「成本」行已同步标注。
 

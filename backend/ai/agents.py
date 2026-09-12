@@ -7,6 +7,8 @@ import os
 
 import requests
 
+from ai.usage_log import log_usage
+
 TIMEOUT_SECONDS = 30
 
 
@@ -18,7 +20,7 @@ def _config(key: str, default):
     return os.environ.get(key, default)
 
 
-def _chat(messages: list[dict]) -> str | None:
+def _chat(messages: list[dict], feature: str = "unknown") -> str | None:
     """请求 DeepSeek chat completions；任何异常/超时返回 None。"""
     api_key = _config("DEEPSEEK_API_KEY", "")
     if not api_key:
@@ -36,6 +38,8 @@ def _chat(messages: list[dict]) -> str | None:
             return None
         resp.raise_for_status()
         data = resp.json()
+        # HTTP 成功且拿到 JSON 才记一条用量（失败/超时/异常路径不记）
+        log_usage(model, data.get("usage"), feature)
         return data["choices"][0]["message"]["content"]
     except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
         return None
@@ -67,11 +71,11 @@ def _parse_json(text: str):
 def tutor_reply(system: str, history: list[dict]) -> str | None:
     messages = [{"role": "system", "content": system}]
     messages.extend(history)
-    return _chat(messages)
+    return _chat(messages, feature="tutor")
 
 
 def quizzer_generate(system: str) -> list[dict] | None:
-    out = _chat([{"role": "system", "content": system}])
+    out = _chat([{"role": "system", "content": system}], feature="quizzer")
     if not out:
         return None
     parsed = _parse_json(out)
@@ -81,7 +85,7 @@ def quizzer_generate(system: str) -> list[dict] | None:
 
 
 def grader_grade(system: str) -> dict | None:
-    out = _chat([{"role": "system", "content": system}])
+    out = _chat([{"role": "system", "content": system}], feature="grader")
     if not out:
         return None
     parsed = _parse_json(out)
@@ -92,6 +96,6 @@ def grader_grade(system: str) -> dict | None:
 
 def knowledge_generate(system: str) -> list[dict] | None:
     """调用知识卡片 Agent，严格读取 cards 数组。"""
-    out = _chat([{"role": "system", "content": system}])
+    out = _chat([{"role": "system", "content": system}], feature="knowledge")
     parsed = _parse_json(out) if out else None
     return parsed["cards"] if isinstance(parsed, dict) and isinstance(parsed.get("cards"), list) else None

@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.3.0] - 2026-09-12
+
+### Added
+- **LLM 调用逐次用量记账（JSONL）**：AI 层每次「HTTP 成功且拿到 JSON」的 DeepSeek 调用追加一行记录到 `~/.hermes/app-usage/aistudy.jsonl`（可用 `LLM_USAGE_LOG` 覆盖路径），供 Token 账单看板精确记账，替代此前只能按消息条数推算的下限口径。新模块 `backend/ai/usage_log.py`（仅标准库）写入 `timestamp`(UTC+8)/`model`/`feature`/`prompt_tokens`/`prompt_cache_hit_tokens`/`completion_tokens`/`total_tokens` 字段；`agents._chat` 加 `feature` 参数，四个 Agent 分别记 `tutor`/`quizzer`/`grader`/`knowledge`。失败/超时/异常（返回 None 的路径）不记；写盘异常全量吞掉，绝不影响 AI 主流程。
+
 ## [2.2.0] - 2026-09-08
 
 ### Added

@@ -7,6 +7,12 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 
+@pytest.fixture(autouse=True)
+def _isolate_usage_log(tmp_path, monkeypatch):
+    """全局隔离 LLM 用量日志，避免测试写入真实 ~/.hermes/app-usage/aistudy.jsonl。"""
+    monkeypatch.setenv("LLM_USAGE_LOG", str(tmp_path / "app-usage" / "aistudy.jsonl"))
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     # 测试专用临时库 + 禁用 LLM（走兜底，确定性）
