@@ -46,6 +46,9 @@
 | ARCH | 架构/横切 | architecture §二/§四 |
 | NFR | 非功能/盲区 | PRD §13 + architecture §十三 |
 | KNOW | 知识卡片（知识点→翻转卡片+左滑右滑判记住没记住+间隔复习） | CR-2026-0908-KNOW |
+| CHECKIN | 每日打卡与连胜（今日任务 → 达标 → 连胜） | CR-2026-0918-STREAK |
+| NOTIF | 通知与提醒（站内通知中心 + Web Push + 19:00 未打卡提醒） | CR-2026-0918-STREAK |
+| SET | 个人设置（头像/名称/密码/提醒开关/退出） | CR-2026-0918-STREAK |
 
 > 每条 REQ 标注 **P0/P1/P2** 并绑定**技术模块**（Blueprint / AI Agent / 层 / 状态机），见 §三与 §十四追溯矩阵。
 
@@ -289,7 +292,61 @@
 
 ---
 
+### 3.11 每日打卡与连胜（学生端，REQ-CHECKIN）
+**Functional**
+- **CHECKIN-001（P0）学生端 journey 优化**：登录成功后**首页即「今日任务」**（`learn` 视图置顶任务卡），学生不再需要自己找入口。
+- **CHECKIN-002（P0）每日任务阈值**：当日复习 **distinct 知识卡片 ≥ 10 张** **且**完成 **distinct 练习题 ≥ 5 道** → 当日达标（= 打卡成功，单日只记一次）。
+- **CHECKIN-003（P0）连胜模型（Duolingo 式存活）**：达标日 +1；出现空档日归零；**今天未达标但昨天达标 → 连胜存活**（`state=pending`，天数沿用昨日值）；`longest_streak` 只增不减。
+- **CHECKIN-005 / CHECKIN-006（P0）自动安排学习任务**：今日卡组（到期复习卡优先 → 未学新卡按章节补齐，**跨章**，上限 10）与今日练习（5 道；当天已有未答完的 session 优先续答）**全部由服务端自动装配**，学生只需点「继续」。
+- **CHECKIN-007（P0）顶部常驻连胜条**：学生端**所有页面**常驻（🔥 图标 + 连胜天数 + 今日进度 `x/10 卡 · y/5 题` + 状态文案 `今天还没打卡` / `✓ 今日已完成`）；达标瞬间条变色 + toast「🔥 连胜 +1，已连续 N 天」。教师端不显示。
+- **CHECKIN-008（P0）班级「今日打卡」区块**：班级页**置顶**（先于现有排行榜卡），按「已打卡优先」排列，每人一行：头像 + 名字 + `🔥 N 天` + `x/10 卡 · y/5 题`（达标行绿色高亮、自己标 `me`）；未打卡同学行尾「提醒 TA」按钮（→ NOTIF-006）。
+
+**Technical**
+- **判定只在服务端**（**CHECKIN-004**，P0）：前端无权上报「我打卡了」。计数口径 = `knowledge_reviews` 中当前用户、`date(last_review_at, UTC+8) == 今天` 的 **distinct `card_id`**；`practice_questions` 中属于该生 session、当日 `answered_at` 且已作答的 **distinct id**。阈值常量 `TASK_CARDS_REQUIRED=10` / `TASK_QUESTIONS_REQUIRED=5` 集中在 `backend/config.py`。
+- 判定触发点：`POST /api/knowledge/<card_id>/review` 成功、`POST /api/practice/<session_id>/submit` 成功后各调 `checkin.evaluate_and_maybe_complete()`；`GET /api/checkin/today` 每次做一次**惰性幂等评估**（跨日自愈）。
+- **幂等**：`daily_checkins UNIQUE(user_id, checkin_date)` —— 重复调用不写第二行、不重复发通知。时区统一走 `backend/data/timeutil.py` 的 `shanghai_date()`（UTC+8），与班级榜 `today_*` 口径一致。
+- 新增表 `daily_checkins`；新增 `backend/data/checkin.py`（判定/连胜/班级投影/今日卡组装配）；新增 blueprint `checkin_bp`（`/api/checkin`：`GET today` / `GET class` / `POST nudge` / `POST start-practice`）；`knowledge_bp` 增 `GET /api/knowledge/today`。
+- **YAGNI（明确不做）**：补签卡、连胜冻结/复活/保护道具、打卡阈值前端可配置 UI。
+- 验收点：9 张卡不算 / 10 张算；4 题不算 / 5 题算；同卡当天重复复习只计 1；跨 UTC+8 日界；连胜连续 2 天 +1；空档归零；`state=pending` 存活；幂等只 1 行 + 只 1 条通知。
+
+### 3.12 通知与提醒（师生共用，REQ-NOTIF）
+**Functional**
+- **NOTIF-001（P0）站内通知中心**：**所有**通知一律落库 → App 内可看历史、未读计数、标记已读、点开跳转对应页（路径 → `path`、测评 → `quiz`、连胜类 → 学习首页）。
+- **NOTIF-003（P0）老师发布新学习路径** → 全体在用学生各一条通知。
+- **NOTIF-004（P0）老师发布新测评** → 全体在用学生各一条通知。
+- **NOTIF-005（P0）每日 19:00 未打卡系统提醒**：个性化俏皮文案（按「当前连胜数 + 今日缺口」取用）+ 萌图；每人每天最多 1 条。
+- **NOTIF-006（P0）同学互提醒（nudge）**：班级页「提醒 TA」→ 被提醒同学收到 `peer_nudge`；**同一天同一发送者→同一接收者最多 1 次**；不能提醒自己；仅学生→学生（教师端不出现该按钮）。
+- **NOTIF-007（P1）打卡成功即时通知**：本人当日**首次**达标 → 「🔥 连胜 +1 / 已连续打卡 N 天」。
+- **NOTIF-008（P0）铃铛 + 未读角标**：`appbar` 右上角（学生端 + 教师端都有），点开 → 通知中心。
+
+**Technical**
+- **双通道（NOTIF-002，P0）**：站内落库 **+** Web Push（VAPID）。**无订阅 / 无密钥 / 发送异常 → 降级为只落站内，绝不 500**；收到 404/410 删除该订阅。这是「19:00 提醒」在 App 关闭时唯一可行通道。
+- 新增 blueprint `notify_bp`（`/api/notifications`：`GET ""` 列表 / `GET /unread` / `POST /read` / `POST /push/subscribe` / `POST /push/unsubscribe` / `GET|POST /prefs` / `GET /vapid-public-key`）；服务层 `backend/services/notify.py`（先落库、再推送，统一入口 `notify_users()`）+ `backend/services/push.py`（pywebpush 封装）；文案池 `backend/ai/reminder_copy.py`（**纯函数、确定性、不调 LLM**）。
+- 新增表 `notifications`、`push_subscriptions`、`notification_prefs`。**幂等**：`notify_users()` 对 `(user_id, type, ref_id, 当天)` 去重；发布类沿用 `class_bp.EXCLUDED_USERNAMES`（`hermestest` / `hermesstu`）排除测试号；unpublish 不发通知。
+- 19:00 载体：用户域 LaunchAgent `com.aistudy.checkin-reminder` → `backend/scripts/checkin_reminder.py`（**本机直连库，不经 HTTP，无公网入口**）。
+- **限流纪律**：只有会调 LLM 的端点挂 `@rate_limit`；`/api/notifications/*`、`/api/checkin/today|class` 等高频轻量端点**不挂**，避免饿死 LLM 额度。
+- **平台限制（如实标注）**：iOS ≥16.4 且已「添加到主屏幕」才支持 Web Push，且权限请求**必须由用户手势触发**（放在设置页「打开提醒」按钮）；iOS **不支持**通知大图 `image`，「萌图」在 iOS 上体现为通知 `icon` + App 内通知卡片；Android / 桌面 Chrome 支持大图。
+- 安全：VAPID 私钥只存 `.env`，不进 git / 不进 API 响应 / 不写日志；通知正文中用户可控字段（`display_name`）转义；nudge 发送者名字由服务端取，不接受前端传入。
+
+### 3.13 个人设置（师生共用，REQ-SET）
+**Functional**
+- **SET-001（P0）**：`appbar` 右上角**头像** → 进入**独立设置页**（hash `settings`），**取代**旧 `openSheet` 简易菜单。
+- **SET-002（P0）修改名称**：`display_name` 1–20 字，保存即生效。
+- **SET-003（P0）修改头像**：12 个预设头像（`a1`…`a12`）选择器，**白名单校验**；空值回退「名字首字」（保持现行为）。
+- **SET-004（P0）修改密码**：**复用**现有 `POST /api/auth/change-password`（不重写）。
+- **SET-005（P0）打开提醒 + 退出登录**：Web Push 授权/订阅开关（设置页同时给通知中心入口）；退出登录沿用 `logout()`。
+
+**Technical**
+- `PATCH /api/auth/me`（body `{display_name?, avatar?}`）；`users` 增列 `avatar TEXT NOT NULL DEFAULT ''`，经 `models.migrate()` 增量迁移。
+- 「打开提醒」按钮是**唯一**的推送权限请求入口（iOS 手势要求）；关闭 → `pushManager.unsubscribe()` + 服务端删订阅 + `push_enabled=0`。
+- 师生端共用同一套设置页与通知中心（教师端**只复用**这两块，业务逻辑不改）。
+- **YAGNI**：自定义头像上传（P1 待定，需 uploads + 裁剪链路）、邮件/SMS/微信通知。
+
+---
+
 ## 四、部署架构（对齐 architecture §三，吸收 F1/F2）
+
+
 
 ```
 同学手机浏览器 ──HTTPS──► Cloudflare 命名隧道 (ai-study.<域>, 仅 5001)
@@ -757,4 +814,11 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 > - **故障隔离**：`log_usage` 全程 `try/except` 吞异常，写盘失败绝不影响 AI 功能；未新增任何依赖。
 > - **测试隔离**：`tests/conftest.py` 新增全局 autouse fixture，将 `LLM_USAGE_LOG` 指向 `tmp_path`，避免既有测试污染真实 `~/.hermes/app-usage/aistudy.jsonl`；`tests/test_usage_log.py` 覆盖「成功记一行+字段齐全 / 四 feature 标签 / 失败不记 / 写盘失败不影响主流程」。
 > - **回写锚点**：本项无专属 REQ-ID，归属 §7（AI 层调用封装）与 §11（可观测·成本）横切能力；§11 表格「成本」行已同步标注。
+
+### 12.25 需求登记（v2.4.0，2026-09-18，**待实现**）
+- **本次迭代 REQ**：`CHECKIN-001~008`（每日打卡与连胜）、`NOTIF-001~008`（通知与提醒）、`SET-001~005`（个人设置）——定义见 §3.11 / §3.12 / §3.13，域前缀已登记进 §0.2 表（`CR-2026-0918-STREAK`）。
+- **状态：规格已定稿，代码未实现。** 已定稿内容 = REQ 定义 + 数据模型（4 张新表 + `users.avatar`）+ API 契约 + 前端改动清单 + 验收 DoD。
+- **执行方案（交给 Claude Code 的唯一上下文）**：`DesignSpec-学生端打卡连胜与通知-执行方案.md`（仓库根目录）。
+- **回写要求**：实现完成后，交付方**必须**把本条改写为「实现状态回写（v2.4.0）」，逐条标注 ✅/⚠️ 并附实测证据（测试名 / 端点响应 / 线上验证命令），同时按 §5 版本号诚实规则把 `app.py version` 与 `CHANGELOG.md` 对齐到 `2.4.0`。
+- **范围边界**：只做学生端 journey/打卡/通知；教师端**仅复用**设置页与通知中心，业务逻辑不动。
 
