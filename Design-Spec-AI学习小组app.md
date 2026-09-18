@@ -826,7 +826,7 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 | CHECKIN-001~008 | ✅ | 服务端唯一判定 + 幂等（`daily_checkins UNIQUE`）+ 今日卡组/练习自动装配 + 顶部连胜条 + 班级今日打卡 |
 | NOTIF-001/003/004/006/007/008 | ✅ | 通知中心（列表/未读/已读/跳转）、发布路径/测评通知、nudge 限流、streak_done 即时通知、铃铛未读角标 |
 | NOTIF-002 | ⚠️ | Web Push（VAPID）订阅/推送/降级/404-410 删订阅已实现；真机 push 授权需 Ray 配合点授权 |
-| NOTIF-005 | ⚠️ | `checkin_reminder.py` + 文案池 + 萌图 + plist 已交付；LaunchAgent 安装与真机 19:00 触发由 Hermes 执行 |
+| NOTIF-005 | ⚠️ | `checkin_reminder.py` + 文案池 + 萌图 + plist 已交付；LaunchAgent 已安装（2026-09-19）；**收件人口径经 v2.4.1 修正，见 §12.26**。真机 19:00 触发需 Ray 配合 |
 | SET-001~004 | ✅ | 独立设置页、改名（1–20 字）、预设头像（a1..a12 白名单）、复用改密端点 |
 | SET-005 | ⚠️ | Web Push 授权/订阅开关已实现；真机授权需 Ray 配合验证 |
 
@@ -839,4 +839,13 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 - **验收基建修复（Hermes，2026-09-18，不涉业务代码）**：`tests/conftest.py` 新增 autouse fixture `_no_real_llm`（全局清空 `DEEPSEEK_API_KEY`）+ `client` fixture 内补 `app.config["DEEPSEEK_API_KEY"] = ""`。根因：`config.py` 的 key 是**模块首次 import 时**绑定的类属性，验收脚本 `set -a; source .env` 后再跑 pytest，收集阶段 `import ai/*` 已让 config 记下真 key；而 `agents._config()` 在应用上下文里优先读 `current_app.config`，`monkeypatch.setenv` 盖不住 → 单测**真去打 DeepSeek**，`test_advice_uses_recent_quiz_chapter_mastery_and_wrong_concept` 与 `test_essay_three_tiers` 随模型措辞随机失败（该不确定性在 v2.3.0 之前已存在，非 v2.4.0 引入）。修后 `make lint test smoke` exit=0，`make test` 连跑 3 轮均 exit=0。
 - **范围边界（未越界）**：只做学生端 journey/打卡/通知；教师端**仅复用**设置页与通知中心（共享 `appbar`/`viewSettings`/`viewNotifications`），教师端业务逻辑未动；未碰「按章节浏览卡片 / 自主练习 / 测评」既有逻辑。
 - **诚实清单（未做）**：真机 Web Push 授权与推送、19:00 LaunchAgent 安装与真机触发（均需 Hermes/Ray 配合）；补签卡 / 连胜道具 / 自定义头像上传 / 教师端打卡报表（YAGNI，见 §9 登记）。
+
+### 12.26 实现状态回写（v2.4.1，2026-09-19，NOTIF-005 收件人口径修复）
+
+- **REQ 归属**：`NOTIF-005`（每日 19:00 未打卡连胜提醒）。本次为**缺陷修复**，REQ 定义本身不变，仅修正实现口径。
+- **缺陷**：v2.4.0 按执行方案 §2.6 把 19:00 提醒的收件人钉为 `notification_prefs.push_enabled = 1 AND remind_1900 = 1`。但 `push_enabled` 语义是**浏览器推送订阅开关**且默认 `0`（须学生先进设置页点「打开提醒」才会写 1），而 `notification_prefs` 行是懒创建的（无记录时无行）→ **两个条件叠加导致该提醒实际发不出任何人**，站内通道被推送开关连坐。手动试跑 `[checkin_reminder] sent=0` 即为此症状（当时确无 prefs 行，掩盖了问题）。
+- **修复**：`backend/scripts/checkin_reminder.py` 抽出 `eligible_students(con)`，改为 `LEFT JOIN notification_prefs` + `COALESCE(np.remind_1900, 1) = 1`。**口径**：站内提醒默认发给全体在用学生（排除测试号 `EXCLUDED_USERNAMES`、排除当日已达标者、排除显式关掉 `remind_1900` 的人）；**Web Push 仍只投递给已存在订阅行的学生**（订阅行存在本身即代表其点过「打开提醒」），双通道职责解耦。
+- **新增测试**：`tests/test_checkin_reminder.py`（importlib 按路径加载脚本，不污染 `scripts/` 包结构）4 项——① 收件人口径（无 prefs 行默认可收 / `remind_1900=0` 排除 / 已达标排除 / 测试号排除）；② 三条俏皮文案与萌图映射齐全；③ 端到端重跑幂等（同日不重复落库）。`pytest -q --no-cov tests/test_checkin_reminder.py` → **4 passed**。
+- **版本一致性**：`backend/app.py version == 2.4.1`；`CHANGELOG.md` 新增 `## [2.4.1] - 2026-09-19`；`sw.js` CACHE 保持 `v43`（无前端改动，不需 bump）。
+- **范围边界**：仅动提醒脚本收件人查询 + 补测试 + CHANGELOG + 版本号，未触碰打卡判定、通知中心、Web Push 发送链路。
 

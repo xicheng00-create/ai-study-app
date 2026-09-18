@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """19:00 未打卡提醒（NOTIF-005）。
 
-本机直连库，不经 HTTP。只发给：role='student' + is_active=1 + 非测试号 +
-今日未达标 + notification_prefs.push_enabled=1 且 remind_1900=1。
-由 launchd `com.aistudy.checkin-reminder` 每天 19:00 触发（只写脚本与 plist，不安装）。
+本机直连库，不经 HTTP。收件人 = role='student' + is_active=1 + 非测试号 +
+今日未达标 + 未关闭 19:00 提醒（`remind_1900`，无 prefs 记录视为开）。
+站内通知一律落库（App 内通知中心可见）；Web Push 只到「已授权订阅」的学生——
+订阅行的存在与否本身就代表他点过设置页的「打开提醒」，故这里不按 push_enabled 过滤，
+否则没开推送的学生会连站内提醒都收不到。
+由 launchd `com.aistudy.checkin-reminder` 每天 19:00 触发。
 """
 import logging
 import os
@@ -25,6 +28,20 @@ def _load_env(path: Path) -> None:
             continue
         key, val = line.split("=", 1)
         os.environ.setdefault(key.strip(), val.strip())
+
+
+def eligible_students(con) -> list:
+    """当日可提醒学生：在用学生（非测试号由调用方排除）+ 未关闭 19:00 提醒。
+
+    无 notification_prefs 记录时按默认「开」处理（COALESCE 1），
+    否则新学生永远收不到提醒（prefs 行是懒创建的）。
+    """
+    return con.execute(
+        "SELECT u.id, u.display_name, u.username FROM users u"
+        " LEFT JOIN notification_prefs np ON np.user_id=u.id"
+        " WHERE u.role='student' AND u.is_active=1"
+        " AND COALESCE(np.remind_1900, 1)=1"
+    ).fetchall()
 
 
 def main() -> int:
@@ -50,12 +67,7 @@ def main() -> int:
 
     with app.app_context():
         con = get_db()
-        rows = con.execute(
-            "SELECT u.id, u.display_name, u.username FROM users u"
-            " JOIN notification_prefs np ON np.user_id=u.id"
-            " WHERE u.role='student' AND u.is_active=1"
-            " AND np.push_enabled=1 AND np.remind_1900=1"
-        ).fetchall()
+        rows = eligible_students(con)
         for r in rows:
             if r["username"] in EXCLUDED_USERNAMES:
                 continue

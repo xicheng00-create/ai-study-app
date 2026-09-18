@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.4.1] - 2026-09-19
+
+### Fixed
+- **19:00 未打卡提醒收件人口径**：原实现要求 `notification_prefs.push_enabled=1 且 remind_1900=1`，而 `push_enabled` 默认 0（需学生先在设置页点「打开提醒」）且 prefs 行是懒创建的 → 19:00 提醒实际**发不出任何人**（站内通道被推送开关连坐）。改为 `LEFT JOIN notification_prefs` + `COALESCE(remind_1900, 1)=1`：站内提醒默认发给全体在用学生（除测试号、除当日已达标、除自己关掉提醒的人），Web Push 仍只到已授权订阅的学生（订阅行的存在即表示点过「打开提醒」）。新增 `tests/test_checkin_reminder.py`（收件人口径 / 三条文案与萌图 / 端到端幂等）；脚本抽出 `eligible_students(con)` 便于测试。
+- `backend/app.py` 版本 → `2.4.1`（前端与 `sw.js` CACHE 无改动，保持 `aistudy-shell-v43`）。
+
 ## [2.4.0] - 2026-09-18
 
 ### Added
