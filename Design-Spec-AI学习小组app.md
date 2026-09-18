@@ -836,6 +836,7 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
   - `tests/test_notify.py`：通知落库 + 未读 + 已读、nudge 同日同对限流 400、发布 session/quiz 后每生各 1 条、push 发送抛错仍落库且 HTTP 200（降级）。
   - `PATCH /api/auth/me` 改名/换头像生效，非法头像/空名返回 400。
 - **版本一致性**：`backend/app.py version == 2.4.0`；`CHANGELOG.md` 新增 2.4.0 条目；`sw.js` CACHE bump `v42 → v43`；`requirements.txt` 登记 `pywebpush>=2.0`。
+- **验收基建修复（Hermes，2026-09-18，不涉业务代码）**：`tests/conftest.py` 新增 autouse fixture `_no_real_llm`（全局清空 `DEEPSEEK_API_KEY`）+ `client` fixture 内补 `app.config["DEEPSEEK_API_KEY"] = ""`。根因：`config.py` 的 key 是**模块首次 import 时**绑定的类属性，验收脚本 `set -a; source .env` 后再跑 pytest，收集阶段 `import ai/*` 已让 config 记下真 key；而 `agents._config()` 在应用上下文里优先读 `current_app.config`，`monkeypatch.setenv` 盖不住 → 单测**真去打 DeepSeek**，`test_advice_uses_recent_quiz_chapter_mastery_and_wrong_concept` 与 `test_essay_three_tiers` 随模型措辞随机失败（该不确定性在 v2.3.0 之前已存在，非 v2.4.0 引入）。修后 `make lint test smoke` exit=0，`make test` 连跑 3 轮均 exit=0。
 - **范围边界（未越界）**：只做学生端 journey/打卡/通知；教师端**仅复用**设置页与通知中心（共享 `appbar`/`viewSettings`/`viewNotifications`），教师端业务逻辑未动；未碰「按章节浏览卡片 / 自主练习 / 测评」既有逻辑。
 - **诚实清单（未做）**：真机 Web Push 授权与推送、19:00 LaunchAgent 安装与真机触发（均需 Hermes/Ray 配合）；补签卡 / 连胜道具 / 自定义头像上传 / 教师端打卡报表（YAGNI，见 §9 登记）。
 
