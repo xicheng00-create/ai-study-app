@@ -300,7 +300,7 @@
 - **CHECKIN-005 / CHECKIN-006（P0）自动安排学习任务**：今日卡组（**装配优先级见 CHECKIN-009/010**，**跨章**，上限 10）与今日练习（5 道；当天已有未答完的 session 优先续答）**全部由服务端自动装配**，学生只需点「继续」。 ✅ v2.4.0 首版「到期复习卡优先 → 未学新卡按章节补齐」存在口径与兜底缺陷，已被 **CHECKIN-009/010/011** 取代，见 §12.27。
 - **CHECKIN-007（P0）顶部常驻连胜条**：学生端**所有页面**常驻（🔥 图标 + 连胜天数 + 今日进度 `x/10 卡 · y/5 题` + 状态文案 `今天还没打卡` / `✓ 今日已完成`）；达标瞬间条变色 + toast「🔥 连胜 +1，已连续 N 天」。教师端不显示。 ✅
 - **CHECKIN-008（P0）班级「今日打卡」区块**：班级页**置顶**（先于现有排行榜卡），按「已打卡优先」排列，每人一行：头像 + 名字 + `🔥 N 天` + `x/10 卡 · y/5 题`（达标行绿色高亮、自己标 `me`）；未打卡同学行尾「提醒 TA」按钮（→ NOTIF-006）。 ✅
-- **CHECKIN-009（P0）「未学习」口径修正 + 任务优先发未学习卡**（CR-2026-0919-DECK）：「未学习」= **`learn_count = 0`（从未真正翻过卡）**，**不是**「没有 `knowledge_reviews` 行」——因为学生只要点开某章「知识卡片」浏览一次，`GET /api/knowledge/<chapter_id>` 就会为该章**全量**懒建 review 行（`status='new'`、`learn_count=0`、`next_review_at=now`）。现状把这类「只看过一眼」的卡误判为「已建行 → 不是新卡」，同时又因 `next_review_at=now ≤ today` 被塞进「到期复习」桶 → **学生永远在复习从没学过的卡，课程进度推不动**。修正后今日任务**优先发未学习卡**（按 `chapter_id, rowid` 顺序，保证按课程顺序推进），再补到期复习卡。 ✅
+- **CHECKIN-009（P0）「未学习」口径修正 + 任务优先发未学习卡**（CR-2026-0919-DECK）：「未学习」= **`learn_count = 0`（从未真正翻过卡）**，**不是**「没有 `knowledge_reviews` 行」——因为学生只要点开某章「知识卡片」浏览一次，`GET /api/knowledge/<chapter_id>` 就会为该章**全量**懒建 review 行（`status='new'`、`learn_count=0`、`next_review_at=now`）。现状把这类「只看过一眼」的卡误判为「已建行 → 不是新卡」，同时又因 `next_review_at=now ≤ today` 被塞进「到期复习」桶 → **学生永远在复习从没学过的卡，课程进度推不动**。修正后今日任务**优先发未学习卡**（按 `chapters.folder, order_no, name, kc.rowid` 课程顺序推进），再补到期复习卡。 ✅
 - **CHECKIN-010（P0）卡组三档兜底，永不返回空**（CR-2026-0919-DECK）：装配优先级 **① 未学习卡 → ② 到期复习卡 → ③ 低掌握度随机补足**。第③档（**CHECKIN-010 核心**）解决用户实报死路——学生把全部卡学成 `mastered` / 未到期时会拿到 **0 张卡**，前端 `toast('今天没有可复习的卡片')` 后直接 return，**学生卡死、无法凑够 10 张、连胜断掉且无任何出路**。掌握度序 = `status 档位权重（new<learning<reviewing<mastered）→ learn_count → interval_days` 升序（越小越差）；从**最差的前 `max(3×limit, 20)` 张候选池内随机洗牌**后取 `limit`，同时满足「掌握度低」与「随机」。只要库中有已发布章节的卡片，卡组**绝不空**。 ✅
 - **CHECKIN-011（P0）超额学习（想多学也可以）**（CR-2026-0919-DECK）：学生**可以无限继续学**，不受每日 10 张限制。任务行 100% 后按钮由「已完成 / disabled」变为**可点的「再学一组」**；额外卡组**排除今日已复习过的卡**（避免重复劳动刷进度），继续计入 distinct 与掌握度，但**不改变任务进度条的 10/10 语义**（`counts_today` 仍是上限口径，达标判定不受影响）。 ✅
 - **CHECKIN-012（P1）真空引导**（CR-2026-0919-DECK）：若库中确实**一张已发布卡都没有**（真真空，非三档兜底能救），接口返回明确的 `empty_reason`；前端不再只弹一句 toast 了事，改为**给出可点击的出路**（跳「资料库」勾选章节 → 生成知识卡片）。 ✅
@@ -312,7 +312,7 @@
 - 新增表 `daily_checkins`；新增 `backend/data/checkin.py`（判定/连胜/班级投影/今日卡组装配）；新增 blueprint `checkin_bp`（`/api/checkin`：`GET today` / `GET class` / `POST nudge` / `POST start-practice`）；`knowledge_bp` 增 `GET /api/knowledge/today`。 ✅
 - **YAGNI（明确不做）**：补签卡、连胜冻结/复活/保护道具、打卡阈值前端可配置 UI。
 - **卡组装配契约（CHECKIN-009~012，CR-2026-0919-DECK）**：
-  - 装配函数仍为 `backend/data/checkin.py::build_today_deck(con, user_id, limit=None, mode="task", rng=None)`；三档顺序 **① 未学习（`learn_count=0`，按 `kc.chapter_id, kc.rowid`）→ ② 到期复习（`status != 'mastered'` 且 `date(next_review_at, UTC+8) ≤ today`，按 `next_review_at ASC`）→ ③ 低掌握度随机补足**；去重后截到 `limit`。
+  - 装配函数仍为 `backend/data/checkin.py::build_today_deck(con, user_id, limit=None, mode="task", rng=None)`；三档顺序 **① 未学习（`learn_count=0`，按 `chapters.folder, chapters.order_no, chapters.name, kc.rowid` 课程顺序）→ ② 到期复习（`status != 'mastered'` 且 `date(next_review_at, UTC+8) ≤ today`，按 `next_review_at ASC`）→ ③ 低掌握度随机补足**；去重后截到 `limit`。
   - **第③档算法**：候选 = 已发布章节的全部卡，按 `(status 权重, learn_count ASC, interval_days ASC)` 升序取前 `POOL = max(3*limit, 20)` 张，池内 `rng.shuffle()` 后补足。`rng` 参数默认 `random.Random()`，**测试注入固定 seed 保证确定性**。
   - **永不返回空**：只要存在「已发布章节的卡」，`cards` 长度 `> 0`。真真空才返回 `cards: []` 且带 `empty_reason`（`no_published_cards`）。
   - **返回值扩展**：保留 `cards` / `required` / `short`；每张卡新增 `learn_count`（判「未学习」用，前端可显示「新卡」角标）；新增 `empty_reason`；`mode="extra"` 时新增 `extra: true`。
@@ -871,7 +871,7 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 
 | REQ | 状态 | 说明 |
 |---|---|---|
-| CHECKIN-009 | ✅ | 「未学习」改为 `learn_count=0`；今日任务优先发未学卡（`chapter_id, rowid` 课程顺序） |
+| CHECKIN-009 | ✅ | 「未学习」改为 `learn_count=0`；今日任务优先发未学卡（`chapters.folder, order_no, name, kc.rowid` 课程顺序） |
 | CHECKIN-010 | ✅ | 三档装配 ①未学 → ②到期复习 → ③低掌握随机补足；只要存在已发布卡则 `cards` 必非空 |
 | CHECKIN-011 | ✅ | 任务行达标后「再学一组」（可点）→ `?mode=extra` 卡组，排除今日已复习，进度 key 隔离 |
 | CHECKIN-012 | ✅ | 接口返回 `empty_reason`；真真空前端给「去资料库」可点出路 |
@@ -881,15 +881,16 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
   - 同库 `Qingran`（`learning`:4 + `new`:60）、`Winnie`（`new`:64）的 60/64 张 `new` 行 **`learn_count` 全为 0** —— 是 `GET /api/knowledge/<chapter_id>` 浏览章节时 `_review()` **全量懒建**出来的，学生从未真正翻过，却既不算「新卡」又被算作「到期」→ 任务永远发旧卡、推不动新课。
 
 - **实现改动**：
-  1. `backend/data/checkin.py::build_today_deck(con, user_id, limit=None, mode="task", rng=None)` —— 三档装配 + `mode`（白名单回落）+ `rng`（测试注入固定 seed）+ `empty_reason` + 每卡带 `learn_count`；`mode="extra"` 排除今日已复习、`short` 恒 False、返回 `extra: True`。
+  1. `backend/data/checkin.py::build_today_deck(con, user_id, limit=None, mode="task", rng=None)` —— 三档装配 + `mode`（白名单回落）+ `rng`（测试注入固定 seed）+ `empty_reason` + 每卡带 `learn_count`；`mode="extra"` 排除今日已复习、`short` 恒 False、返回 `extra: True`。档① 未学卡按 **`chapters.folder, chapters.order_no, chapters.name, kc.rowid` 课程顺序**排序（`LEFT JOIN chapters`）。
   2. `backend/api/knowledge.py::today_deck` —— 接受 `?mode=task|extra`，非法值回落 `task`，不返回 4xx；`GET /api/checkin/today` 内 `task.cards` 仍为 `mode="task"` 口径不变。
   3. `backend/frontend/js/student.js` —— `taskCardHtml()` 给 `task()` 加 `afterDone` 参数，「复习卡片」行达标后变可点「再学一组」；`startTodayDeck()` 空卡组按 `empty_reason` 给「去资料库」出路；新增 `startExtraDeck()`；`_kcTodayKey()` 加 `_extra` 后缀隔离额外组进度，任务组续学不受影响。
-  4. `tests/test_checkin.py` —— 增 7 项卡组装配用例（见下），既有用例不回归。
+  4. `tests/test_checkin.py` —— 增 8 项卡组装配用例（见下），既有用例不回归。
 
 - **实测证据**：
-  - `python -m py_compile` 通过；`node --check backend/frontend/js/student.js` 通过；`make lint test smoke` exit=0（`set -a; source .env; set +a`），`113 passed`，覆盖率 75.96%（≥50%），smoke `/health` 返回 `version:2.5.0`，端口 5002 已释放。
-  - 新增用例：`test_deck_three_tier_priority`（三档优先级）、`test_deck_unlearned_means_learn_count_zero`（未学习口径）、`test_deck_mastered_still_fills`（全 mastered 仍发满 10 张——用户 bug 回归）、`test_deck_same_seed_deterministic`（同 seed 一致）、`test_deck_low_mastery_priority`（低掌握度优先）、`test_deck_extra_excludes_today_reviewed`（extra 排除今日已复习）、`test_deck_empty_reason_no_published_cards`（真真空 empty_reason）。
-- **版本一致性**：`backend/app.py version == 2.5.0`；`CHANGELOG.md` 新增 `## [2.5.0] - 2026-09-19`；`sw.js` CACHE bump `v43 → v44`；`requirements.txt` 无新增依赖（符合边界）。
+  - `python -m py_compile` 通过；`node --check backend/frontend/js/student.js` 通过；`make lint test smoke` exit=0（`set -a; source .env; set +a`），`114 passed`，覆盖率 ≥50%，smoke `/health` 返回 `version:2.5.0`，端口 5002 已释放。
+  - 新增用例：`test_deck_three_tier_priority`（三档优先级）、`test_deck_unlearned_means_learn_count_zero`（未学习口径）、`test_deck_mastered_still_fills`（全 mastered 仍发满 10 张——用户 bug 回归）、`test_deck_same_seed_deterministic`（同 seed 一致）、`test_deck_low_mastery_priority`（低掌握度优先）、`test_deck_extra_excludes_today_reviewed`（extra 排除今日已复习）、`test_deck_empty_reason_no_published_cards`（真真空 empty_reason）、`test_deck_order_follows_course_order`（档① 课程顺序，见下）。
+- **修正记录（2026-09-19，同 commit）**：档① 初版按 `kc.chapter_id, kc.rowid` 排序，但 `chapters.id` 是 **UUID**，字典序与课程顺序无关。Hermes 真机核对发现 Han/Qingran/Winnie 首组 10 张卡**全部来自「第1周·第2节 · AI 产品地图」**（第2节 id `2f757690-…` 字典序 < 第1节 id `d6213d0c-…`），课程顺序倒置。修正为按 `chapters.folder, order_no, name, kc.rowid` 排序，并补回归单测 `test_deck_order_follows_course_order`（id 字典序与 `order_no` 相反时仍先发 `order_no` 小的章）。
+- **版本一致性**：`backend/app.py version == 2.5.0`（**保持不变**，该版本尚未发布）；`CHANGELOG.md` 在 `## [2.5.0]` 条目内补「档① 按课程顺序」说明；`sw.js` CACHE **保持 `v44`**（本次未改前端 `student.js`）；`requirements.txt` 无新增依赖（符合边界）。
 - **范围边界（未越界）**：未改 `GET /api/knowledge/<chapter_id>` 的懒建行行为（KNOW 域既有设计，仅在判定口径上绕过）；未改打卡判定 `counts_today` / `evaluate_and_maybe_complete` 与阈值常量；未改班级页、通知中心、19:00 提醒脚本、`sw.js` 缓存策略；未动教师端；未新增依赖。
 - **诚实清单（未做）**：真机验证（线上 5003 重启 + Ray 真机复测 `hermesstu` 卡死场景）由 Hermes 执行；补签卡 / 连胜道具 / 卡组配比学生自定义（YAGNI，见 §9 登记）。
 

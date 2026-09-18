@@ -3,7 +3,7 @@
 ## [2.5.0] - 2026-09-19
 
 ### Added
-- **今日卡组三档兜底，永不返回空（CHECKIN-010）**：`build_today_deck` 装配优先级改为 **① 未学习（`learn_count=0`）→ ② 到期复习 → ③ 低掌握度随机补足**。第③档按 `(status 档位权重 → learn_count → interval_days)` 升序取最差 `max(3×limit, 20)` 张候选池，池内随机洗牌后补足。只要库中有「已发布章节的卡」，卡组必非空，根治「学生把卡学成 mastered / 未到期 → 拿 0 张卡死」的真机缺陷。
+- **今日卡组三档兜底，永不返回空（CHECKIN-010）**：`build_today_deck` 装配优先级改为 **① 未学习（`learn_count=0`，按 `chapters.folder, order_no, name, kc.rowid` 课程顺序）→ ② 到期复习 → ③ 低掌握度随机补足**。第③档按 `(status 档位权重 → learn_count → interval_days)` 升序取最差 `max(3×limit, 20)` 张候选池，池内随机洗牌后补足。只要库中有「已发布章节的卡」，卡组必非空，根治「学生把卡学成 mastered / 未到期 → 拿 0 张卡死」的真机缺陷。
 - **「未学习」口径修正 + 任务优先发未学卡（CHECKIN-009）**：「未学习」= `learn_count=0`（从未真正翻过卡），不再用「无 `knowledge_reviews` 行」判定——绕开 `GET /api/knowledge/<chapter_id>` 浏览章节时全量懒建 review 行导致的「新卡永远推不进任务」。
 - **超额学习（CHECKIN-011）**：任务行达标后「复习卡片」按钮由 disabled 变为可点「再学一组」，请求 `?mode=extra` 卡组（排除今日已复习过的卡，进度 key 与任务组隔离），想多学不受 10 张限制，任务进度条仍保持 `10/10` 语义。
 - **真空引导（CHECKIN-012）**：接口返回 `empty_reason`；真真空（无已发布卡）时前端不再只弹一句 toast，改为给「去资料库」可点出路。

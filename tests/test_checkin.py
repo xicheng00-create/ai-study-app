@@ -336,3 +336,29 @@ def test_deck_empty_reason_no_published_cards(client, teacher_headers, monkeypat
         deck = checkin.build_today_deck(con, uid, limit=10, rng=random.Random(42))
         assert deck["cards"] == []
         assert deck["empty_reason"] == "no_published_cards"
+
+
+def test_deck_order_follows_course_order(client, teacher_headers, monkeypatch):
+    """档① 按课程顺序（chapters.folder/order_no/name）而非 UUID 字典序：id 字典序与 order_no 相反时仍先发 order_no 小的章。"""
+    uid = make_student(client, teacher_headers, "deck_order")
+    with client.application.app_context():
+        from data.db import get_db
+        con = get_db()
+        # id 字典序 "zzz" > "aaa"，但 order_no=1 的章（"zzz"）应排最前
+        con.execute(
+            "INSERT INTO chapters (id, name, order_no, status, created_at) VALUES (?, ?, ?, 'published', ?)",
+            ("zzz-ch-1", "第1节", 1, models.utcnow()),
+        )
+        con.execute(
+            "INSERT INTO chapters (id, name, order_no, status, created_at) VALUES (?, ?, ?, 'published', ?)",
+            ("aaa-ch-2", "第2节", 2, models.utcnow()),
+        )
+        for cid in ("zzz-ch-1", "aaa-ch-2"):
+            for i in range(2):
+                _insert_card(con, f"{cid}-c{i}", cid, f"{cid}-c{i}")
+        con.commit()
+        deck = checkin.build_today_deck(con, uid, limit=4, rng=random.Random(42))
+        ids = [c["id"] for c in deck["cards"]]
+        # 先 order_no=1 章的 2 张，再 order_no=2 章的 2 张
+        assert ids[:2] == ["zzz-ch-1-c0", "zzz-ch-1-c1"]
+        assert ids[2:4] == ["aaa-ch-2-c0", "aaa-ch-2-c1"]

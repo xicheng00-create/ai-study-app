@@ -132,8 +132,9 @@ def build_today_deck(con, user_id, limit=None, mode="task", rng=None) -> dict:
         " kr.learn_count, kr.interval_days, kr.next_review_at, kr.status, kr.last_review_at"
         " FROM knowledge_cards kc"
         " LEFT JOIN knowledge_reviews kr ON kr.card_id = kc.id AND kr.user_id = ?"
+        " LEFT JOIN chapters ch ON ch.id = kc.chapter_id"
         " WHERE kc.chapter_id IN (SELECT id FROM chapters WHERE status='published')"
-        " ORDER BY kc.chapter_id, kc.rowid",
+        " ORDER BY ch.folder, ch.order_no, ch.name, kc.rowid",
         (user_id,),
     ).fetchall()
     has_published = len(rows) > 0
@@ -161,7 +162,7 @@ def build_today_deck(con, user_id, limit=None, mode="task", rng=None) -> dict:
     seen = set()
     picked = []
 
-    # ① 未学习（learn_count=0，含无 review 行），按课程顺序（chapter_id, rowid）
+    # ① 未学习（learn_count=0，含无 review 行），按课程顺序（chapters.folder/order_no/name, rowid）
     for c in cards:
         if c["learn_count"] == 0:
             seen.add(c["id"])
