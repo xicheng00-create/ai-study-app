@@ -1236,7 +1236,7 @@ const Student = {
       return `<div class="checkin-row ${s.user_id === meId ? 'me' : ''} ${s.checked_in ? 'done' : ''}">
         <div class="rank-av">${av}</div>
         <div class="checkin-meta"><div class="nm">${esc(s.name)}${s.user_id === meId ? '<span class="me-tag">我</span>' : ''}</div>
-          <div class="st">🔥 ${s.streak} 天 · ${s.cards}/10 卡 · ${s.questions}/5 题</div></div>
+          <div class="st">🔥 ${s.streak} 天 · ${Math.min(s.cards, 10)}/10 卡 · ${Math.min(s.questions, 5)}/5 题</div></div>
         ${right}</div>`;
     }).join('');
     return `<div class="card"><div class="card-head"><div class="card-title">${ic('pin', 'coral')}今日打卡</div><span class="card-count">${d.students.length} 人</span></div>${rows}</div>`;

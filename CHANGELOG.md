@@ -8,10 +8,11 @@
 - **超额学习（CHECKIN-011）**：任务行达标后「复习卡片」按钮由 disabled 变为可点「再学一组」，请求 `?mode=extra` 卡组（排除今日已复习过的卡，进度 key 与任务组隔离），想多学不受 10 张限制，任务进度条仍保持 `10/10` 语义。
 - **真空引导（CHECKIN-012）**：接口返回 `empty_reason`；真真空（无已发布卡）时前端不再只弹一句 toast，改为给「去资料库」可点出路。
 - **测试**：`tests/test_checkin.py` 增 7 项卡组装配用例（三档优先级 / 未学习口径 / 全 mastered 仍发满 10 张回归 / 同 seed 确定性 / 低掌握度优先 / extra 排除今日已复习 / 真真空 empty_reason）。
+- **进度显示夹取到阈值上限**：连胜条与班级页的卡/题进度显示一律 `Math.min(..., 10/5)`，避免超额学习后 `progress.cards` 超过阈值时出现「19/10 卡」的观感（任务卡 `taskCardHtml` 原本已夹取，本次补齐另外两处）。
 
 ### Changed
 - `backend/api/knowledge.py::today_deck` 接受 `?mode=task|extra`（白名单回落，非法值不返回 4xx）。
-- `backend/app.py` 版本 → `2.5.0`；`sw.js` CACHE bump `v43 → v44`（有前端 JS 改动）。
+- `backend/app.py` 版本 → `2.5.0`；`sw.js` CACHE bump `v43 → v44`（有前端 JS 改动）；随后连胜条/班级页进度夹取又 bump `v44 → v45`。
 
 ## [2.4.1] - 2026-09-19
 

@@ -117,7 +117,7 @@ function streakBar() {
   return `<button class="streak-bar ${done ? 'done' : ''}" onclick="go('learn')">
     <span class="streak-flame">🔥</span>
     <span class="streak-num">${c.streak}</span><span class="streak-days">天</span>
-    <span class="streak-meta"><span class="streak-cap">${c.progress.cards}/10 卡 · ${c.progress.questions}/5 题</span><span class="streak-status">${status}</span></span>
+    <span class="streak-meta"><span class="streak-cap">${Math.min(c.progress.cards, 10)}/10 卡 · ${Math.min(c.progress.questions, 5)}/5 题</span><span class="streak-status">${status}</span></span>
   </button>`;
 }
 function appbar(title, sub, onBack) {
