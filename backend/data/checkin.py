@@ -3,11 +3,15 @@
 服务端唯一判定，幂等：daily_checkins UNIQUE(user_id, checkin_date)。
 时区统一走 timeutil.shanghai_date()（UTC+8），与班级榜 today_* 口径一致。
 """
+import random
 from datetime import timedelta
 
 from config import TASK_CARDS_REQUIRED, TASK_QUESTIONS_REQUIRED
 
 from data import models, timeutil
+
+# 档③低掌握度排序权重：越小越不熟（无 review 行的卡归一为 new）
+_STATUS_WEIGHT = {"new": 0, "learning": 1, "reviewing": 2, "mastered": 3}
 
 
 def today_str() -> str:
@@ -111,62 +115,112 @@ def evaluate_and_maybe_complete(con, user_id) -> dict:
     return streak_info(con, user_id)
 
 
-def build_today_deck(con, user_id, limit=None) -> dict:
-    """今日卡组：到期复习卡优先 → 未学新卡按章节补齐（跨章，上限 limit）。"""
+def build_today_deck(con, user_id, limit=None, mode="task", rng=None) -> dict:
+    """今日卡组（CHECKIN-005/009/010/011）三档装配：①未学习 → ②到期复习 → ③低掌握度随机补足。
+
+    只要库中存在「已发布章节的卡」，cards 必非空（永不返回空 → 前端不卡死）。
+    mode="extra" 排除今日已复习过的卡（额外组不承诺凑满 limit）。
+    """
     limit = limit or TASK_CARDS_REQUIRED
+    if mode not in ("task", "extra"):
+        mode = "task"  # 白名单回落，不报错
+    rng = rng or random.Random()
     today = timeutil.today_str()
 
-    # 1) 到期复习卡（next_review_at ≤ 今天，UTC+8，非 mastered 优先）
-    due = []
-    for r in con.execute(
+    rows = con.execute(
         "SELECT kc.id, kc.chapter_id, kc.sub_concept, kc.front, kc.back,"
         " kr.learn_count, kr.interval_days, kr.next_review_at, kr.status, kr.last_review_at"
-        " FROM knowledge_cards kc JOIN knowledge_reviews kr ON kr.card_id=kc.id"
-        " WHERE kr.user_id=? AND kr.status != 'mastered'",
-        (user_id,),
-    ).fetchall():
-        if r["next_review_at"] and timeutil.shanghai_date(r["next_review_at"]) <= today:
-            due.append(r)
-
-    # 2) 未学过的新卡（无 knowledge_reviews 行），按章节顺序补齐
-    new = con.execute(
-        "SELECT kc.id, kc.chapter_id, kc.sub_concept, kc.front, kc.back,"
-        " NULL AS learn_count, NULL AS interval_days, NULL AS next_review_at,"
-        " 'new' AS status, NULL AS last_review_at"
         " FROM knowledge_cards kc"
-        " WHERE NOT EXISTS (SELECT 1 FROM knowledge_reviews kr WHERE kr.card_id=kc.id AND kr.user_id=?)"
-        " AND kc.chapter_id IN (SELECT id FROM chapters WHERE status='published')"
+        " LEFT JOIN knowledge_reviews kr ON kr.card_id = kc.id AND kr.user_id = ?"
+        " WHERE kc.chapter_id IN (SELECT id FROM chapters WHERE status='published')"
         " ORDER BY kc.chapter_id, kc.rowid",
         (user_id,),
     ).fetchall()
+    has_published = len(rows) > 0
 
-    seen = set()
-    picked = []
-    for r in due + new:
-        if r["id"] in seen:
-            continue
-        seen.add(r["id"])
-        picked.append(r)
-        if len(picked) >= limit:
-            break
-
-    def _fmt(r):
-        ch = con.execute("SELECT name FROM chapters WHERE id=?", (r["chapter_id"],)).fetchone()
-        return {
+    # 无 review 行归一：视为未学（status='new'、learn_count=0、interval_days=0、next_review_at=None）
+    cards = []
+    for r in rows:
+        cards.append({
             "id": r["id"],
             "chapter_id": r["chapter_id"],
-            "chapter_name": ch["name"] if ch else "",
             "sub_concept": r["sub_concept"],
             "front": r["front"],
             "back": r["back"],
-            "status": r["status"],
+            "learn_count": int(r["learn_count"] or 0),
+            "interval_days": int(r["interval_days"] or 0),
+            "next_review_at": r["next_review_at"],
+            "status": r["status"] or "new",
+            "last_review_at": r["last_review_at"],
+        })
+
+    # extra：先排除今日已复习过的卡（避免重复劳动刷进度）
+    if mode == "extra":
+        cards = [c for c in cards if not (c["last_review_at"] and timeutil.shanghai_date(c["last_review_at"]) == today)]
+
+    seen = set()
+    picked = []
+
+    # ① 未学习（learn_count=0，含无 review 行），按课程顺序（chapter_id, rowid）
+    for c in cards:
+        if c["learn_count"] == 0:
+            seen.add(c["id"])
+            picked.append(c)
+            if len(picked) >= limit:
+                break
+
+    # ② 到期复习（已学过且非 mastered 且 next_review_at 已到），按到期时间升序
+    if len(picked) < limit:
+        due = [c for c in cards if c["id"] not in seen and c["learn_count"] > 0
+               and c["status"] != "mastered" and c["next_review_at"]
+               and timeutil.shanghai_date(c["next_review_at"]) <= today]
+        due.sort(key=lambda c: c["next_review_at"])
+        for c in due:
+            seen.add(c["id"])
+            picked.append(c)
+            if len(picked) >= limit:
+                break
+
+    # ③ 低掌握度随机补足：候选按「不熟 → 熟」排序，取最差 POOL 池后洗牌补齐（CHECKIN-010）
+    if len(picked) < limit:
+        rest = [c for c in cards if c["id"] not in seen]
+        rest.sort(key=lambda c: (_STATUS_WEIGHT.get(c["status"], 3), c["learn_count"], c["interval_days"]))
+        pool = rest[:max(3 * limit, 20)]
+        rng.shuffle(pool)
+        for c in pool:
+            seen.add(c["id"])
+            picked.append(c)
+            if len(picked) >= limit:
+                break
+
+    def _fmt(c):
+        ch = con.execute("SELECT name FROM chapters WHERE id=?", (c["chapter_id"],)).fetchone()
+        return {
+            "id": c["id"],
+            "chapter_id": c["chapter_id"],
+            "chapter_name": ch["name"] if ch else "",
+            "sub_concept": c["sub_concept"],
+            "front": c["front"],
+            "back": c["back"],
+            "status": c["status"],
+            "learn_count": c["learn_count"],
             "overdue": bool(
-                r["next_review_at"] and r["status"] not in ("new", "mastered")
-                and timeutil.shanghai_date(r["next_review_at"]) <= today
+                c["next_review_at"] and c["status"] not in ("new", "mastered")
+                and timeutil.shanghai_date(c["next_review_at"]) <= today
             ),
         }
 
-    return {"cards": [_fmt(r) for r in picked], "required": limit, "short": len(picked) < limit}
+    result = {
+        "cards": [_fmt(c) for c in picked],
+        "required": limit,
+        "short": len(picked) < limit,
+    }
+    if mode == "extra":
+        result["extra"] = True
+        result["short"] = False  # 额外组不承诺凑满 limit
+    # 真真空（库中无已发布章节的卡）才给明确引导；额外组学完属正常，不给 reason
+    result["empty_reason"] = "" if (picked or has_published) else "no_published_cards"
+    return result
 
 
 def _student_map(con):

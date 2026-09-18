@@ -1,7 +1,10 @@
 """每日打卡与连胜（CHECKIN）：阈值 / distinct / 日界 / 连胜存活 / 幂等。"""
+import random
+from datetime import timedelta
+
 from ai import knowledge, quizzer
 from conftest import login, make_student
-from data import checkin, models
+from data import checkin, models, timeutil
 
 
 def _chapter(client, teacher_headers, name="章"):
@@ -186,3 +189,150 @@ def test_today_pending_state(client, teacher_headers, monkeypatch):
         con.commit()
     d = _today(client, h)
     assert d["done"] is False and d["state"] == "pending" and d["streak"] == 4 and d["alive"] is True
+
+
+# ---- 卡组三档装配（CHECKIN-009~012）----
+
+def _insert_card(con, card_id, cid, front):
+    con.execute(
+        "INSERT INTO knowledge_cards (id, chapter_id, front, back, created_at) VALUES (?, ?, ?, ?, ?)",
+        (card_id, cid, front, "b", models.utcnow()),
+    )
+
+
+def _insert_review(con, card_id, uid, *, learn_count=0, status="new", interval_days=1,
+                   next_review_at=None, last_review_at=None):
+    con.execute(
+        "INSERT INTO knowledge_reviews (id, card_id, user_id, learn_count, interval_days,"
+        " next_review_at, status, last_review_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (models.new_id(), card_id, uid, learn_count, interval_days,
+         next_review_at or models.utcnow(), status, last_review_at, models.utcnow()),
+    )
+
+
+def test_deck_three_tier_priority(client, teacher_headers, monkeypatch):
+    """三档优先级：未学（learn_count=0）→ 到期复习 → 低掌握随机补足。"""
+    uid = make_student(client, teacher_headers, "deck_tier")
+    cid = _chapter(client, teacher_headers)
+    with client.application.app_context():
+        from data.db import get_db
+        con = get_db()
+        for i in range(3):                                   # 未学（无 review 行）
+            _insert_card(con, f"u{i}", cid, f"未学{i}")
+        for i in range(3):                                   # 到期复习（learn_count>0，已到期）
+            _insert_card(con, f"d{i}", cid, f"到期{i}")
+            _insert_review(con, f"d{i}", uid, learn_count=2, status="learning",
+                           next_review_at=f"2020-01-0{i + 1}T00:00:00+00:00")
+        for i in range(3):                                   # 已学未到期（不进档②）
+            _insert_card(con, f"m{i}", cid, f"未到期{i}")
+            _insert_review(con, f"m{i}", uid, learn_count=2, status="reviewing",
+                           next_review_at="2099-01-01T00:00:00+00:00")
+        con.commit()
+        deck = checkin.build_today_deck(con, uid, limit=5, rng=random.Random(42))
+        ids = [c["id"] for c in deck["cards"]]
+        assert ids[:3] == ["u0", "u1", "u2"]                  # 未学优先，按课程顺序
+        assert ids[3:5] == ["d0", "d1"]                       # 到期复习按到期时间升序补足
+
+
+def test_deck_unlearned_means_learn_count_zero(client, teacher_headers, monkeypatch):
+    """「未学习」口径 = learn_count=0（有 review 行也仍算未学，排最前）。"""
+    uid = make_student(client, teacher_headers, "deck_unlearned")
+    cid = _chapter(client, teacher_headers)
+    with client.application.app_context():
+        from data.db import get_db
+        con = get_db()
+        _insert_card(con, "a", cid, "看过一眼")
+        _insert_review(con, "a", uid, learn_count=0, status="new", next_review_at=models.utcnow())
+        _insert_card(con, "b", cid, "学过未到期")
+        _insert_review(con, "b", uid, learn_count=3, status="learning",
+                       next_review_at="2099-01-01T00:00:00+00:00")
+        con.commit()
+        deck = checkin.build_today_deck(con, uid, limit=2, rng=random.Random(42))
+        assert deck["cards"][0]["id"] == "a" and deck["cards"][0]["learn_count"] == 0
+        assert deck["cards"][1]["id"] == "b"
+
+
+def test_deck_mastered_still_fills(client, teacher_headers, monkeypatch):
+    """用户实报 bug 回归：全 mastered / 未到期时仍发满 10 张，永不返回空。"""
+    uid = make_student(client, teacher_headers, "deck_mastered")
+    cid = _chapter(client, teacher_headers)
+    with client.application.app_context():
+        from data.db import get_db
+        con = get_db()
+        for i in range(12):
+            _insert_card(con, f"m{i}", cid, f"mastered{i}")
+            _insert_review(con, f"m{i}", uid, learn_count=5, status="mastered",
+                           next_review_at="2099-01-01T00:00:00+00:00")
+        con.commit()
+        deck = checkin.build_today_deck(con, uid, limit=10, rng=random.Random(42))
+        assert len(deck["cards"]) == 10
+        assert deck["empty_reason"] == ""
+        assert deck["short"] is False
+
+
+def test_deck_same_seed_deterministic(client, teacher_headers, monkeypatch):
+    """同 seed 两次调用返回同一 id 序列（测试确定性）。"""
+    uid = make_student(client, teacher_headers, "deck_seed")
+    cid = _chapter(client, teacher_headers)
+    with client.application.app_context():
+        from data.db import get_db
+        con = get_db()
+        for i in range(12):
+            _insert_card(con, f"s{i}", cid, f"seed{i}")
+            _insert_review(con, f"s{i}", uid, learn_count=1, status="mastered",
+                           next_review_at="2099-01-01T00:00:00+00:00")
+        con.commit()
+        a = [c["id"] for c in checkin.build_today_deck(con, uid, limit=10, rng=random.Random(42))["cards"]]
+        b = [c["id"] for c in checkin.build_today_deck(con, uid, limit=10, rng=random.Random(42))["cards"]]
+        assert a == b
+
+
+def test_deck_low_mastery_priority(client, teacher_headers, monkeypatch):
+    """档③低掌握度优先：learning 填满候选池时 mastered 被挤出（不进入卡组）。"""
+    uid = make_student(client, teacher_headers, "deck_low")
+    cid = _chapter(client, teacher_headers)
+    with client.application.app_context():
+        from data.db import get_db
+        con = get_db()
+        for i in range(30):                                   # learning 权重 1，排最前
+            _insert_card(con, f"l{i}", cid, f"learning{i}")
+            _insert_review(con, f"l{i}", uid, learn_count=1, status="learning",
+                           next_review_at="2099-01-01T00:00:00+00:00")
+        for i in range(5):                                    # mastered 权重 3，排最后
+            _insert_card(con, f"m{i}", cid, f"mastered{i}")
+            _insert_review(con, f"m{i}", uid, learn_count=5, status="mastered",
+                           next_review_at="2099-01-01T00:00:00+00:00")
+        con.commit()
+        deck = checkin.build_today_deck(con, uid, limit=10, rng=random.Random(42))
+        assert all(c["status"] == "learning" for c in deck["cards"])
+
+
+def test_deck_extra_excludes_today_reviewed(client, teacher_headers, monkeypatch):
+    """mode=extra 排除今日已复习的卡，且 short 恒 False、extra 标记置 True。"""
+    uid = make_student(client, teacher_headers, "deck_extra")
+    cid = _chapter(client, teacher_headers)
+    today_iso = timeutil.shanghai_now().isoformat()
+    yesterday_iso = (timeutil.shanghai_now() - timedelta(days=1)).isoformat()
+    with client.application.app_context():
+        from data.db import get_db
+        con = get_db()
+        for card_id, last in (("a", today_iso), ("b", yesterday_iso)):
+            _insert_card(con, card_id, cid, f"extra-{card_id}")
+            _insert_review(con, card_id, uid, learn_count=1, status="learning",
+                           next_review_at="2099-01-01T00:00:00+00:00", last_review_at=last)
+        con.commit()
+        deck = checkin.build_today_deck(con, uid, limit=10, mode="extra", rng=random.Random(42))
+        ids = [c["id"] for c in deck["cards"]]
+        assert deck["extra"] is True and deck["short"] is False
+        assert "a" not in ids and "b" in ids
+
+
+def test_deck_empty_reason_no_published_cards(client, teacher_headers, monkeypatch):
+    """真真空（库中无已发布章节的卡）→ cards 空 + empty_reason=no_published_cards。"""
+    uid = make_student(client, teacher_headers, "deck_empty")
+    with client.application.app_context():
+        from data.db import get_db
+        con = get_db()
+        deck = checkin.build_today_deck(con, uid, limit=10, rng=random.Random(42))
+        assert deck["cards"] == []
+        assert deck["empty_reason"] == "no_published_cards"

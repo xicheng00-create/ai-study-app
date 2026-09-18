@@ -43,6 +43,7 @@ const Student = {
   knowledgeIdx: false, knowledgeDeck: false, knowledgeCards: [], knowledgePos: 0,
   knowledgeFlipped: false, knowledgeSwipe: null, knowledgeGroupOpen: {},  // 知识卡片列表页按章分组展开态（cid → bool）
   todayDeck: false,   // 今日任务卡组模式（数据源 GET /api/knowledge/today，进度 key aistudy_kc_today_<date>）
+  todayExtra: false,  // 超额学习卡组（mode=extra，进度 key 加 _extra 后缀，与任务组隔离）
   selChapters: null,    // 学习多选集（hub 资料库勾选，localStorage 记忆；null=未初始化 → 全选）
   _kcBusy: false,       // 翻卡异步锁：飞出动画/提交期间防连点与重入
   learnChat: false,     // 学习 tab 子视图：true=对话页；false=学习主菜单（hub：对话/知识卡片两入口）
@@ -64,7 +65,7 @@ const Student = {
   async render() {
     const h = App.state.hash;
     // 离开学习区：退出知识卡片全屏态（复习进度已存 localStorage，回来可续）
-    if (h !== "learn") { this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false; this._kcBusy = false; this.todayDeck = false; }
+    if (h !== "learn") { this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false; this._kcBusy = false; this.todayDeck = false; this.todayExtra = false; }
     if (this.knowledgeDeck) return this.viewKnowledgeDeck();
     if (this.knowledgeIdx) return await this.viewKnowledge();
     if (h === "quiz") {
@@ -129,13 +130,19 @@ const Student = {
     const head = done
       ? `<span class="badge master">✓ 已完成 · 连胜 ${c.streak} 天</span>`
       : `<span class="card-count">${c.streak ? '🔥 ' + c.streak + ' 天' : '今天还没打卡'}</span>`;
-    const task = (label, cur, total, onClick, doneText) => `
-      <div class="task-row"><span class="task-label">${label}<span class="task-progress">${cur}/${total}</span></span>
-        <button class="mini-btn ${cur >= total ? 'done' : ''}" onclick="${onClick}" ${cur >= total ? 'disabled' : ''}>${cur >= total ? (doneText || '已完成') : '继续'}</button></div>
-      <div class="task-bar"><div class="task-bar-fill ${cur >= total ? 'full' : ''}" style="width:${Math.min(100, cur / total * 100)}%"></div></div>`;
+    // afterDone：完成后按钮（label/onClick），可点则不再 disabled——「再学一组」走超额卡组
+    const task = (label, cur, total, onClick, doneText, afterDone) => {
+      const finished = cur >= total;
+      const btn = (afterDone && finished)
+        ? `<button class="mini-btn done" onclick="${afterDone.onClick}">${afterDone.label}</button>`
+        : `<button class="mini-btn ${finished ? 'done' : ''}" onclick="${onClick}" ${finished ? 'disabled' : ''}>${finished ? (doneText || '已完成') : '继续'}</button>`;
+      return `<div class="task-row"><span class="task-label">${label}<span class="task-progress">${cur}/${total}</span></span>
+        ${btn}</div>
+      <div class="task-bar"><div class="task-bar-fill ${finished ? 'full' : ''}" style="width:${Math.min(100, cur / total * 100)}%"></div></div>`;
+    };
     return `<div class="card sm mb-12 task-card">
       <div class="card-head"><div class="card-title">${ic('target', 'coral')}今日任务</div>${head}</div>
-      ${task('复习卡片', cards, 10, 'Student.startTodayDeck()', '已完成')}
+      ${task('复习卡片', cards, 10, 'Student.startTodayDeck()', '已完成', { label: '再学一组', onClick: 'Student.startExtraDeck()' })}
       ${task('刷练习题', questions, 5, 'Student.continuePractice()', '已完成')}
     </div>`;
   },
@@ -144,8 +151,20 @@ const Student = {
     let d;
     try { d = await API.get('/api/knowledge/today'); } catch (e) { toast(e.message); return; }
     const cards = (d.cards || []).map(c => { c.chName = c.chapter_name || ''; return c; });
-    if (!cards.length) { toast('今天没有可复习的卡片'); return; }
+    if (!cards.length) {
+      // CHECKIN-012 真空引导：真真空（无已发布卡）给可点出路，否则提示稍后再试
+      if (d.empty_reason === 'no_published_cards') {
+        openSheet(`<div class="row" style="font-weight:700">还没有可学的卡片</div>
+          <div class="row" style="text-align:left;border:none;background:transparent;cursor:default;font-size:13px;color:var(--text-2)">去「资料库」勾选章节 → 点「知识卡片」生成后即可开始今日复习。</div>
+          <div class="row" onclick="closeSheet();Student.enterKnowledge()">去资料库</div>
+          <div class="row cancel" onclick="closeSheet()">取消</div>`);
+      } else {
+        toast('暂时没有可复习的卡片，稍后再试');
+      }
+      return;
+    }
     this.todayDeck = true;
+    this.todayExtra = false;
     this.knowledgeCards = cards;
     this.knowledgeIdx = false;
     const saved = this._kcLoad();
@@ -166,6 +185,18 @@ const Student = {
   },
   resetTodayDeck() {
     closeSheet(); this._kcClear(); this.knowledgePos = 0; this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
+  },
+  // 「再学一组」（CHECKIN-011）：mode=extra 卡组，排除今日已复习的卡，从第 0 张开始（不走续学弹层）
+  async startExtraDeck() {
+    let d;
+    try { d = await API.get('/api/knowledge/today?mode=extra'); } catch (e) { toast(e.message); return; }
+    const cards = (d.cards || []).map(c => { c.chName = c.chapter_name || ''; return c; });
+    if (!cards.length) { toast('今天的卡片都学完啦，明天再来 🔥'); return; }
+    this.todayDeck = true;
+    this.todayExtra = true;
+    this.knowledgeCards = cards;
+    this.knowledgeIdx = false;
+    this.knowledgePos = 0; this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
   },
   // 「继续刷题」：POST /api/checkin/start-practice → 进现有 viewPracticeTake
   async continuePractice() {
@@ -369,7 +400,8 @@ const Student = {
     return ids.slice().sort().join(',');
   },
   _kcTodayKey() {
-    return 'aistudy_kc_today_' + ((App.checkin && App.checkin.today) || new Date().toISOString().slice(0, 10));
+    const base = 'aistudy_kc_today_' + ((App.checkin && App.checkin.today) || new Date().toISOString().slice(0, 10));
+    return this.todayExtra ? base + '_extra' : base;
   },
   _kcSave() {
     if (this.todayDeck) {
@@ -419,7 +451,7 @@ const Student = {
     const c = this.knowledgeCards[this.knowledgePos];
     if (!c) {
       this.knowledgeDeck = false; this._kcClear();
-      if (this.todayDeck) { this.todayDeck = false; return this.viewLearnHome(); }
+      if (this.todayDeck) { this.todayDeck = false; this.todayExtra = false; return this.viewLearnHome(); }
       return this.viewKnowledge();
     }
     const total = this.knowledgeCards.length;
@@ -515,7 +547,7 @@ const Student = {
   // 暂停退出：存进度 + 退出复习视图（落回来源：对话或主菜单）
   pauseKnowledge() {
     if (this.knowledgeCards.length && this.knowledgePos < this.knowledgeCards.length) this._kcSave();
-    this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false; this._kcBusy = false; this.todayDeck = false;
+    this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false; this._kcBusy = false; this.todayDeck = false; this.todayExtra = false;
     render();
   },
   async reviewKnowledge(remembered) {

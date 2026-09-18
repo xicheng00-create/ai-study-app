@@ -62,9 +62,12 @@ def overview():
 @jwt_required
 @role_required("student")
 def today_deck():
-    """今日任务卡组（CHECKIN-005）：到期复习卡优先 → 未学新卡按章节补齐，跨章，上限 10。"""
+    """今日任务卡组（CHECKIN-005/009/010/011）：?mode=task|extra，非法值回落 task，不返回 4xx。"""
+    mode = (request.args.get("mode") or "task").strip()
+    if mode not in ("task", "extra"):
+        mode = "task"
     con = get_db()
-    deck = checkin.build_today_deck(con, g.user_id)
+    deck = checkin.build_today_deck(con, g.user_id, mode=mode)
     return ok(deck)
 
 
