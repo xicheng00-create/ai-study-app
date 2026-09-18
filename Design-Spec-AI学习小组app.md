@@ -219,11 +219,12 @@
 | KNOW-001 | student | P1 | **学习路径发布 / 资料发布时自动**从章节资料抽取知识点生成知识卡片（正面=知识点/问题，背面=答案/解析+一句示例）存库，**学生无需手动生成**（每章一组 ≥20 知识点，全章覆盖；已有卡复用不再重复调 LLM；失败可懒加载兜底） |
 | KNOW-002 | student | P1 | 点卡 3D 翻转看答案；**左滑=没记住、右滑=记住了**（底部兜底按钮 ←没记住\|记住了→）；顶部进度 第N/总数 + 每卡状态色 |
 | KNOW-003 | student | P1 | 系统记录每知识点**学习次数（learn_count）**+ **复习状况**（new/learning/reviewing/mastered + 间隔 1→3→7）；每日「待复习」队列优先，再学新卡 |
+| KNOW-004 | student | P1 | **卡片必须应试级细粒度且全章覆盖**（CR-2026-0919-CARDS）：① 生成时投喂**全章每一份资料的每一个切片**（按资料分层、每份保底、总预算 2 万字），不再抽样 ~18 片×300 字；② 提示词硬性要求「**一个考点一张卡**」——概念定义/数字指标/流程步骤/术语英文名/易混区别/常见误区/案例结论逐条成卡，禁止「主要包含以下几方面」式概括，且能出选择题的细节（数字、专有名词、顺序、比例、阈值、年份）必须单独成卡，每章 ≥40 张；③ **只抽本 Session 内容**——课程共用素材（如全课程行业术语表）中属于其它周次的词条一律跳过，禁止跨章错配；④ 每张卡必须绑定 `source_chunk_id`，可回溯课件原文切片 |
 
 **Technical**
 - **独立数据层（共享内容 + 每生独立复习态，v1.17.x 重构）**：`knowledge_cards`（id, chapter_id, sub_concept, front, back, source_chunk_id, created_at）——**无 user_id，是共享内容**（每章一组，发布时生成一次）；`knowledge_reviews`（id, card_id, user_id, learn_count, interval_days, next_review_at, status CHECK(new/learning/reviewing/mastered), last_review_at, created_at, UNIQUE(card_id,user_id)）——**每学生独立复习状态**，学生首次打开该章卡组时**懒建**（默认 new）。已废弃 v1.17.0 的「knowledge_cards 带 user_id」旧形（表空可安全重建）。
 - **状态机复用 `review_sched`**（architecture §5.4）：记住了 → `learn_count++`、`interval_days = next_interval(True, cur)`（1→3→7 封顶）、状态上移（new→learning→reviewing→mastered）、`next_review_at` 按间隔顺延；没记住 → `learn_count++`、`interval_days=1`、状态降回 learning、`next_review_at` 次日重排。同卡片跨会话复习。**先翻转看答案再判 remember，不在 open 期强行判定**。
-- **AI 抽取**：新增 `backend/ai/knowledge.py` `generate_knowledge_cards(chapter_ids)` + `prompts.py` `KNOWLEDGE_SYSTEM`（要求 JSON `[{front, back, sub_concept}]`，遍布全章、覆盖不同子概念、back 含答案/解析/一句示例）；LLM 真返空返空列表、端点提示「生成失败请重试」。
+- **AI 抽取（v2.5.1 整改，CR-2026-0919-CARDS）**：`backend/ai/knowledge.py` `generate_knowledge_cards(chapter_ids)` + `prompts.py` `KNOWLEDGE_SYSTEM`。**历史缺陷**：旧实现用 `quizzer._retrieve_chunks` 抽 ~18 个切片、每片截断 300 字、总长再砍到 6000 字 → 长资料（W1S2 有 96 片）只能被模型看到约 1/5，卡片必然「只覆盖大框架、遗漏细碎考点」，用户实报「无法支撑做题」。**整改后**：`_chapter_text()` 按资料分层投喂**全章每个切片**（每片 ≤600 字、每份资料保底 1200 字、总预算 `CONTENT_BUDGET=20000`），配合 KNOW-004 的提示词硬性要求 + `MIN_CARDS=40`，并过滤重复/空正面。**批量重做历史章节**走 `scripts/rebuild_cards.py`（逐片组独立调模型，片组按教案小节切分、每片组上限 16 张，按 front 归一化精确继承复习态）。LLM 真返空返空列表、端点提示「生成失败请重试」。
 - **路由（去掉「学生手动生成」主路径）**：`POST /api/knowledge/generate`（保留为**懒加载兜底**：卡片缺失时教师/系统可触发，学生一般不必点）、`GET /api/knowledge/:chapter`（卡组+该生复习态，学生首次打开自动懒建 review 行）、`POST /api/knowledge/:card/review`（body `{remembered: true|false}` → 更新该生 learn_count/interval/status/next_review）、`GET /api/knowledge/overview`（各章该生掌握进度：已掌握/学习中/未学/今日待复习）。学生本人，越权 403；蓝图 `knowledge_bp` 注册进 app.py。
 - **⚠️ 自动生成钩子（v1.17.x，核心）**：`knowledge.ensure_chapter_cards(chapter_id)`（查 `knowledge_cards` 该章已有卡则复用返 True，无则 LLM 生成 + 入库返 False；LLM 失败返回 False，由懒加载兜底）。在**学习路径发布**（`curriculum_bp` 发布 session → 对其 `chapter_ids` 逐个 `ensure_chapter_cards`）与**资料发布**（`materials_bp` 发布 material → 其 `chapter_id` `ensure_chapter_cards`）处调用。同步调用 + try/except（发布请求可容忍 ~秒级 LLM 延迟，3 学生规模可接受）。
 - **前端（v2.0.0 导航+多选+动画重构）**：「学习」tab = **学习主菜单 hub**（资料库**可滚动多选 list**——每章圆形勾选框 + 已选计数 + 全选/清空，勾选记忆 localStorage `aistudy_sel_chapters`；对话页原横滑选章卡已撤除，选章统一在此）；「对话」子页（多选集驱动**跨章检索**：`post_message` 带 `chapter_ids` → `tutor._retrieve_multi` 逐章 RAG 合并去重、片段【章名】标注）；点「知识卡片」→ **跨章卡片列表页**（所选各章全部卡按章分组折叠、点章头展开卡网格，「开始复习」按钮置顶）+ 复习 deck（每卡标章名，跨章合并）。复习进度 localStorage `aistudy_kc_progress` 存**章 id 集签名 `ids`**（兼容旧 `{cid}` 单章格式），暂停退出/续学；换选集不误续旧进度。**卡片动画**：翻转 = 同一 DOM 切 `is-flipped` class 驱动 3D 过渡（非整页 render）；touch/mouse 跟手拖拽（`translateX + rotate`，拖拽期 `.dragging` 关 transition），超 70px 甩出判定（右滑=记住了/左滑=没记住，播 `.out-r/.out-l` 飞出）否则弹回；按钮点击同样先飞后提交；换卡 `.kc-in` 入场动画。`Student` 状态 `learnChat`/`knowledgeIdx`/`knowledgeDeck`/`selChapters` + `viewLearnHome()`/`viewLearnChat()`/`viewKnowledge()`/`viewKnowledgeDeck()`。改前端须 bump sw.js CACHE + app.py version。
@@ -894,4 +895,46 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 - **版本一致性**：`backend/app.py version == 2.5.0`（**保持不变**，该版本尚未发布）；`CHANGELOG.md` 在 `## [2.5.0]` 条目内补「档① 按课程顺序」「进度显示夹取」说明；`sw.js` CACHE bump `v44 → v45`（本次有前端 JS 改动）；`requirements.txt` 无新增依赖（符合边界）。
 - **范围边界（未越界）**：未改 `GET /api/knowledge/<chapter_id>` 的懒建行行为（KNOW 域既有设计，仅在判定口径上绕过）；未改打卡判定 `counts_today` / `evaluate_and_maybe_complete` 与阈值常量；未改服务端 `progress` 口径；未动教师端；未新增依赖。
 - **诚实清单（未做）**：真机验证（线上 5003 重启 + Ray 真机复测 `hermesstu` 卡死场景）由 Hermes 执行；补签卡 / 连胜道具 / 卡组配比学生自定义（YAGNI，见 §9 登记）。
+
+### 12.28 实现状态回写（v2.5.1，2026-09-19，知识卡片考点覆盖整改）
+
+- **本次迭代 REQ**：`KNOW-004`（卡片应试级细粒度 + 全章覆盖 + 切片绑定）——定义见 §3.4.2（Functional + Technical 两处）。变更请求号 `CR-2026-0919-CARDS`。
+- **状态：已实现。** 触发原因：用户实报「随堂测试与作业考题里的大量考点、细节知识点现有卡片完全没覆盖；卡片偏笼统、撑不起做题」，要求全章节卡片（含往期）统一翻新。
+
+**根因（三条，均经只读诊断确认）**
+
+| # | 根因 | 证据 | 修法 |
+|---|---|---|---|
+| 1 | **输入被物理截断**：生成时抽 ~18 个切片、每片截 300 字、总长砍到 6000 字 | W1S2 有 96 切片 → 模型只看到约 1/5 | `_chapter_text()` 按资料分层投喂**全章每片**（每片 ≤600 字、每份保底 1200 字、预算 `CONTENT_BUDGET=20000`） |
+| 2 | **提示词只要求「遍布全章」**，未要求细粒度 | 产出多为「主要包含以下几方面」式框架卡 | `KNOWLEDGE_SYSTEM` 改为应试级硬约束：一个考点一张卡、禁止概括、数字/顺序/阈值/年份必须单列、`MIN_CARDS=40` |
+| 3 | **教案（`课件.md`）从未入库** → RAG 与卡片都检索不到「课上有讲」原文 | W1S1/W1S2 的 `课件.md` 未作为 material 存在 | `inject_curriculum.py` 补挂教案为 material + 重算切片 |
+
+**新发现（施工中发现，非用户报障）**
+1. **图片型 PDF/PPTX 文本层几乎为空**：《40、大模型应用PM vs 传统PM.pdf》12.6MB 只抽出 1760 字、22.5MB 的 pptx 只得 1095 字（幻灯片是图片）→ 新增 `scripts/ocr.swift`（macOS Vision OCR，PDF 逐页 3 倍渲染、PPTX 按 rels 顺序取内嵌图）+ `scripts/ocr_materials.py`（缓存 `材料/_ocr/*.ocr.txt`，原生文本 ≥4000 字跳过）+ `inject_curriculum.py --rechunk` 按 `best_text` 重算。10 份素材补 4.9 万字，**全库切片 152 → 483 条**。
+2. **教案被当成一个整片组**：定长切片里小标题几乎不落切片开头，导致整份教案只出 16 张卡就被上限截断——**最重要的教案反而覆盖最差**。修法：`split_lesson()` 拼全文按 `#` 标题定小节区间再取相交切片，69 个教案小节逐一成组。
+3. **共用术语表跨章错配**：`行业黑话大全.md` 是全课程共用，模型把「毛利率/护城河/K因子/WAU」等其它周次词条做成了 W1S1 卡片。修法：**仅对共用素材**启用相关性强护栏（`SHARED_MATERIALS`），专属资料改为「必须穷尽抽取」——护栏若滥用反而会把本课真题考点（人形机器人量产元年、AI 医疗融资 37 亿）误判为外章丢弃（实测 W1S2 覆盖率一度 16/36，修正后回升）。
+4. **补漏卡绑错切片**：`fill_gaps` 用关键词 `LIKE` 取首条命中，「AI」「工具」等泛词会把卡片绑到无关切片（「智能编程」卡被绑到「行业黑话」表）。修法：新增 `_bind_by_content()`，按**卡片正面+背面**与切片正文的词元重合度取最吻合者（`--rebind-recent`）。
+
+**审计工具自身的三个坑（同一轮修掉，否则报告会骗人）**
+1. 候选卡只按**正面**匹配 → 大量假阴性（「插件」写在「智能体」卡的**背面**却被判未覆盖）→ 改为正反两面按词元重合度预筛，并把答案要点一并给模型。
+2. 把**流程性小节**（学习目标 / 前置与衔接 / 动手任务 / 备课参考材料 / 常见误区 / 答疑 / 视频课对应）当考点 → 结构性误报 → `META_HEAD` 剔除。
+3. 把整章 200~360 张卡一次性丢给模型 → 它扫不完、漏判明摆着的匹配（「政府工作报告」考点被人形机器人卡覆盖却判未覆盖）→ 改为按词元预筛 ≤40 张候选卡配对呈现。
+
+**产出（本地库，不入 git）**
+
+| 章节 | 切片 | 卡片（重做前 → 后） | sub_concept | 绑定切片 | 状态 |
+|---|---|---|---|---|---|
+| 第1周·第1节 大模型是什么 | 106 | 34 → **208** | 117 | 208/208 | published |
+| 第1周·第2节 AI 产品地图 | 114 | 30 → **279** | 100 | 279/279 | published |
+| 第2周·第1节 AIPM vs 传统 PM | 139 | 0 → **359** | 179 | 359/359 | draft（待发布） |
+| 第2周·第2节 真实落地案例 | 124 | 0 → **254** | 140 | 254/254 | draft（待发布） |
+| **合计** | **483** | **64 → 1100** | — | **1100/1100** | — |
+
+- **上架**：W2S1/W2S2 共 2 章节 + 13 份资料 + 3 条视频链接入库（`status='draft'`，学生不可见）；W1S1/W1S2 补挂 `课件.md`。源文件**不复制**进 `uploads/`，material 记 `source_path` 绝对路径 + 下载代理（方案 B）。
+- **结构审计**：`scripts/audit_alignment.py` → **✓ 未发现结构性问题**（章节↔资料↔切片↔卡片一一对应；0 张卡未绑切片、0 张跨章错配、素材源文件均可下载）。
+- **考点覆盖审计**：`audit_alignment.py --llm --save-report` → 配 `rebuild_cards.py --fill-gaps` 两轮补漏（共补 13 张）。**补漏提示词写死「原文检索不到依据就不出卡」**（宁报缺口也不编造）。终审 **51/55 = 93%**，其中 W2S1 **11/11**、W2S2 **2/2** 已达 100%；剩余 4 条经关键词回检确认**课件原文中根本没有出处**，判定为**题库超纲**而非卡片缺失，交教研处理：`学习使用AI时重点应放在？`、`以下关于AI能力的认识最符合资料观点的是？`、`AI4S 产业链上游环节的核心定位`、`巩固练习/间隔复习的主要作用`（仅出现在 W7S2/W8S1 课件，W1S2 素材无此内容）。
+- **实测证据**：`py_compile` 通过；`ruff check backend/` All checks passed；`make smoke` → `{"version":"2.5.1","status":"up"}`；`pytest -q` 全绿，覆盖率 **76.3%**（门槛 50%）。
+- **版本一致性**：`backend/app.py version == 2.5.1` == `CHANGELOG.md` 最新条目；前端与 `sw.js` CACHE **无改动**（本次纯后端 + 脚本），保持 `aistudy-shell-v45`。
+- **范围边界（未越界）**：未改学习路径/打卡/通知/测评任何既有逻辑；未改前端；未新增运行时依赖（OCR 走 macOS 自带 Swift/Vision，脚本仅在本地跑）；`backups/`（含学生数据）已加 `.gitignore`。
+- **诚实清单（未做）**：W2S1/W2S2 发布动作留给用户在教师端确认（本次只到 `draft`）；「题库超纲」的 4~5 道题未擅自改写或删除（属教研决策）；卡片质量抽样人工复核仍建议由 Ray 抽看。
 

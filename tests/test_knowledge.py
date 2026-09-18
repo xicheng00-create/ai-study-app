@@ -44,3 +44,62 @@ def test_session_publish_ensures_chapter_cards(client, teacher_headers, monkeypa
     sid = client.post('/api/curriculum/sessions', json={'title': '第一节', 'chapter_ids': [cid]}, headers=teacher_headers).get_json()['data']['id']
     assert client.post(f'/api/curriculum/sessions/{sid}/publish', headers=teacher_headers).status_code == 200
     assert calls == [cid]
+
+
+def _seed_materials(client, cid, n_materials=4, n_chunks=20):
+    """直插资料与切片：模拟长资料章节（旧实现只抽 ~18 片，必然漏内容）。"""
+    from data.db import get_db
+    with client.application.app_context():
+        con = get_db()
+        for mi in range(n_materials):
+            mid = f'm{mi}'
+            con.execute(
+                'INSERT INTO materials (id,chapter_id,filename,original_name,file_type,size_bytes,'
+                'is_deleted,chunk_count,parse_status,created_at,status)'
+                ' VALUES (?,?,?,?,?,?,0,?,?,?,?)',
+                (mid, cid, mid + '.md', f'资料{mi}.md', 'md', 10, n_chunks, 'parsed',
+                 f'2026-09-0{mi + 1}', 'published'),
+            )
+            for ci in range(n_chunks):
+                con.execute(
+                    'INSERT INTO chunks (id,material_id,chapter_id,chunk_idx,text,created_at)'
+                    ' VALUES (?,?,?,?,?,?)',
+                    (f'{mid}c{ci}', mid, cid, ci, f'资料{mi}第{ci}段考点内容', '2026-09-01'),
+                )
+        con.commit()
+
+
+def test_chapter_text_covers_every_material_and_chunk(client, teacher_headers):
+    """卡片生成输入必须覆盖全章每份资料的每一段，而不是只抽样 18 个切片。"""
+    cid = _chapter(client, teacher_headers)
+    _seed_materials(client, cid, n_materials=4, n_chunks=20)
+    with client.application.app_context():
+        text = knowledge._chapter_text(cid)
+    assert len(text) > 0
+    for mi in range(4):
+        assert f'资料{mi}.md' in text, '每份资料都要出现在提示词里'
+        assert f'资料{mi}第0段考点内容' in text
+        assert f'资料{mi}第19段考点内容' in text, '资料的末段也要被投喂，不能被抽样截断'
+    assert '（本章暂无解析出的资料切片）' not in text
+
+
+def test_generate_cards_prompt_demands_fine_grained_coverage(client, teacher_headers, monkeypatch):
+    """提示词必须明确要求穷尽式细粒度抽取（覆盖一次投诉的根因）。"""
+    from ai import agents
+    cid = _chapter(client, teacher_headers)
+    _seed_materials(client, cid, n_materials=2, n_chunks=5)
+    seen = {}
+
+    def fake(system):
+        seen['system'] = system
+        return [{'front': '考点一', 'back': '答案一', 'sub_concept': '小节一'},
+                {'front': '考点一', 'back': '重复', 'sub_concept': '小节一'},
+                {'front': '', 'back': '无正面', 'sub_concept': 'x'}]
+
+    monkeypatch.setattr(agents, 'knowledge_generate', fake)
+    with client.application.app_context():
+        cards = knowledge.generate_knowledge_cards([cid])
+    assert [c['front'] for c in cards] == ['考点一'], '重复与空正面都要被过滤'
+    assert '一个考点一张卡片' in seen['system']
+    assert '至少 40 张' in seen['system']
+    assert '资料0.md' in seen['system']
