@@ -42,6 +42,7 @@ const Student = {
   practiceCount: 5,     // 每次练习题数
   knowledgeIdx: false, knowledgeDeck: false, knowledgeCards: [], knowledgePos: 0,
   knowledgeFlipped: false, knowledgeSwipe: null, knowledgeGroupOpen: {},  // 知识卡片列表页按章分组展开态（cid → bool）
+  todayDeck: false,   // 今日任务卡组模式（数据源 GET /api/knowledge/today，进度 key aistudy_kc_today_<date>）
   selChapters: null,    // 学习多选集（hub 资料库勾选，localStorage 记忆；null=未初始化 → 全选）
   _kcBusy: false,       // 翻卡异步锁：飞出动画/提交期间防连点与重入
   learnChat: false,     // 学习 tab 子视图：true=对话页；false=学习主菜单（hub：对话/知识卡片两入口）
@@ -63,7 +64,7 @@ const Student = {
   async render() {
     const h = App.state.hash;
     // 离开学习区：退出知识卡片全屏态（复习进度已存 localStorage，回来可续）
-    if (h !== "learn") { this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false; this._kcBusy = false; }
+    if (h !== "learn") { this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false; this._kcBusy = false; this.todayDeck = false; }
     if (this.knowledgeDeck) return this.viewKnowledgeDeck();
     if (this.knowledgeIdx) return await this.viewKnowledge();
     if (h === "quiz") {
@@ -85,6 +86,7 @@ const Student = {
   /* ===== 学习主菜单（hub）：资料库选章 + 对话/知识卡片两入口 ===== */
   async viewLearnHome() {
     this.initSelChapters();
+    if (!App.checkin) await refreshCheckin();
     // 资料库竖排（不横滑），最新在前；多选 list：勾选章驱动对话跨章检索 + 知识卡片跨章复习
     const chaptersSorted = [...App.chapters].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
     const sel = this.selChapters || [];
@@ -99,6 +101,7 @@ const Student = {
     const scope = selN ? `已勾 ${selN} 章` : '未勾选（按全部资料）';
     return `<div class="chat-head">` + appbar('学习', sub) +
     `</div><div class="content">
+      ${this.taskCardHtml()}
       <div class="card sm mb-12">
         <div class="card-head"><div class="card-title">${ic('book', 'coral')}资料库</div><span class="card-count">${totalN} 篇 · 已选 <b class="sel-count">${selN}</b></span></div>
         <div class="lib-tools"><button class="mini-btn" onclick="Student.setAllChapters(true)">全选</button><button class="mini-btn" onclick="Student.setAllChapters(false)">清空</button></div>
@@ -115,6 +118,69 @@ const Student = {
         <span class="home-go">›</span>
       </button>
     </div>` + tabbar();
+  },
+  // ===== 今日任务卡（CHECKIN-001/007）：登录即见，两行进度 + 继续按钮 =====
+  taskCardHtml() {
+    const c = App.checkin;
+    if (!c) return '';
+    const cards = Math.min(c.progress.cards, 10);
+    const questions = Math.min(c.progress.questions, 5);
+    const done = !!c.done;
+    const head = done
+      ? `<span class="badge master">✓ 已完成 · 连胜 ${c.streak} 天</span>`
+      : `<span class="card-count">${c.streak ? '🔥 ' + c.streak + ' 天' : '今天还没打卡'}</span>`;
+    const task = (label, cur, total, onClick, doneText) => `
+      <div class="task-row"><span class="task-label">${label}<span class="task-progress">${cur}/${total}</span></span>
+        <button class="mini-btn ${cur >= total ? 'done' : ''}" onclick="${onClick}" ${cur >= total ? 'disabled' : ''}>${cur >= total ? (doneText || '已完成') : '继续'}</button></div>
+      <div class="task-bar"><div class="task-bar-fill ${cur >= total ? 'full' : ''}" style="width:${Math.min(100, cur / total * 100)}%"></div></div>`;
+    return `<div class="card sm mb-12 task-card">
+      <div class="card-head"><div class="card-title">${ic('target', 'coral')}今日任务</div>${head}</div>
+      ${task('复习卡片', cards, 10, 'Student.startTodayDeck()', '已完成')}
+      ${task('刷练习题', questions, 5, 'Student.continuePractice()', '已完成')}
+    </div>`;
+  },
+  // 今日任务卡组：数据源 GET /api/knowledge/today，复用现有翻卡/滑动/复习提交
+  async startTodayDeck() {
+    let d;
+    try { d = await API.get('/api/knowledge/today'); } catch (e) { toast(e.message); return; }
+    const cards = (d.cards || []).map(c => { c.chName = c.chapter_name || ''; return c; });
+    if (!cards.length) { toast('今天没有可复习的卡片'); return; }
+    this.todayDeck = true;
+    this.knowledgeCards = cards;
+    this.knowledgeIdx = false;
+    const saved = this._kcLoad();
+    if (saved && saved.pos > 0 && saved.pos < cards.length) {
+      openSheet(`<div class="row" style="font-weight:700">继续今日复习？</div>
+        <div class="row" style="text-align:left;border:none;background:transparent;cursor:default;font-size:13px;color:var(--text-2)">今日任务复习到第 ${saved.pos} / ${cards.length} 张，可接着往后复习。</div>
+        <div class="row" onclick="Student.resumeTodayDeck()">继续复习</div>
+        <div class="row" onclick="Student.resetTodayDeck()">重新开始</div>
+        <div class="row cancel" onclick="closeSheet()">取消</div>`);
+      return;
+    }
+    this.knowledgePos = 0; this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
+  },
+  resumeTodayDeck() {
+    const saved = this._kcLoad(); closeSheet();
+    this.knowledgePos = (saved && saved.pos) ? saved.pos : 0;
+    this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
+  },
+  resetTodayDeck() {
+    closeSheet(); this._kcClear(); this.knowledgePos = 0; this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
+  },
+  // 「继续刷题」：POST /api/checkin/start-practice → 进现有 viewPracticeTake
+  async continuePractice() {
+    try {
+      const d = await API.post('/api/checkin/start-practice', {});
+      App.state.hash = 'quiz';
+      await this.openPractice(d.session_id);
+    } catch (e) { toast(e.message); }
+  },
+  // review / submit 成功后刷新连胜条；done false→true 时庆祝 toast
+  async _afterTaskProgress() {
+    const before = !!(App.checkin && App.checkin.done);
+    await refreshCheckin();
+    const c = App.checkin;
+    if (c && c.done && !before) toast(`🔥 连胜 +1，已连续 ${c.streak} 天！`);
   },
   // ===== 学习多选集：勾选章节（驱动对话跨章检索 + 知识卡片跨章复习），localStorage 记忆 =====
   initSelChapters() {
@@ -302,14 +368,26 @@ const Student = {
     this.knowledgeCards.forEach(c => { if (ids.indexOf(c.chapter_id) < 0) ids.push(c.chapter_id); });
     return ids.slice().sort().join(',');
   },
+  _kcTodayKey() {
+    return 'aistudy_kc_today_' + ((App.checkin && App.checkin.today) || new Date().toISOString().slice(0, 10));
+  },
   _kcSave() {
+    if (this.todayDeck) {
+      try { localStorage.setItem(this._kcTodayKey(), JSON.stringify({ pos: this.knowledgePos, ts: Date.now() })); } catch (e) {}
+      return;
+    }
     const key = this._kcKey(); if (!key) return;
     try { localStorage.setItem('aistudy_kc_progress', JSON.stringify({ ids: key.split(','), pos: this.knowledgePos, ts: Date.now() })); } catch (e) {}
   },
   _kcLoad() {
+    if (this.todayDeck) {
+      try { return JSON.parse(localStorage.getItem(this._kcTodayKey())) || null; } catch (e) { return null; }
+    }
     try { return JSON.parse(localStorage.getItem('aistudy_kc_progress')) || null; } catch (e) { return null; }
   },
-  _kcClear() { try { localStorage.removeItem('aistudy_kc_progress'); } catch (e) {} },
+  _kcClear() {
+    try { if (this.todayDeck) localStorage.removeItem(this._kcTodayKey()); else localStorage.removeItem('aistudy_kc_progress'); } catch (e) {}
+  },
   _kcSavedMatch(saved) {
     if (!saved) return false;
     const key = this._kcKey();
@@ -339,7 +417,11 @@ const Student = {
   },
   viewKnowledgeDeck() {
     const c = this.knowledgeCards[this.knowledgePos];
-    if (!c) { this.knowledgeDeck = false; this._kcClear(); return this.viewKnowledge(); }
+    if (!c) {
+      this.knowledgeDeck = false; this._kcClear();
+      if (this.todayDeck) { this.todayDeck = false; return this.viewLearnHome(); }
+      return this.viewKnowledge();
+    }
     const total = this.knowledgeCards.length;
     const chTxt = c.chName || '';
     // 卡面：正面小字显示「章 · 知识点」；翻转动画由 flipKnowledge 切 class 驱动（不再整页 render，保证 3D 过渡生效）
@@ -433,7 +515,7 @@ const Student = {
   // 暂停退出：存进度 + 退出复习视图（落回来源：对话或主菜单）
   pauseKnowledge() {
     if (this.knowledgeCards.length && this.knowledgePos < this.knowledgeCards.length) this._kcSave();
-    this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false; this._kcBusy = false;
+    this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false; this._kcBusy = false; this.todayDeck = false;
     render();
   },
   async reviewKnowledge(remembered) {
@@ -449,6 +531,7 @@ const Student = {
       this.knowledgePos++; this.knowledgeFlipped = false; this._kcBusy = false;
       if (this.knowledgePos >= this.knowledgeCards.length) this._kcClear(); else this._kcSave();
       this._suppressClick = false;
+      await this._afterTaskProgress();   // 复习计入打卡进度：刷新顶部连胜条 + 达标庆祝
       render();   // 新卡带 .kc-in 入场动画
     } catch (e) {
       if (el) { el.classList.remove('out-r', 'out-l'); el.style.pointerEvents = ''; el.style.transform = ''; }
@@ -860,6 +943,7 @@ const Student = {
       try { detail = await API.get(`/api/practice/${this.practice.id}`); } catch (e) {}
       this.practiceResult = { summary: d, detail };
       this.practice = null;
+      await this._afterTaskProgress();   // 练习计入打卡进度：刷新顶部连胜条 + 达标庆祝
       render();
     } catch (e) { toast(e.message); }
   },
@@ -1091,6 +1175,9 @@ const Student = {
     try { d = await API.get("/api/class/leaderboard"); } catch (e) {}
     this.classData = d;  // 缓存，供「更多排行榜」弹层读取
     const me = (App.state.user && App.state.user.id) || d.me_user_id;
+    // 今日打卡区块（CHECKIN-008）：置顶显示谁打卡谁没打
+    let checkinBlock = '';
+    try { checkinBlock = this._checkinBlock(await API.get("/api/checkin/class")); } catch (e) {}
     // 主屏三张排行榜卡片：① 今日知识卡片 ② 今日对话次数 ③ 今日练习次数（各卡片前 3 名奖牌）
     const card = (title, icon, entries, unit, subFn) => {
       const rows = (entries || []).map((it, i) => this._rankRow(it, i, me, this._rankVal(it.value, unit), `<div class="st">${subFn(it)}</div>`)).join('');
@@ -1100,9 +1187,34 @@ const Student = {
       + card('今日对话次数', 'chat', d.today_conversations, '个', (it) => `今日 ${it.value} 个对话`)
       + card('今日练习次数', 'target', d.today_practice, '次', (it) => `今日 ${it.value} 次练习`);
     return appbar('班级', '全班学习排行榜 · 仅同班同学') + `<div class="content">
+      ${checkinBlock}
       ${body}
       <button class="btn ghost" style="margin-top:4px" onclick="Student.openClassMore()">${ic('pin')}更多排行榜 · 累计 / 测评 / 掌握度</button>
     </div>` + tabbar();
+  },
+  // 班级「今日打卡」区块（CHECKIN-008 / NOTIF-006）
+  _checkinBlock(d) {
+    if (!d || !(d.students || []).length) return '';
+    const meId = (App.state.user && App.state.user.id) || '';
+    const rows = d.students.map(s => {
+      const av = AVATARS[s.avatar] || esc((s.name || '?').charAt(0));
+      const right = s.checked_in
+        ? `<span class="checkin-done">✓ 已打卡</span>`
+        : (s.can_nudge ? `<button class="nudge-btn" onclick="Student.nudge('${s.user_id}', this)">提醒 TA</button>` : '');
+      return `<div class="checkin-row ${s.user_id === meId ? 'me' : ''} ${s.checked_in ? 'done' : ''}">
+        <div class="rank-av">${av}</div>
+        <div class="checkin-meta"><div class="nm">${esc(s.name)}${s.user_id === meId ? '<span class="me-tag">我</span>' : ''}</div>
+          <div class="st">🔥 ${s.streak} 天 · ${s.cards}/10 卡 · ${s.questions}/5 题</div></div>
+        ${right}</div>`;
+    }).join('');
+    return `<div class="card"><div class="card-head"><div class="card-title">${ic('pin', 'coral')}今日打卡</div><span class="card-count">${d.students.length} 人</span></div>${rows}</div>`;
+  },
+  async nudge(to_user_id, btn) {
+    try {
+      await API.post('/api/checkin/nudge', { to_user_id });
+      if (btn) { btn.textContent = '已提醒'; btn.disabled = true; btn.classList.add('done'); }
+      toast('已提醒 TA');
+    } catch (e) { toast(e.message); }
   },
   /* 其它排行榜（累计对话轮 / 累计练习 / 测评分数 / 掌握度）收进底部弹出层，点「关闭」收起 */
   openClassMore() {

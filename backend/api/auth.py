@@ -16,6 +16,7 @@ def _user_dict(row) -> dict:
         "username": row["username"],
         "role": row["role"],
         "display_name": row["display_name"],
+        "avatar": row["avatar"],
         "is_active": bool(row["is_active"]),
     }
 
@@ -88,6 +89,42 @@ def refresh():
     """临近过期换发新 token（AUTH-005，无 refresh token，直接重签）。"""
     token = make_token(g.user_id, g.role)
     return ok({"token": token})
+
+
+@auth_bp.route("/me", methods=["PATCH"])
+@jwt_required
+def update_me():
+    """个人资料更新（SET-001）：改名 / 换头像（头像白名单 a1..a12 或空）。"""
+    data = request.get_json(silent=True) or {}
+    if "display_name" not in data and "avatar" not in data:
+        return e_input("无可更新字段")
+
+    con = get_db()
+    row = con.execute("SELECT * FROM users WHERE id = ?", (g.user_id,)).fetchone()
+    if row is None:
+        return e_auth("账号不存在")
+
+    fields, values = [], []
+    if "display_name" in data:
+        name = str(data["display_name"] or "").strip()
+        if not name:
+            return e_input("昵称不能为空")
+        err = check_len("display_name", name)
+        if err:
+            return err
+        fields.append("display_name = ?")
+        values.append(name)
+    if "avatar" in data:
+        avatar = str(data["avatar"] or "").strip()
+        if avatar not in ("", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11", "a12"):
+            return e_input("头像不合法")
+        fields.append("avatar = ?")
+        values.append(avatar)
+
+    con.execute(f"UPDATE users SET {', '.join(fields)} WHERE id = ?", (*values, g.user_id))
+    con.commit()
+    updated = con.execute("SELECT * FROM users WHERE id = ?", (g.user_id,)).fetchone()
+    return ok(_user_dict(updated))
 
 
 @auth_bp.route("/change-password", methods=["POST"])

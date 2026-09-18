@@ -7,7 +7,7 @@ import json
 
 from ai import grader, quizzer
 from auth.jwt_utils import jwt_required, role_required
-from data import models
+from data import checkin, models
 from data.db import get_db
 from flask import Blueprint, g, request
 from middleware.errors import e_forbidden, e_input, e_not_found, ok
@@ -105,6 +105,61 @@ def _history_contents(con, user_id) -> list[str]:
     return [r["content"] for r in rows if r["content"]]
 
 
+def create_practice_session(con, user_id, chapter_ids, count=5, sub_concepts=""):
+    """生成并落库一个自主练习会话（供 /api/practice/generate 与 checkin start-practice 共用）。
+
+    复用 QUIZZER 出题（difficulty=hard、choice/bool、同学生跨会话去重）；LLM 返空返回 None。
+    """
+    try:
+        count = max(5, min(int(count or 5), 10))
+    except (TypeError, ValueError):
+        count = 5
+    raw_qs = quizzer.generate_practice_questions(
+        chapter_ids, sub_concepts=sub_concepts,
+        exclude_contents=_history_contents(con, user_id),
+        exclude_sub_concepts=_history_sub_concepts(con, user_id, chapter_ids), count=count,
+    )
+    if not raw_qs:
+        return None
+    if len(raw_qs) > count:
+        raw_qs = raw_qs[:count]
+    total = sum(quizzer.POINTS[q["type"]] for q in raw_qs)
+
+    session_id = models.new_id()
+    now = models.utcnow()
+    config = {t: sum(1 for q in raw_qs if q["type"] == t) for t in quizzer.POINTS}
+    con.execute(
+        "INSERT INTO practice_sessions (id, user_id, chapter_ids, difficulty, total_points,"
+        " config_json, created_at) VALUES (?, ?, ?, 'hard', ?, ?, ?)",
+        (session_id, user_id, json.dumps(chapter_ids, ensure_ascii=False),
+         total, json.dumps(config, ensure_ascii=False), now),
+    )
+    for i, raw in enumerate(raw_qs):
+        cid = chapter_ids[i % len(chapter_ids)]
+        q = quizzer.norm_question(raw, cid)
+        con.execute(
+            "INSERT INTO practice_questions (id, session_id, chapter_id, sub_concept, type,"
+            " content, options, answer_key, points, content_hash, correct, user_answer, score,"
+            " reason, answered_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '', NULL, '', NULL)",
+            (models.new_id(), session_id, cid, q["sub_concept"], q["type"], q["content"],
+             q["options"], q["answer_key"], q["points"], quizzer._content_hash(q["content"])),
+        )
+    con.commit()
+
+    rows = con.execute(
+        "SELECT * FROM practice_questions WHERE session_id=? ORDER BY rowid", (session_id,)
+    ).fetchall()
+    return {
+        "id": session_id,
+        "chapter_ids": chapter_ids,
+        "total_points": total,
+        "difficulty": "hard",
+        "config": config,
+        "questions": [_question_dict(r) for r in rows],
+    }
+
+
 @practice_bp.route("/generate", methods=["POST"])
 @jwt_required
 @role_required("student")
@@ -126,54 +181,11 @@ def generate_practice():
         if row is None:
             return e_not_found(f"章节不存在或未发布：{cid}")
 
-    try:
-        count = max(5, min(int(data.get("count", 5)), 10))
-    except (TypeError, ValueError):
-        count = 5
-    raw_qs = quizzer.generate_practice_questions(
-        chapter_ids, sub_concepts=data.get("sub_concepts", ""),
-        exclude_contents=_history_contents(con, g.user_id),
-        exclude_sub_concepts=_history_sub_concepts(con, g.user_id, chapter_ids), count=count,
-    )
-    if not raw_qs:
+    result = create_practice_session(con, g.user_id, chapter_ids,
+                                     data.get("count", 5), data.get("sub_concepts", ""))
+    if not result:
         return e_input("练习生成失败，请稍后重试")
-    if len(raw_qs) > count:
-        raw_qs = raw_qs[:count]
-    total = sum(quizzer.POINTS[q["type"]] for q in raw_qs)
-
-    session_id = models.new_id()
-    now = models.utcnow()
-    config = {t: sum(1 for q in raw_qs if q["type"] == t) for t in quizzer.POINTS}
-    con.execute(
-        "INSERT INTO practice_sessions (id, user_id, chapter_ids, difficulty, total_points,"
-        " config_json, created_at) VALUES (?, ?, ?, 'hard', ?, ?, ?)",
-        (session_id, g.user_id, json.dumps(chapter_ids, ensure_ascii=False),
-         total, json.dumps(config, ensure_ascii=False), now),
-    )
-    for i, raw in enumerate(raw_qs):
-        cid = chapter_ids[i % len(chapter_ids)]
-        q = quizzer.norm_question(raw, cid)
-        con.execute(
-            "INSERT INTO practice_questions (id, session_id, chapter_id, sub_concept, type,"
-            " content, options, answer_key, points, content_hash, correct, user_answer, score,"
-            " reason, answered_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '', NULL, '', NULL)",
-            (models.new_id(), session_id, cid, q["sub_concept"], q["type"], q["content"],
-             q["options"], q["answer_key"], q["points"], quizzer._content_hash(q["content"])),
-        )
-    con.commit()
-
-    rows = con.execute(
-        "SELECT * FROM practice_questions WHERE session_id=? ORDER BY rowid", (session_id,)
-    ).fetchall()
-    return ok({
-        "id": session_id,
-        "chapter_ids": chapter_ids,
-        "total_points": total,
-        "difficulty": "hard",
-        "config": config,
-        "questions": [_question_dict(r) for r in rows],
-    })
+    return ok(result)
 
 
 @practice_bp.route("/<session_id>/submit", methods=["POST"])
@@ -235,6 +247,9 @@ def submit_practice(session_id):
             "reason": result["reason"],
         })
     con.commit()
+
+    # 打卡判定触发点：练习提交成功后服务端惰性评估（CHECKIN-004）
+    checkin.evaluate_and_maybe_complete(con, g.user_id)
 
     score = round(earned / possible * 100, 1) if possible else 0.0
     return ok({

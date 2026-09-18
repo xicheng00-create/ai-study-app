@@ -251,6 +251,15 @@ def publish_session(session_id):
     con.commit()
     for chapter_id in _json_list(row["chapter_ids"]):
         knowledge.ensure_chapter_cards(chapter_id)
+
+    # 发布 → 全体在用学生通知（NOTIF-003）
+    from services.notify import active_student_ids, notify_users
+
+    notify_users(
+        con, active_student_ids(con), "path_published",
+        "老师发布了新学习路径", f"第{row['week_no']}周 第{row['session_no']}节 · {row['title']}",
+        image="", ref_kind="session", ref_id=session_id,
+    )
     return ok({"id": session_id, "status": "published"})
 
 

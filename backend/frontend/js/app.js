@@ -34,7 +34,10 @@ const ICO = {
   warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
   medal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="6"/><path d="M12 15v4M8.5 19l-1 3 4.5-2 4.5 2-1-3"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
 };
+/* 预设头像白名单（SET-003）：a1..a12 → emoji；空值回退「名字首字」 */
+const AVATARS = { a1: "🐶", a2: "🐱", a3: "🦊", a4: "🐻", a5: "🐼", a6: "🐸", a7: "🐵", a8: "🦁", a9: "🐰", a10: "🐨", a11: "🐷", a12: "🐹" };
 /* ic('name', 'coral') → 返回带 .ic 类的 span 内联图标（颜色随 .coral/.indigo 或继承文字色） */
 function ic(name, cls) {
   return `<span class="ic${cls ? ' ' + cls : ''}">${ICO[name] || ''}</span>`;
@@ -45,6 +48,8 @@ const App = {
   chapters: [],       // {id, name, folder}
   activeChapter: null,
   activeQuiz: null,
+  unread: 0,          // 通知未读数（铃铛角标，NOTIF-008）
+  checkin: null,      // GET /api/checkin/today 结果（学生端连胜条数据源）
 
   chapterName(id) {
     const c = this.chapters.find(x => x.id === id);
@@ -93,12 +98,34 @@ function openSheet(html) {
 function closeSheet() { document.getElementById("sheetMask").classList.remove("show"); }
 function avatar() {
   const role = App.state.role;
-  const ch = (App.state.user && App.state.user.display_name || "?").charAt(0);
-  return `<div class="avatar ${role === 'teacher' ? 'teacher' : ''}" onclick="openMenu()">${esc(ch)}</div>`;
+  const u = App.state.user || {};
+  const preset = AVATARS[u.avatar] || "";
+  const ch = preset || ((u.display_name || "?").charAt(0));
+  return `<div class="avatar ${role === 'teacher' ? 'teacher' : ''}" onclick="openSettings()">${preset ? preset : esc(ch)}</div>`;
+}
+function bell() {
+  const n = App.unread || 0;
+  return `<button class="bell" onclick="go('notifications')" aria-label="通知">${ic('bell')}${n ? `<span class="bell-dot">${n > 99 ? '99+' : n}</span>` : ''}</button>`;
+}
+/* 常驻连胜条（CHECKIN-007）：学生端所有页，置于 appbar 之下、content 之上 */
+function streakBar() {
+  const c = App.checkin;
+  if (!c) return '';
+  const done = !!c.done;
+  const status = done ? '✓ 今日已完成'
+    : (c.state === 'pending' ? `连胜 ${c.streak} 天待续` : '今天还没打卡');
+  return `<button class="streak-bar ${done ? 'done' : ''}" onclick="go('learn')">
+    <span class="streak-flame">🔥</span>
+    <span class="streak-num">${c.streak}</span><span class="streak-days">天</span>
+    <span class="streak-meta"><span class="streak-cap">${c.progress.cards}/10 卡 · ${c.progress.questions}/5 题</span><span class="streak-status">${status}</span></span>
+  </button>`;
 }
 function appbar(title, sub, onBack) {
   const back = onBack ? `<button class="ab-back" onclick="${onBack}" aria-label="返回">${ic('back')}</button>` : '';
-  return `<div class="appbar"><div class="ab-l">${back}<div><h1>${esc(title)}</h1>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div></div>${avatar()}</div>`;
+  const bar = `<div class="appbar"><div class="ab-l">${back}<div><h1>${esc(title)}</h1>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div></div><div class="ab-r">${bell()}${avatar()}</div></div>`;
+  const sb = (App.state.role === 'student' && App.checkin) ? streakBar() : '';
+  // 连胜条与 appbar 放进同一个不透明吸顶容器，避免历史「顶部缝隙漏内容」坑
+  return sb ? `<div class="head-stack">${bar}${sb}</div>` : bar;
 }
 function tabbar() {
   const h = App.state.hash;
@@ -142,14 +169,7 @@ async function doLogin() {
     errEl.textContent = e.message;
   }
 }
-function openMenu() {
-  const role = App.state.role;
-  const name = (App.state.user && App.state.user.display_name) || "用户";
-  openSheet(`<div class="row" style="font-weight:700">${esc(name)}（${role === 'teacher' ? '教师' : '学生'}）</div>
-    <div class="row" onclick="changePassword()">修改密码</div>
-    <div class="row danger" onclick="logout()">退出登录</div>
-    <div class="row cancel" onclick="closeSheet()">取消</div>`);
-}
+function openSettings() { go("settings"); }
 async function changePassword() {
   closeSheet();
   openSheet(`<div class="row" style="font-weight:700;cursor:default">修改密码</div>
@@ -172,8 +192,138 @@ function logout() {
   closeSheet();
   API.setToken("");
   App.state = { token: "", role: null, user: null, hash: "learn" };
+  App.unread = 0; App.checkin = null;
   location.hash = "login";
   render();
+}
+
+/* ===== 设置页（SET-001~005，师生共用）===== */
+async function viewSettings() {
+  let prefs = { push_enabled: false, remind_1900: true };
+  try { prefs = await API.get("/api/notifications/prefs"); } catch (e) {}
+  App.settingsPrefs = prefs;
+  const u = App.state.user || {};
+  const av = AVATARS[u.avatar] || ((u.display_name || "?").charAt(0));
+  const pushOn = !!prefs.push_enabled;
+  return appbar('设置', '个人资料 · 提醒 · 通知') + `<div class="content">
+    <div class="card sm">
+      <div class="sec-title">个人资料</div>
+      <div class="settings-row" onclick="viewAvatarPicker()"><span class="sr-label">头像</span><span class="sr-value"><span class="avatar">${esc(av)}</span> ›</span></div>
+      <div class="settings-row" onclick="changeName()"><span class="sr-label">名称</span><span class="sr-value">${esc(u.display_name || '')} ›</span></div>
+    </div>
+    <div class="card sm">
+      <div class="sec-title">账号与提醒</div>
+      <div class="settings-row" onclick="changePassword()"><span class="sr-label">修改密码</span><span class="sr-value">›</span></div>
+      <div class="settings-row"><span class="sr-label">打开提醒<span class="sr-sub">Web Push · 每天 19:00 未打卡提醒</span></span>
+        <div class="switch ${pushOn ? 'on' : ''}" onclick="toggleReminders(${!pushOn})"><span class="sw-track"></span></div></div>
+      <div class="settings-row" onclick="go('notifications')"><span class="sr-label">通知中心</span><span class="sr-value">${App.unread ? `<b class="sr-unread">${App.unread}</b> ` : ''}›</span></div>
+    </div>
+    <div class="card sm"><div class="settings-row danger" onclick="logout()"><span class="sr-label">退出登录</span><span class="sr-value">›</span></div></div>
+  </div>` + tabbar();
+}
+function viewAvatarPicker() {
+  const cur = (App.state.user && App.state.user.avatar) || '';
+  const cells = Object.keys(AVATARS).map(k => `<div class="avatar-cell ${k === cur ? 'sel' : ''}" onclick="pickAvatar('${k}')">${AVATARS[k]}</div>`).join('');
+  openSheet(`<div class="row" style="font-weight:700;cursor:default">选择头像</div>
+    <div class="avatar-grid">${cells}<div class="avatar-cell init ${cur === '' ? 'sel' : ''}" onclick="pickAvatar('')">首字</div></div>
+    <div class="row cancel" onclick="closeSheet()">取消</div>`);
+}
+async function pickAvatar(id) {
+  try {
+    const u = await API.patch("/api/auth/me", { avatar: id });
+    App.state.user = u; closeSheet(); toast("头像已更新"); render();
+  } catch (e) { toast(e.message); }
+}
+function changeName() {
+  closeSheet();
+  openSheet(`<div class="row" style="font-weight:700;cursor:default">修改名称</div>
+    <div class="row" style="text-align:left;border:none;background:transparent;cursor:default">
+      <input class="mini-input" id="newName" maxlength="20" placeholder="1–20 字" value="${esc((App.state.user && App.state.user.display_name) || '')}"/>
+    </div>
+    <div class="row" onclick="submitName()">保存</div>
+    <div class="row cancel" onclick="closeSheet()">取消</div>`);
+}
+async function submitName() {
+  const display_name = document.getElementById("newName").value.trim();
+  if (!display_name) { toast("名称不能为空"); return; }
+  try {
+    const u = await API.patch("/api/auth/me", { display_name });
+    App.state.user = u; closeSheet(); toast("已保存"); render();
+  } catch (e) { toast(e.message); }
+}
+async function toggleReminders(on) {
+  try {
+    if (on) {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) { toast("当前浏览器不支持通知"); render(); return; }
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { toast("未授予通知权限"); render(); return; }
+      const reg = await navigator.serviceWorker.ready;
+      const key = (await API.get("/api/notifications/vapid-public-key")).key;
+      if (!key) { toast("服务端未配置推送密钥"); return; }
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) });
+      }
+      const j = sub.toJSON();
+      await API.post("/api/notifications/push/subscribe", { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth });
+      toast("已开启提醒");
+    } else {
+      const reg = navigator.serviceWorker && (await navigator.serviceWorker.ready);
+      let endpoint = "";
+      if (reg) {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) { endpoint = sub.endpoint; try { await sub.unsubscribe(); } catch (e) {} }
+      }
+      await API.post("/api/notifications/push/unsubscribe", endpoint ? { endpoint } : {});
+      toast("已关闭提醒");
+    }
+  } catch (e) { toast(e.message); }
+  render();
+}
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+/* ===== 通知中心（NOTIF-001/008，师生共用）===== */
+async function viewNotifications() {
+  let d = { notifications: [], unread: 0 };
+  try { d = await API.get("/api/notifications"); } catch (e) {}
+  App.unread = d.unread || 0;
+  const items = (d.notifications || []).map(n => {
+    const img = n.image ? `<img class="notif-img" src="${esc(n.image)}" alt=""/>` : '';
+    return `<div class="notif-item ${n.is_read ? '' : 'unread'}" onclick="openNotification('${n.id}','${esc(n.ref_kind)}','${esc(n.ref_id)}','${esc(n.type)}')">
+      ${img}<div class="notif-body"><div class="notif-t">${esc(n.title)}</div><div class="notif-b">${esc(n.body)}</div><div class="notif-time">${timeAgo(n.created_at)}</div></div>
+    </div>`;
+  }).join('');
+  return appbar('通知中心', App.unread ? `${App.unread} 条未读` : '全部已读') + `<div class="content">
+    ${App.unread ? `<button class="btn ghost sm" style="margin-bottom:10px" onclick="markAllRead()">全部标为已读</button>` : ''}
+    ${items || '<div class="muted" style="padding:20px 0">暂无通知</div>'}</div>` + tabbar();
+}
+function timeAgo(iso) {
+  const t = new Date(iso).getTime();
+  if (!t) return '';
+  const m = Math.floor((Date.now() - t) / 60000);
+  if (m < 1) return '刚刚';
+  if (m < 60) return `${m} 分钟前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小时前`;
+  return `${Math.floor(h / 24)} 天前`;
+}
+async function markAllRead() {
+  try { await API.post("/api/notifications/read", { all: true }); App.unread = 0; } catch (e) {}
+  render();
+}
+async function openNotification(id, ref_kind, ref_id, type) {
+  try { await API.post("/api/notifications/read", { ids: [id] }); App.unread = Math.max(0, (App.unread || 0) - 1); } catch (e) {}
+  let h = "learn";
+  if (type === "path_published" || ref_kind === "session") h = "path";
+  else if (type === "quiz_published" || ref_kind === "quiz") h = "quiz";
+  go(h);
 }
 
 /* 渲染入口：根据角色 + hash 分发到 Student / Teacher 视图 */
@@ -185,7 +335,11 @@ async function render() {
   }
   try {
     let html = "";
-    if (App.state.role === "student") {
+    if (App.state.hash === "settings") {
+      html = await viewSettings();
+    } else if (App.state.hash === "notifications") {
+      html = await viewNotifications();
+    } else if (App.state.role === "student") {
       html = await Student.render();
     } else {
       html = await Teacher.render();
@@ -195,6 +349,32 @@ async function render() {
   } catch (e) {
     root.innerHTML = `<div class="note"><div class="big">${ic('warn')}</div>${esc(e.message)}<br><button class="btn ghost sm" style="margin-top:14px" onclick="render()">重试</button></div>`;
   }
+  refreshUnread();
+}
+
+/* 铃铛未读数轮询：仅更新角标 DOM，不整页 render（避免与 render 互相触发） */
+async function refreshUnread() {
+  if (!App.state.role) return;
+  try {
+    const d = await API.get("/api/notifications/unread");
+    const n = d.unread || 0;
+    if (n === App.unread) return;
+    App.unread = n;
+    const b = document.querySelector(".bell");
+    if (!b) return;
+    let dot = b.querySelector(".bell-dot");
+    if (n) {
+      if (!dot) { dot = document.createElement("span"); dot.className = "bell-dot"; b.appendChild(dot); }
+      dot.textContent = n > 99 ? "99+" : n;
+    } else if (dot) { dot.remove(); }
+  } catch (e) { /* 网络/未登录静默 */ }
+}
+
+/* 学生端连胜条数据：boot 时拉一次；review/submit 成功后由 student.js 调 refreshCheckin() 刷新 */
+async function refreshCheckin() {
+  if (App.state.role !== "student") { App.checkin = null; return null; }
+  try { App.checkin = await API.get("/api/checkin/today"); } catch (e) { App.checkin = null; }
+  return App.checkin;
 }
 
 async function boot() {
@@ -209,6 +389,7 @@ async function boot() {
     App.state.role = null;
   }
   await loadChapters();
+  await refreshCheckin();
   render();
 }
 

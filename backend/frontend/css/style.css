@@ -306,3 +306,74 @@ select.count-sel{font-size:16px;font-weight:600;font-family:var(--font);color:va
 .kc-help{margin-top:8px;font-size:12px;color:var(--text-2);background:var(--surface);border:1px dashed var(--border);border-radius:10px;padding:8px 12px}
 .kc-help summary{cursor:pointer;font-weight:600;color:var(--coral-strong);outline:none}
 .kc-help div{margin-top:6px;line-height:1.7;color:var(--text-2)}
+
+/* ===== v2.4.0：每日打卡连胜 + 通知中心 + 设置页（复用现有 token，不引新色/新依赖） ===== */
+/* appbar 右侧：铃铛 + 头像 */
+.ab-r{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.bell{position:relative;width:36px;height:36px;border:1px solid var(--border);background:var(--surface);border-radius:50%;color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.bell .ic{width:18px;height:18px}
+.bell-dot{position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:var(--red);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;line-height:1}
+/* 连胜条与 appbar 共处同一不透明吸顶容器，避免历史「顶部缝隙漏内容」坑 */
+.head-stack{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border)}
+.head-stack .appbar{position:static;border-bottom:none}
+.chat-head .head-stack{position:static;border-bottom:none}
+/* 顶部常驻连胜条（CHECKIN-007） */
+.streak-bar{display:flex;align-items:center;gap:8px;width:100%;border:none;background:linear-gradient(135deg,#FFF3E0,#FCEBE4);padding:9px 20px;font-family:var(--font);cursor:pointer;text-align:left}
+.streak-bar.done{background:linear-gradient(135deg,#FFF7D6,#FFE9C7);animation:streakPulse .6s ease}
+.streak-flame{font-size:22px;line-height:1}
+.streak-num{font-size:22px;font-weight:800;color:var(--coral-strong);letter-spacing:-.5px}
+.streak-days{font-size:13px;font-weight:700;color:var(--text-2)}
+.streak-meta{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+.streak-cap{font-size:12px;font-weight:700;color:var(--text)}
+.streak-status{font-size:11px;color:var(--text-2)}
+.streak-bar.done .streak-status{color:var(--green);font-weight:700}
+@keyframes streakPulse{0%{transform:scale(.98)}50%{transform:scale(1.03)}100%{transform:scale(1)}}
+/* 今日任务卡 */
+.task-card .card-head{margin-bottom:6px}
+.task-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.task-label{font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+.task-progress{color:var(--text-2);font-weight:700;font-size:12px}
+.task-bar{height:7px;border-radius:999px;background:var(--surface-2);margin:6px 0 2px;overflow:hidden}
+.task-bar-fill{height:100%;border-radius:999px;background:var(--coral);transition:width .3s ease}
+.task-bar-fill.full{background:var(--green)}
+.mini-btn.done{color:var(--green);border-color:#CFEBD8;background:#EAF8EE}
+.mini-btn:disabled{opacity:.65;cursor:default}
+/* 班级「今日打卡」 */
+.checkin-row{display:flex;align-items:center;gap:11px;padding:11px 12px;background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:8px}
+.checkin-row.me{border-color:var(--coral);background:var(--coral-soft)}
+.checkin-row.done{background:#F4FBF6;border-color:#CFEBD8}
+.checkin-meta{flex:1;min-width:0}
+.checkin-meta .nm{font-weight:700;font-size:14px;display:flex;align-items:center;gap:6px}
+.checkin-meta .nm .me-tag{font-size:10px;font-weight:700;color:var(--coral-strong);background:#fff;border:1px solid var(--coral);border-radius:6px;padding:1px 5px}
+.checkin-meta .st{font-size:11.5px;color:var(--text-2);margin-top:2px}
+.checkin-done{font-size:12px;font-weight:700;color:var(--green);white-space:nowrap}
+.nudge-btn{font-size:12px;font-weight:700;padding:7px 12px;border-radius:999px;border:none;background:var(--coral);color:#fff;cursor:pointer;white-space:nowrap}
+.nudge-btn:active{transform:scale(.96)}
+.nudge-btn.done{background:var(--surface-2);color:var(--text-2)}
+/* 设置页 */
+.settings-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 2px;border-bottom:1px solid var(--border);cursor:pointer;min-height:50px}
+.settings-row:last-child{border-bottom:none}
+.settings-row.danger .sr-label{color:var(--red)}
+.sr-label{font-size:15px;font-weight:600;display:flex;flex-direction:column;gap:2px;text-align:left}
+.sr-sub{font-size:11px;font-weight:400;color:var(--text-2)}
+.sr-value{font-size:13px;color:var(--text-2);display:flex;align-items:center;gap:6px}
+.sr-value .avatar{width:30px;height:30px;font-size:12px}
+.sr-unread{min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--red);color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.switch{width:48px;height:29px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);position:relative;cursor:pointer;flex-shrink:0;transition:.2s}
+.sw-track{position:absolute;top:2px;left:2px;width:23px;height:23px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.2s}
+.switch.on{background:var(--coral);border-color:var(--coral)}
+.switch.on .sw-track{left:21px}
+/* 头像选择器 */
+.avatar-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:4px 16px 12px}
+.avatar-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:26px;background:var(--surface);border:1px solid var(--border);border-radius:14px;cursor:pointer}
+.avatar-cell.init{font-size:14px;font-weight:700;color:var(--text-2)}
+.avatar-cell.sel{border:2px solid var(--coral);background:var(--coral-soft)}
+/* 通知中心 */
+.notif-item{display:flex;gap:11px;padding:13px 14px;background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:9px;cursor:pointer;position:relative}
+.notif-item.unread{background:#FFF8F3;border-color:#FFE2D5}
+.notif-item.unread::after{content:'';position:absolute;top:14px;right:12px;width:8px;height:8px;border-radius:50%;background:var(--coral)}
+.notif-img{width:44px;height:44px;border-radius:12px;object-fit:cover;flex-shrink:0}
+.notif-body{flex:1;min-width:0}
+.notif-t{font-weight:700;font-size:14px;margin-bottom:2px}
+.notif-b{font-size:13px;color:var(--text-2);line-height:1.45}
+.notif-time{font-size:11px;color:var(--text-3);margin-top:5px}

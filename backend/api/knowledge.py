@@ -2,7 +2,7 @@
 from ai import knowledge
 from ai.review_sched import next_interval, next_review_at_iso
 from auth.jwt_utils import jwt_required, role_required
-from data import models, timeutil
+from data import checkin, models, timeutil
 from data.db import get_db
 from flask import Blueprint, g, request
 from middleware.errors import e_forbidden, e_input, e_not_found, ok
@@ -58,6 +58,16 @@ def overview():
     return ok({"chapters": [{"chapter_id": cid, "counts": counts} for cid, counts in groups.items()]})
 
 
+@knowledge_bp.route("/today", methods=["GET"])
+@jwt_required
+@role_required("student")
+def today_deck():
+    """今日任务卡组（CHECKIN-005）：到期复习卡优先 → 未学新卡按章节补齐，跨章，上限 10。"""
+    con = get_db()
+    deck = checkin.build_today_deck(con, g.user_id)
+    return ok(deck)
+
+
 @knowledge_bp.route("/<chapter_id>", methods=["GET"])
 @jwt_required
 @role_required("student")
@@ -84,5 +94,7 @@ def review(card_id):
               if remembered else ("new" if row["status"] == "new" else "learning"))
     interval = next_interval(remembered, row["interval_days"]); now = models.utcnow()
     con.execute("UPDATE knowledge_reviews SET learn_count=learn_count+1,interval_days=?,status=?,next_review_at=?,last_review_at=? WHERE id=?", (interval, status, next_review_at_iso(interval), now, row["id"])); con.commit()
+    # 打卡判定触发点：复习提交成功后服务端惰性评估（CHECKIN-004）
+    checkin.evaluate_and_maybe_complete(con, g.user_id)
     updated = con.execute("SELECT kc.id,kc.chapter_id,kc.sub_concept,kc.front,kc.back,kr.learn_count,kr.interval_days,kr.next_review_at,kr.status,kr.last_review_at FROM knowledge_cards kc JOIN knowledge_reviews kr ON kr.card_id=kc.id WHERE kr.id=?", (row["id"],)).fetchone()
     return ok({"card": _card(updated)})

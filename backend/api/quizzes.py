@@ -177,6 +177,18 @@ def publish_quiz(quiz_id):
         (now, now, total_points, quiz_id),
     )
     con.commit()
+
+    # 发布 → 全体在用学生通知（NOTIF-004）
+    from services.notify import active_student_ids, notify_users
+
+    sess = _quiz_session(con, _parse_ids(row["chapter_ids"]))
+    body = (f"测评 · 第{sess['week_no']}周 第{sess['session_no']}节"
+            if sess else (row["title"] or "新测评"))
+    notify_users(
+        con, active_student_ids(con), "quiz_published",
+        "老师发布了新测评", body,
+        image="", ref_kind="quiz", ref_id=quiz_id,
+    )
     return ok({"id": quiz_id, "status": "published", "total_points": total_points})
 
 

@@ -39,6 +39,7 @@ const API = (() => {
     get: (p) => request(p),
     post: (p, json) => request(p, { method: "POST", json }),
     put: (p, json) => request(p, { method: "PUT", json }),
+    patch: (p, json) => request(p, { method: "PATCH", json }),
     del: (p) => request(p, { method: "DELETE" }),
     upload: (p, formData) => request(p, { method: "POST", body: formData }),
     // 方案B：下载源文件（带 Bearer，分块流式 + 进度百分比）

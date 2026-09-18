@@ -236,6 +236,56 @@ CREATE TABLE IF NOT EXISTS video_resources (
     created_at   TEXT NOT NULL
 );
 
+-- 每日打卡（达标日快照，幂等）：checkin_date 为 UTC+8 日历日
+CREATE TABLE IF NOT EXISTS daily_checkins (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  checkin_date TEXT NOT NULL,
+  cards_done INTEGER NOT NULL DEFAULT 0,
+  questions_done INTEGER NOT NULL DEFAULT 0,
+  streak_after INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  UNIQUE(user_id, checkin_date)
+);
+CREATE INDEX IF NOT EXISTS idx_checkins_user ON daily_checkins(user_id, checkin_date);
+
+-- Web Push 订阅（VAPID）
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  user_agent TEXT DEFAULT '',
+  created_at TEXT NOT NULL,
+  last_ok_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);
+
+-- 站内通知（所有通知都落库）
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  image TEXT DEFAULT '',
+  ref_kind TEXT DEFAULT '',
+  ref_id TEXT DEFAULT '',
+  is_read INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  UNIQUE(user_id, type, ref_id, created_at)
+);
+CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, is_read);
+
+-- 通知偏好
+CREATE TABLE IF NOT EXISTS notification_prefs (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  push_enabled INTEGER NOT NULL DEFAULT 0,
+  remind_1900 INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_chunks_chapter ON chunks(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_material ON chunks(material_id);
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
@@ -289,6 +339,9 @@ def migrate(con) -> None:
 
     # 方案B（v1.4.0）：材料源文件绝对路径（serve 课件/ 源文件供下载）
     _add_column(con, "materials", "source_path", "TEXT")
+
+    # 预设头像（v2.4.0，SET-003）：存预设 id（a1..a12），空串回退「名字首字」
+    _add_column(con, "users", "avatar", "TEXT NOT NULL DEFAULT ''")
 
     # 百分制评分模型（v1.3.0）：quizzes/questions/attempts 增量列
     _add_column(con, "quizzes", "total_points", "REAL NOT NULL DEFAULT 100")
