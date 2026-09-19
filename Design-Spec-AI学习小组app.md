@@ -310,7 +310,7 @@
 - **CHECKIN-010（P0）卡组三档兜底，永不返回空**（CR-2026-0919-DECK）：装配优先级 **① 未学习卡 → ② 到期复习卡 → ③ 低掌握度随机补足**。第③档（**CHECKIN-010 核心**）解决用户实报死路——学生把全部卡学成 `mastered` / 未到期时会拿到 **0 张卡**，前端 `toast('今天没有可复习的卡片')` 后直接 return，**学生卡死、无法凑够当日目标张数、连胜断掉且无任何出路**。掌握度序 = `status 档位权重（new<learning<reviewing<mastered）→ learn_count → interval_days` 升序（越小越差）；从**最差的前 `max(3×limit, 20)` 张候选池内随机洗牌**后取 `limit`，同时满足「掌握度低」与「随机」。只要库中有已发布章节的卡片，卡组**绝不空**。 ✅
 - **CHECKIN-011（P0）超额学习（想多学也可以）**（CR-2026-0919-DECK）：学生**可以无限继续学**，不受每日目标张数（v2.6.3 起 30 张）限制。任务行 100% 后按钮由「已完成 / disabled」变为**可点的「再学一组」**；额外卡组**排除今日已复习过的卡**（避免重复劳动刷进度），继续计入 distinct 与掌握度，但**不改变任务进度条的 10/10 语义**（`counts_today` 仍是上限口径，达标判定不受影响；**所有进度显示一律夹取到阈值上限（v2.6.3 起 30/5）**，避免超额学习后出现「19/10 卡」观感）。 ✅
 - **CHECKIN-012（P1）真空引导**（CR-2026-0919-DECK）：若库中确实**一张已发布卡都没有**（真真空，非三档兜底能救），接口返回明确的 `empty_reason`；前端不再只弹一句 toast 了事，改为**给出可点击的出路**（跳「资料库」勾选章节 → 生成知识卡片）。 ✅
-- **CHECKIN-013（P0）学习范围由学生自定**（CR-2026-0919-SCOPE，v2.6.5）：**每日任务只作统计数字，绝不锁定学生能学什么。** 学生勾选范围（学习 hub →「资料库」下拉多选）同时驱动 ① 对话跨章检索 ② 知识卡片复习 ③ 今日任务卡组 ④ 今日练习出题。接口：`GET /api/knowledge/today?chapter_ids=a,b,c`、`POST /api/checkin/start-practice {chapter_ids:[...]}`；响应新增 `scope:{chapter_ids,scoped,count}`。**显式范围内无卡 → `empty_reason="no_cards_in_scope"`，绝不偷偷回落全部**（否则学生以为限制了范围却拿到全量卡）；未传/空 = 全部已发布章节（老行为不变）。练习续答只复用**范围内**未答完的 session。 ✅
+- **CHECKIN-013（P0）学习范围由学生自定**（CR-2026-0919-SCOPE，v2.6.5）：**每日任务只作统计数字，绝不锁定学生能学什么。** 学生勾选范围（学习 hub →「资料库」下拉多选）同时驱动 ① 对话跨章检索 ② 知识卡片复习 ③ 今日任务卡组 ④ 今日练习出题。接口：`GET /api/knowledge/today?chapter_ids=a,b,c`、`POST /api/checkin/start-practice {chapter_ids:[...]}`；响应新增 `scope:{chapter_ids,scoped,count}`。**显式范围内无卡 → `empty_reason="no_cards_in_scope"`，绝不偷偷回落全部**（否则学生以为限制了范围却拿到全量卡）；未传/空 = 全部已发布章节（老行为不变）。练习续答只复用**范围内**未答完的 session。**UI 空勾选 = 使用全部已发布章节**（与接口未传/空等价，列表页显示「N 篇 · 全部」而非「已选 0」）；勾选口径不得与接口语义分叉。 ✅
 
 **Technical**
 - **判定只在服务端**（**CHECKIN-004**，P0）：前端无权上报「我打卡了」。计数口径 = `knowledge_reviews` 中当前用户、`date(last_review_at, UTC+8) == 今天` 的 **distinct `card_id`**；`practice_questions` 中属于该生 session、当日 `answered_at` 且已作答的 **distinct id**。阈值常量 `TASK_CARDS_REQUIRED=10` / `TASK_QUESTIONS_REQUIRED=5` 集中在 `backend/config.py`。 ✅
@@ -1154,3 +1154,36 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
   RPT-003 建议按钮**常显**：`can_generate=false` 时渲染 disabled 的「今日已生成 · 明天可再生成」。
 - **测试**：`tests/test_checkin.py::test_today_deck_respects_student_scope`、
   `::test_start_practice_respects_student_scope`（16 passed）。
+
+### 12.36 实现状态回写（v2.6.6，2026-09-19，资料库折叠头重叠修复 + 勾选口径统一）
+
+**本次迭代 REQ**：`CHECKIN-013`（追加：UI「空勾选」必须与接口「未传/空 = 全部已发布章节」同口径，不得分叉）。变更请求号 `CR-2026-0919-LIBHEAD`（用户实报截图，纯前端）。
+
+**两项实报 → 根因 → 修法**
+
+| # | 用户实报 | 根因 | 修法（v2.6.6） |
+|---|---------|------|---------------|
+| 1 | 资料库折叠头右侧「按钮重叠」 | `.lib-caret` 收起态用 `transform:rotate(-90deg)` 指示方向，**旋转圆心偏移**后箭头压住右侧 `.card-count` pill | 收起态改为**不旋转**（收起 `▾` / 展开 `▴`）；`.lib-head` 三段 flex 明确 `flex:1 1 auto`（标题，超长省略）+ `flex:0 0 auto`（pill / caret），`gap:10px` |
+| 2 | 「已选 0」与真实生效范围不一致 | `selChapterIds()` 勾选为空时**本就兜底为全部章节**，但列表页副标题仍渲染「已选 0」→ 与真实行为矛盾、误导学生 | 口径统一：空勾选显示 `N 篇 · 全部`（副标题 `全部 N 章`），收起态 hint 补「不勾选 = 按全部资料」 |
+
+**锚点与验证**：`backend/frontend/css/style.css:286-298`（`.lib-tools` / `.lib-head` / `.lib-caret`）、
+`backend/frontend/js/student.js:104-133`（`scopeLabel` / `libCount` / `lib-hint`）。
+前端三件套同步：`app.py version 2.6.6` / `sw.js CACHE v51` / `index.html ?v=2.6.6`。
+
+### 12.37 实现状态回写（v2.6.7，2026-09-19，全选/清空纵向压住 pill + CSS chevron 箭头）
+
+**本次迭代 REQ**：`CHECKIN-013`（追加：资料库折叠头/工具行的**几何无重叠** = 横向 + 纵向双达标）。变更请求号 `CR-2026-0919-LIBHEAD2`（用户**二次**实报截图，纯前端）。
+
+**两项实报 → 根因 → 修法**
+
+| # | 用户实报 | 根因 | 修法（v2.6.7） |
+|---|---------|------|---------------|
+| 1 | 资料库「全选/清空」压住 pill（v2.6.6 修完仍未解决） | 真正碰撞是**纵向**：`.lib-tools` 用 `margin:-4px 0 8px` 负上边距（旧版靠 `.card-head` 的 10px 下边距抵消），v2.6.5 起折叠头换成 `.lib-head`（无下边距）后按钮行被顶进 pill 下边缘 | `.lib-tools{margin:10px 0 10px}` 改正间距 + `.lib-card .lib-head{margin-bottom:0}` |
+| 2 | 箭头「浮在 pill 上方」 | 字符 `▾/▴` 自身**字形度量偏上**，`line-height` 居中永远对不齐 pill 中线 | 箭头改 **CSS chevron**：`::before` 画 7px 方块 + `border-right/bottom`，`rotate(45deg)`（收起）/ `rotate(-135deg)`（展开，`.lib-caret.on`），容器 `18×18` flex 居中 —— 视觉居中且无字形差异 |
+
+**教训（已写进 skill Pitfalls）**：修「重叠」必须**同时量横向与纵向**（`pill.right < caret.left`（横）**且** `tools.top > head.bottom`（纵，留 ≥6px））。v2.6.6 只量了横向就宣布修好 → 用户回来说「还是没有解决」。
+
+**锚点**：`backend/frontend/css/style.css:286-298`（`.lib-tools` / `.lib-caret::before`）、`backend/frontend/js/student.js` 资料库折叠头渲染。
+前端三件套同步：`app.py version 2.6.7` / `sw.js CACHE v52` / `index.html ?v=2.6.7`。
+
+**共同诚实清单（v2.6.6 / v2.6.7）**：两次均为**纯前端**改动（`css/style.css` + `js/student.js` 局部），未改后端接口、未改数据、未新增依赖；`make lint test smoke` 全绿（v2.6.7 覆盖率 77.14%，冒烟 `version 2.6.7`）；**未 bump 除前端三件套外的任何版本**。本次回写仅补文档，**不产生 CHANGELOG 条目、不 bump `app.py` version**（与 `a4a64a5` v2.6.1 回写先例一致）。
