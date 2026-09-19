@@ -124,8 +124,11 @@ const Student = {
   taskCardHtml() {
     const c = App.checkin;
     if (!c) return '';
-    const cards = Math.min(c.progress.cards, 10);
-    const questions = Math.min(c.progress.questions, 5);
+    // 阈值由后端下发（config.TASK_*_REQUIRED 单一真相），前端不硬编码
+    const need = (c.task && c.task.cards_required) || 10;
+    const needQ = (c.task && c.task.questions_required) || 5;
+    const cards = Math.min(c.progress.cards, need);
+    const questions = Math.min(c.progress.questions, needQ);
     const done = !!c.done;
     const head = done
       ? `<span class="badge master">✓ 已完成 · 连胜 ${c.streak} 天</span>`
@@ -142,8 +145,8 @@ const Student = {
     };
     return `<div class="card sm mb-12 task-card">
       <div class="card-head"><div class="card-title">${ic('target', 'coral')}今日任务</div>${head}</div>
-      ${task('复习卡片', cards, 10, 'Student.startTodayDeck()', '已完成', { label: '再学一组', onClick: 'Student.startExtraDeck()' })}
-      ${task('刷练习题', questions, 5, 'Student.continuePractice()', '已完成')}
+      ${task('复习卡片', cards, need, 'Student.startTodayDeck()', '已完成', { label: '再学一组', onClick: 'Student.startExtraDeck()' })}
+      ${task('刷练习题', questions, needQ, 'Student.continuePractice()', '已完成')}
     </div>`;
   },
   // 今日任务卡组：数据源 GET /api/knowledge/today，复用现有翻卡/滑动/复习提交
@@ -1252,6 +1255,9 @@ const Student = {
   _checkinBlock(d) {
     if (!d || !(d.students || []).length) return '';
     const meId = (App.state.user && App.state.user.id) || '';
+    // 阈值由后端下发（/api/checkin/class → required）
+    const need = (d.required && d.required.cards) || 10;
+    const needQ = (d.required && d.required.questions) || 5;
     const rows = d.students.map(s => {
       const av = AVATARS[s.avatar] || esc((s.name || '?').charAt(0));
       const right = s.checked_in
@@ -1260,7 +1266,7 @@ const Student = {
       return `<div class="checkin-row ${s.user_id === meId ? 'me' : ''} ${s.checked_in ? 'done' : ''}">
         <div class="rank-av">${av}</div>
         <div class="checkin-meta"><div class="nm">${esc(s.name)}${s.user_id === meId ? '<span class="me-tag">我</span>' : ''}</div>
-          <div class="st">🔥 ${s.streak} 天 · ${Math.min(s.cards, 10)}/10 卡 · ${Math.min(s.questions, 5)}/5 题</div></div>
+          <div class="st">🔥 ${s.streak} 天 · ${Math.min(s.cards, need)}/${need} 卡 · ${Math.min(s.questions, needQ)}/${needQ} 题</div></div>
         ${right}</div>`;
     }).join('');
     return `<div class="card"><div class="card-head"><div class="card-title">${ic('pin', 'coral')}今日打卡</div><span class="card-count">${d.students.length} 人</span></div>${rows}</div>`;

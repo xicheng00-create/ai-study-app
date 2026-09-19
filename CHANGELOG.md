@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.6.3] - 2026-09-19
+
+### Changed
+- **每日任务「复习卡片」目标 10 → 30 张**（`config.TASK_CARDS_REQUIRED`；「刷练习题」5 道不变）：单点常量调整——`data/checkin.py`、`api/checkin.py`、`ai/reminder_copy.py`、`scripts/checkin_reminder.py` 均为动态引用，自动随动。
+- **阈值改由后端下发，前端不再硬编码**：`GET /api/checkin/today` 的 `task` 增 `cards_required` / `questions_required`（= `config.TASK_*_REQUIRED`）；`GET /api/checkin/class` 顶层增 `required`。学生端 `app.js`（常驻连胜条）、`student.js`（今日任务卡、班级今日打卡行）全部改读后端字段（字段缺失时兜底旧值 10/5）——**以后再调阈值只改 config 一处，不会再出现前后端口径不一致**。
+- `backend/frontend/sw.js` CACHE `aistudy-shell-v47` → **`v48`**；`index.html` 静态资源与 SW 注册 URL `?v=2.6.3`（前端有改动，按「新上线规则」同步三处）。
+- `backend/app.py` 版本 → `2.6.3`。
+
+### Fixed
+- **「4/10 卡」却显示「✓ 今日已完成」（学生端实报）**：判定没错，是**两个口径同屏打架**。`daily_checkins` 是达标瞬间写入的**不可变快照**（一天一行、幂等、不回退）；进度数字则是 `counts_today` 的**实时统计**。教师端重建卡片库（2384 张全新卡）会重置 `knowledge_reviews.last_review_at` → 实时计数从 10 掉到 4，而快照仍记着「今天曾达标」⇒ 显示矛盾。
+  - 修法：新增 `data.checkin.progress_today()`（**展示口径**）——以**当日快照为下限**，取 `max(实时, 快照)`，进度条只增不减；`/api/checkin/today` 与班级榜 `class_today` 改用它。`counts_today`（纯净实时统计）语义不变，达标判定链路（`evaluate_and_maybe_complete`）不受影响。
+  - 回归用例：`tests/test_checkin.py::test_progress_today_never_regresses`（快照下限 + 无快照时不凭空抬高）。
+
+### Tests
+- `make lint` → `All checks passed!`（venv ruff 0.16.5）｜`make test` → 覆盖率 **76.45%**（门槛 50%）｜`make smoke` → `version 2.6.3`。
+- `tests/test_checkin.py` 全面去魔数：阈值断言改用 `TASK_CARDS_REQUIRED` / `TASK_QUESTIONS_REQUIRED`，并新增 `task.cards_required` 下发断言。
+- 学生端实测：`/api/checkin/today` 返回 `task.cards_required=30`；连胜条 / 今日任务卡 / 班级行均显示 `/30 卡`。
+
 ## [2.6.2] - 2026-09-19
 
 ### Fixed

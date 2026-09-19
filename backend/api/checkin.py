@@ -1,7 +1,7 @@
 """每日打卡与连胜 Blueprint（CHECKIN-001~008，学生端）。"""
 from ai import mastery
 from auth.jwt_utils import jwt_required, role_required
-from config import TASK_QUESTIONS_REQUIRED
+from config import TASK_CARDS_REQUIRED, TASK_QUESTIONS_REQUIRED
 from data import checkin, timeutil
 from data.db import get_db
 from flask import Blueprint, g, request
@@ -50,10 +50,14 @@ def today():
     """今日任务与连胜状态（每次惰性幂等评估，跨日自愈）。"""
     con = get_db()
     info = checkin.evaluate_and_maybe_complete(con, g.user_id)
-    c = checkin.counts_today(con, g.user_id)
+    c = checkin.progress_today(con, g.user_id)
     deck = checkin.build_today_deck(con, g.user_id)
     return ok({
-        "task": {"cards": deck["cards"], "questions": TASK_QUESTIONS_REQUIRED, "short": deck["short"]},
+        "task": {
+            "cards": deck["cards"], "questions": TASK_QUESTIONS_REQUIRED, "short": deck["short"],
+            # 阈值随数据下发（单一真相在 config.TASK_*_REQUIRED）：前端不再硬编码 10/5
+            "cards_required": TASK_CARDS_REQUIRED, "questions_required": TASK_QUESTIONS_REQUIRED,
+        },
         "progress": {"cards": c["cards"], "questions": c["questions"]},
         "done": info["done"],
         "streak": info["streak"],

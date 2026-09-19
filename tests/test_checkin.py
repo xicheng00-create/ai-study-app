@@ -3,6 +3,7 @@ import random
 from datetime import timedelta
 
 from ai import knowledge, quizzer
+from config import TASK_CARDS_REQUIRED, TASK_QUESTIONS_REQUIRED
 from conftest import login, make_student
 from data import checkin, models, timeutil
 
@@ -56,24 +57,50 @@ def _today(client, h):
     return client.get("/api/checkin/today", headers=h).get_json()["data"]
 
 
-# ---- 阈值：9 张不算 / 10 张算；同卡重复只计 1 ----
+# ---- 阈值：n-1 张不算 / n 张算；同卡重复只计 1（n = config.TASK_CARDS_REQUIRED，不写死） ----
 
 def test_checkin_card_threshold_and_distinct(client, teacher_headers, monkeypatch):
     cid = _chapter(client, teacher_headers)
     h = _student(client, teacher_headers, "ck_a")
-    cards = _cards(client, h, monkeypatch, cid, 10)
+    n = TASK_CARDS_REQUIRED
+    cards = _cards(client, h, monkeypatch, cid, n)
 
-    # 复习 9 张 distinct（card0 重复一次 → 仍只计 9 distinct）
-    for c in cards[:9]:
+    # 复习 n-1 张 distinct（card0 重复一次 → 仍只计 n-1 distinct）
+    for c in cards[: n - 1]:
         _review(client, h, c["id"])
     _review(client, h, cards[0]["id"])  # 同卡重复
     d = _today(client, h)
-    assert d["done"] is False and d["progress"]["cards"] == 9
+    assert d["done"] is False and d["progress"]["cards"] == n - 1
+    assert d["task"]["cards_required"] == n  # 阈值随数据下发（前端不再硬编码）
 
-    # 第 10 张 distinct → 卡片达标（题目仍需 5 题，故 done 仍为 False）
-    _review(client, h, cards[9]["id"])
+    # 第 n 张 distinct → 卡片达标（题目仍需 5 题，故 done 仍为 False）
+    _review(client, h, cards[n - 1]["id"])
     d = _today(client, h)
-    assert d["progress"]["cards"] == 10 and d["done"] is False
+    assert d["progress"]["cards"] == n and d["done"] is False
+
+
+# ---- 回归（2026-09-19 用户实报「4/10 卡却显示今日已完成」）：进度不得倒退 ----
+
+def test_progress_today_never_regresses(client, teacher_headers, monkeypatch):
+    """卡片库重建会重置复习记录 → 实时计数掉到达标值以下；当日快照是下限。"""
+    uid = make_student(client, teacher_headers, "ck_floor")
+    with client.application.app_context():
+        from data.db import get_db
+        con = get_db()
+        con.execute(
+            "INSERT INTO daily_checkins (id, user_id, checkin_date, cards_done, questions_done,"
+            " streak_after, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (models.new_id(), uid, timeutil.today_str(), TASK_CARDS_REQUIRED, TASK_QUESTIONS_REQUIRED,
+             1, models.utcnow()),
+        )
+        con.commit()
+        monkeypatch.setattr(checkin, "counts_today", lambda con, u: {"cards": 0, "questions": 0})
+        p = checkin.progress_today(con, uid)
+        assert p["cards"] == TASK_CARDS_REQUIRED and p["questions"] == TASK_QUESTIONS_REQUIRED
+        # 无当日打卡行时 = 纯实时计数（不凭空抬高）
+        monkeypatch.setattr(checkin, "counts_today", lambda con, u: {"cards": 2, "questions": 1})
+        p2 = checkin.progress_today(con, "nonexistent-uid")
+        assert p2 == {"cards": 2, "questions": 1}
 
 
 # ---- 阈值：4 题不算 / 5 题算 ----
@@ -81,7 +108,7 @@ def test_checkin_card_threshold_and_distinct(client, teacher_headers, monkeypatc
 def test_checkin_question_threshold(client, teacher_headers, monkeypatch):
     cid = _chapter(client, teacher_headers)
     h = _student(client, teacher_headers, "ck_b")
-    cards = _cards(client, h, monkeypatch, cid, 10)
+    cards = _cards(client, h, monkeypatch, cid, TASK_CARDS_REQUIRED)
     for c in cards:
         _review(client, h, c["id"])
 
@@ -133,7 +160,8 @@ def test_streak_model_and_idempotent(client, teacher_headers, monkeypatch):
     uid = make_student(client, teacher_headers, "ck_streak")
     monkeypatch.setattr("data.checkin.timeutil.today_str", lambda: "2026-09-18")
     monkeypatch.setattr("data.checkin._yesterday_str", lambda: "2026-09-17")
-    monkeypatch.setattr(checkin, "counts_today", lambda con, u: {"cards": 10, "questions": 5})
+    monkeypatch.setattr(checkin, "counts_today",
+                        lambda con, u: {"cards": TASK_CARDS_REQUIRED, "questions": TASK_QUESTIONS_REQUIRED})
     with client.application.app_context():
         from data.db import get_db
         con = get_db()

@@ -47,6 +47,28 @@ def counts_today(con, user_id) -> dict:
     return {"cards": len(cards), "questions": len(questions)}
 
 
+def progress_today(con, user_id) -> dict:
+    """今日进度（**展示口径**，CHECKIN-002）：实时计数 + 当日快照下限（只增不减）。
+
+    为什么需要它（2026-09-19 用户实报「4/10 卡却显示今日已完成」）：
+    `daily_checkins` 是达标瞬间写入的**不可变快照**（一天一行、幂等、不回退），
+    而 `counts_today` 是实时统计 —— 教师端重建卡片库会重置 knowledge_reviews
+    的 last_review_at，实时计数掉到阈值以下，两个数字就同屏打架、看起来像 bug。
+    达标是既成事实，进度条不得倒退 → 取 max(实时, 快照)。
+    """
+    c = counts_today(con, user_id)
+    row = con.execute(
+        "SELECT cards_done, questions_done FROM daily_checkins WHERE user_id=? AND checkin_date=?",
+        (user_id, today_str()),
+    ).fetchone()
+    if not row:
+        return c
+    return {
+        "cards": max(c["cards"], int(row["cards_done"] or 0)),
+        "questions": max(c["questions"], int(row["questions_done"] or 0)),
+    }
+
+
 def streak_info(con, user_id) -> dict:
     """连胜存活模型：done（今日达标）/ pending（昨日达标待续）/ broken（断连归零）。"""
     today = timeutil.today_str()
@@ -241,7 +263,7 @@ def class_today(con, me_uid) -> dict:
 
     out = []
     for uid, stu in students.items():
-        c = counts_today(con, uid)
+        c = progress_today(con, uid)
         info = streak_info(con, uid)
         checked_in = info["done"]
         out.append({
@@ -258,4 +280,8 @@ def class_today(con, me_uid) -> dict:
 
     out.sort(key=lambda r: (not r["checked_in"], -r["streak"], r["name"]))
     me = next((r for r in out if r["user_id"] == me_uid), None)
-    return {"date": today, "students": out, "me": me}
+    return {
+        "date": today, "students": out, "me": me,
+        # 阈值随数据下发（单一真相在 config）：前端不再硬编码 10/5
+        "required": {"cards": TASK_CARDS_REQUIRED, "questions": TASK_QUESTIONS_REQUIRED},
+    }

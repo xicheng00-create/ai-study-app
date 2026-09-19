@@ -114,10 +114,13 @@ function streakBar() {
   const done = !!c.done;
   const status = done ? '✓ 今日已完成'
     : (c.state === 'pending' ? `连胜 ${c.streak} 天待续` : '今天还没打卡');
+  // 阈值由后端下发（config.TASK_*_REQUIRED 单一真相），前端不硬编码；缺字段时兜底旧值
+  const need = (c.task && c.task.cards_required) || 10;
+  const needQ = (c.task && c.task.questions_required) || 5;
   return `<button class="streak-bar ${done ? 'done' : ''}" onclick="go('learn')">
     <span class="streak-flame">🔥</span>
     <span class="streak-num">${c.streak}</span><span class="streak-days">天</span>
-    <span class="streak-meta"><span class="streak-cap">${Math.min(c.progress.cards, 10)}/10 卡 · ${Math.min(c.progress.questions, 5)}/5 题</span><span class="streak-status">${status}</span></span>
+    <span class="streak-meta"><span class="streak-cap">${Math.min(c.progress.cards, need)}/${need} 卡 · ${Math.min(c.progress.questions, needQ)}/${needQ} 题</span><span class="streak-status">${status}</span></span>
   </button>`;
 }
 function appbar(title, sub, onBack) {

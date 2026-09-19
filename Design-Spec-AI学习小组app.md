@@ -298,14 +298,16 @@
 ### 3.11 每日打卡与连胜（学生端，REQ-CHECKIN）
 **Functional**
 - **CHECKIN-001（P0）学生端 journey 优化**：登录成功后**首页即「今日任务」**（`learn` 视图置顶任务卡），学生不再需要自己找入口。 ✅
-- **CHECKIN-002（P0）每日任务阈值**：当日复习 **distinct 知识卡片 ≥ 10 张** **且**完成 **distinct 练习题 ≥ 5 道** → 当日达标（= 打卡成功，单日只记一次）。 ✅
+- **CHECKIN-002（P0）每日任务阈值**：当日复习 **distinct 知识卡片 ≥ 30 张** **且**完成 **distinct 练习题 ≥ 5 道** → 当日达标（= 打卡成功，单日只记一次）。 ✅
+  - **REQ-CHECKIN-THRESHOLD-001（v2.6.3）阈值单点 + 后端下发**：阈值唯一定义在 `backend/config.py` 的 `TASK_CARDS_REQUIRED` / `TASK_QUESTIONS_REQUIRED`；后端 `data/checkin.py`、`api/checkin.py`、`ai/reminder_copy.py`、`scripts/checkin_reminder.py` 均为**动态引用**，且 `GET /api/checkin/today`（`task.cards_required` / `task.questions_required`）与 `GET /api/checkin/class`（`required`）**把阈值随响应下发**，前端一律读字段、**禁止硬编码**。调阈值 = 只改 config 一处（含副本口径）。见 §12.33。
+  - **REQ-CHECKIN-PROGRESS-002（v2.6.3）进度只增不减**：进度显示口径 = `max(实时计数, 当日打卡快照)`（`data.checkin.progress_today()`）——`daily_checkins` 是达标瞬间的不可变快照，卡片库重建会重置 `knowledge_reviews` 导致实时计数回落，若直接展示实时值会出现「4/30 卡」却「✓ 今日已完成」的同屏矛盾。达标判定仍走 `counts_today`（纯净实时），不受此口径影响。见 §12.33。
 - **CHECKIN-003（P0）连胜模型（Duolingo 式存活）**：达标日 +1；出现空档日归零；**今天未达标但昨天达标 → 连胜存活**（`state=pending`，天数沿用昨日值）；`longest_streak` 只增不减。 ✅
-- **CHECKIN-005 / CHECKIN-006（P0）自动安排学习任务**：今日卡组（**装配优先级见 CHECKIN-009/010**，**跨章**，上限 10）与今日练习（5 道；当天已有未答完的 session 优先续答）**全部由服务端自动装配**，学生只需点「继续」。 ✅ v2.4.0 首版「到期复习卡优先 → 未学新卡按章节补齐」存在口径与兜底缺陷，已被 **CHECKIN-009/010/011** 取代，见 §12.27。
-- **CHECKIN-007（P0）顶部常驻连胜条**：学生端**所有页面**常驻（🔥 图标 + 连胜天数 + 今日进度 `x/10 卡 · y/5 题` + 状态文案 `今天还没打卡` / `✓ 今日已完成`）；达标瞬间条变色 + toast「🔥 连胜 +1，已连续 N 天」。教师端不显示。 ✅
-- **CHECKIN-008（P0）班级「今日打卡」区块**：班级页**置顶**（先于现有排行榜卡），按「已打卡优先」排列，每人一行：头像 + 名字 + `🔥 N 天` + `x/10 卡 · y/5 题`（达标行绿色高亮、自己标 `me`）；未打卡同学行尾「提醒 TA」按钮（→ NOTIF-006）。 ✅
+- **CHECKIN-005 / CHECKIN-006（P0）自动安排学习任务**：今日卡组（**装配优先级见 CHECKIN-009/010**，**跨章**，上限 30（v2.6.3 起，见 REQ-CHECKIN-THRESHOLD-001）与今日练习（5 道；当天已有未答完的 session 优先续答）**全部由服务端自动装配**，学生只需点「继续」。 ✅ v2.4.0 首版「到期复习卡优先 → 未学新卡按章节补齐」存在口径与兜底缺陷，已被 **CHECKIN-009/010/011** 取代，见 §12.27。
+- **CHECKIN-007（P0）顶部常驻连胜条**：学生端**所有页面**常驻（🔥 图标 + 连胜天数 + 今日进度 `x/30 卡 · y/5 题` + 状态文案 `今天还没打卡` / `✓ 今日已完成`）；达标瞬间条变色 + toast「🔥 连胜 +1，已连续 N 天」。教师端不显示。 ✅
+- **CHECKIN-008（P0）班级「今日打卡」区块**：班级页**置顶**（先于现有排行榜卡），按「已打卡优先」排列，每人一行：头像 + 名字 + `🔥 N 天` + `x/30 卡 · y/5 题`（达标行绿色高亮、自己标 `me`）；未打卡同学行尾「提醒 TA」按钮（→ NOTIF-006）。 ✅
 - **CHECKIN-009（P0）「未学习」口径修正 + 任务优先发未学习卡**（CR-2026-0919-DECK）：「未学习」= **`learn_count = 0`（从未真正翻过卡）**，**不是**「没有 `knowledge_reviews` 行」——因为学生只要点开某章「知识卡片」浏览一次，`GET /api/knowledge/<chapter_id>` 就会为该章**全量**懒建 review 行（`status='new'`、`learn_count=0`、`next_review_at=now`）。现状把这类「只看过一眼」的卡误判为「已建行 → 不是新卡」，同时又因 `next_review_at=now ≤ today` 被塞进「到期复习」桶 → **学生永远在复习从没学过的卡，课程进度推不动**。修正后今日任务**优先发未学习卡**（按 `chapters.folder, order_no, name, kc.rowid` 课程顺序推进），再补到期复习卡。 ✅
-- **CHECKIN-010（P0）卡组三档兜底，永不返回空**（CR-2026-0919-DECK）：装配优先级 **① 未学习卡 → ② 到期复习卡 → ③ 低掌握度随机补足**。第③档（**CHECKIN-010 核心**）解决用户实报死路——学生把全部卡学成 `mastered` / 未到期时会拿到 **0 张卡**，前端 `toast('今天没有可复习的卡片')` 后直接 return，**学生卡死、无法凑够 10 张、连胜断掉且无任何出路**。掌握度序 = `status 档位权重（new<learning<reviewing<mastered）→ learn_count → interval_days` 升序（越小越差）；从**最差的前 `max(3×limit, 20)` 张候选池内随机洗牌**后取 `limit`，同时满足「掌握度低」与「随机」。只要库中有已发布章节的卡片，卡组**绝不空**。 ✅
-- **CHECKIN-011（P0）超额学习（想多学也可以）**（CR-2026-0919-DECK）：学生**可以无限继续学**，不受每日 10 张限制。任务行 100% 后按钮由「已完成 / disabled」变为**可点的「再学一组」**；额外卡组**排除今日已复习过的卡**（避免重复劳动刷进度），继续计入 distinct 与掌握度，但**不改变任务进度条的 10/10 语义**（`counts_today` 仍是上限口径，达标判定不受影响；**所有进度显示一律夹取到阈值上限 10/5**，避免超额学习后出现「19/10 卡」观感）。 ✅
+- **CHECKIN-010（P0）卡组三档兜底，永不返回空**（CR-2026-0919-DECK）：装配优先级 **① 未学习卡 → ② 到期复习卡 → ③ 低掌握度随机补足**。第③档（**CHECKIN-010 核心**）解决用户实报死路——学生把全部卡学成 `mastered` / 未到期时会拿到 **0 张卡**，前端 `toast('今天没有可复习的卡片')` 后直接 return，**学生卡死、无法凑够当日目标张数、连胜断掉且无任何出路**。掌握度序 = `status 档位权重（new<learning<reviewing<mastered）→ learn_count → interval_days` 升序（越小越差）；从**最差的前 `max(3×limit, 20)` 张候选池内随机洗牌**后取 `limit`，同时满足「掌握度低」与「随机」。只要库中有已发布章节的卡片，卡组**绝不空**。 ✅
+- **CHECKIN-011（P0）超额学习（想多学也可以）**（CR-2026-0919-DECK）：学生**可以无限继续学**，不受每日目标张数（v2.6.3 起 30 张）限制。任务行 100% 后按钮由「已完成 / disabled」变为**可点的「再学一组」**；额外卡组**排除今日已复习过的卡**（避免重复劳动刷进度），继续计入 distinct 与掌握度，但**不改变任务进度条的 10/10 语义**（`counts_today` 仍是上限口径，达标判定不受影响；**所有进度显示一律夹取到阈值上限（v2.6.3 起 30/5）**，避免超额学习后出现「19/10 卡」观感）。 ✅
 - **CHECKIN-012（P1）真空引导**（CR-2026-0919-DECK）：若库中确实**一张已发布卡都没有**（真真空，非三档兜底能救），接口返回明确的 `empty_reason`；前端不再只弹一句 toast 了事，改为**给出可点击的出路**（跳「资料库」勾选章节 → 生成知识卡片）。 ✅
 
 **Technical**
@@ -1071,3 +1073,37 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 - 只改前端三文件（`css/style.css`、`js/student.js`、`js/app.js`），**未动任何接口、未动卡片数据、未重新生成卡片**；卡高上限 620px 是经验值，超长答案（>620px）改为卡面内滚动而非继续拉高页面。
 - 验收方式（已实测，非推断）：本地 `127.0.0.1:5003` + 公网 `/health` 均 `2.6.2`；线上 `index.html` 带 `?v=2.6.2`、`/js/student.js?v=2.6.2` 含新代码；学生端真实 DOM 驱动 —— ① 522 字卡翻面后卡高 320→322px（= 当时可用高）、卡底 487 < 底栏顶 499 不重叠、`overflow-y:auto` 生效且可滚到底、文字不出卡框；② 「去提问」真实按钮 → h1「对话」、scope-bar「第2周·第2节 · 真实落地案例」、`selChapters` 持久化。
 - **未经 iOS Safari 真机人工验收**（本机无 GUI 自动化权限），移动端手势/滚动惯性需使用者一手确认。
+
+### 12.33 实现状态回写（v2.6.3，2026-09-19，每日任务阈值 10→30 + 阈值下发 + 进度不回退）
+
+- **状态：已实现。** 触发原因：① 使用者要求「每天的连胜任务改成 30 张卡和 5 道题」；② 使用者手机实报「**4/10 卡却显示 ✓ 今日已完成**」。
+- 变更请求号：`CR-2026-0919-THRESHOLD`。
+
+**变更 1：阈值 10 → 30（单点）**
+
+| 项 | 值 |
+|---|---|
+| 唯一真相 | `backend/config.py` `TASK_CARDS_REQUIRED = 30`、`TASK_QUESTIONS_REQUIRED = 5`（不变） |
+| 自动随动的动态引用 | `data/checkin.py`（达标判定 / 卡组装配 `limit` / 班级投影）、`api/checkin.py`、`ai/reminder_copy.py`（催办文案）、`scripts/checkin_reminder.py` |
+| 原本的硬编码散点（已消除） | `js/app.js` `streakBar()`、`js/student.js` `taskCardHtml()` / `_checkinBlock()` 各有写死的 `10`/`5`；`tests/test_checkin.py` 多处 |
+| 下发字段 | `GET /api/checkin/today` → `task.cards_required` / `task.questions_required`；`GET /api/checkin/class` → `required: {cards, questions}` |
+
+**变更 2：「4/10 卡却已完成」根因与修法（不是判定 bug，是口径冲突）**
+
+| # | 事实 | 来源 |
+|---|---|---|
+| ① | 该账号当天 **01:38 已写入打卡行** `cards_done=10, questions_done=5, streak_after=1` | `daily_checkins` 实测 |
+| ② | 当天 **12:08 之后** 实时计数仅 **4**（`knowledge_reviews` 当天行数 = 4） | `counts_today` 口径实测 |
+| ③ | 该账号 `knowledge_reviews` 有 **2384 行**（= 重建后卡片全集），`last_review_at` 已大面积重置、`next_review_at` 为 11:49 那批 —— 即**教师端重建卡片库把复习记录重置了** | 库态实测 |
+| ④ | `done` 取的是**当日快照是否存在**（幂等、不回退）；进度数字取的是**实时统计** ⇒ 快照 10 + 实时 4 = 同屏矛盾 | `streak_info()` vs `counts_today()` |
+
+- **修法**：新增 `data.checkin.progress_today(con, user_id)` —— **展示口径** = `max(实时, 当日快照)`，进度只增不减；`/api/checkin/today` 与 `class_today()` 改用它。达标判定链路（`evaluate_and_maybe_complete` → `counts_today`）**保持不变**，即「今天确实达标过」这一事实不被推翻、也不被伪造（无快照时就是纯实时值，不凭空抬高）。
+- **防复发**：`tests/test_checkin.py::test_progress_today_never_regresses`（快照下限 + 无快照不抬高）；`test_checkin_card_threshold_and_distinct` 改用常量 `TASK_CARDS_REQUIRED` 并断言下发字段 —— 今后调阈值不会再出现「测试写死 10 而代码是 30」的错配。
+
+**版本一致性**：`backend/app.py version = "2.6.3"` == CHANGELOG 最新条目 == `index.html` 的 `?v=` == `sw.js` 的 `const V`；前端有改动 → `sw.js` CACHE `aistudy-shell-v47 → v48`。
+
+**范围边界与诚实清单**
+- 只改 3 个前端文件 + 3 个后端文件 + 1 个测试文件；**未重新生成卡片、未改卡片内容、未动学生数据**。
+- 使用者手机上那个账号（Hermes 测试学生）**当天已有的一条 10 卡达标快照保留不动**（属既成历史）；按新口径它会显示 `10/30 卡 · ✓ 今日已完成`——即「当天达标过一次」的事实 + 只有 10 张被计数的现实，二者不再互相矛盾。
+- 30 张卡组由服务端三档装配（未学 → 到期 → 低掌握度补足）自动凑满，库存 2384 张、4 章全 published，容量充足。
+- `make lint` ✓ ｜ `make test` 覆盖率 **76.45%** ｜ `make smoke` → `2.6.3`。

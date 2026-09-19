@@ -5,7 +5,7 @@ import os
 
 # 模块级常量：供业务模块 `from config import X` 直接引用（与 BaseConfig 同源，保持单一真相）。
 # 每日打卡阈值（CHECKIN-002，服务端唯一判定；本期不做前端可配置 UI）
-TASK_CARDS_REQUIRED = 10
+TASK_CARDS_REQUIRED = 30
 TASK_QUESTIONS_REQUIRED = 5
 
 # Web Push（VAPID）：私钥只存 .env，不进 git / 不进 API 响应 / 不写日志
