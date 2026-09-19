@@ -127,7 +127,7 @@ const Student = {
         <div class="lib-head" onclick="Student.toggleLib()">
           <div class="card-title">${ic('book', 'coral')}资料库</div>
           <span class="card-count">${libCount}</span>
-          <span class="lib-caret">${this.libOpen ? '▴' : '▾'}</span>
+          <span class="lib-caret${this.libOpen ? ' on' : ''}"></span>
         </div>
         ${this.libOpen ? `<div class="lib-tools"><button class="mini-btn" onclick="event.stopPropagation();Student.setAllChapters(true)">全选</button><button class="mini-btn" onclick="event.stopPropagation();Student.setAllChapters(false)">清空</button></div>
         <div class="lib-list">${rows || '<div class="muted">暂无章节</div>'}</div>` : `<div class="muted lib-hint">范围自定：勾选章节后，对话 / 知识卡片 / 今日任务都按这个范围走（不勾选 = 按全部资料）</div>`}

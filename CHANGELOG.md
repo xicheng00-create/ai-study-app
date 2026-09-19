@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.6.7] - 2026-09-19
+
+### 修复
+- **资料库「全选/清空」纵向压住 pill**（用户二次实报截图）：真正碰撞是**纵向**——`.lib-tools` 用 `margin:-4px 0 8px`
+  的负上边距（旧版靠 `.card-head` 的 10px 下边距抵消），v2.6.5 起折叠头换成 `.lib-head`（无下边距）后
+  按钮行被顶进 pill 下边缘。改为正间距 `margin:10px 0`，`.lib-head{margin-bottom:0}`。
+- **箭头改用 CSS chevron**：字符 `▾/▴` 自身字形度量偏上，永远对不齐 pill 中线（用户截图里箭头「浮在 pill 上方」）。
+  改为 `::before` 画 7px 方块 + `border-right/bottom` 旋转 45° / -135°，`18×18` flex 居中，视觉居中且无字形差异。
+
+### 教训（写进 skill）
+- 修「重叠」必须**同时量横向与纵向**：`pill.right < caret.left`（横）**且** `tools.top > head.bottom`（纵，留 6px 以上）。
+  本次只量了横向就宣布修好 → 用户回来说「还是没有解决」。
+
 ## [2.6.6] - 2026-09-19
 
 ### 修复
