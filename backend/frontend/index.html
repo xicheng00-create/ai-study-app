@@ -1,4 +1,6 @@
 <!DOCTYPE html>
+<!-- 前端上线规则：静态资源带 ?v=<版本号> —— Cloudflare 对 .js/.css 强制 4h 浏览器缓存且覆盖源站 Cache-Control，
+     不换 URL 的话用户（含 PWA）会继续跑旧 JS 数小时。每次前端改动须同步改这里的 ?v= 与 sw.js 的 CACHE 名。 -->
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -9,7 +11,7 @@
   <link rel="apple-touch-icon" href="/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/style.css?v=2.6.2">
 </head>
 <body>
   <div id="app">
@@ -18,15 +20,15 @@
   <div class="sheet-mask" id="sheetMask"><div class="sheet" id="sheet"></div></div>
   <!-- 下载进度条：资料下载分块流式时显示百分比进度 -->
   <div id="dlProgress"><span class="dl-spin"></span><span id="dlProgressTxt">下载中</span><div id="dlProgressBar"><div id="dlProgressPct"></div></div></div>
-  <script src="/js/api.js"></script>
-  <script src="/js/app.js"></script>
-  <script src="/js/student.js"></script>
-  <script src="/js/teacher.js"></script>
+  <script src="/js/api.js?v=2.6.2"></script>
+  <script src="/js/app.js?v=2.6.2"></script>
+  <script src="/js/student.js?v=2.6.2"></script>
+  <script src="/js/teacher.js?v=2.6.2"></script>
   <script>
     document.getElementById("sheetMask").addEventListener("click", e => { if (e.target.id === "sheetMask") closeSheet(); });
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").then((reg) => {
+        navigator.serviceWorker.register("/sw.js?v=2.6.2").then((reg) => {
           // 新 SW 接管时自动刷新，确保用户看到最新版（修复旧版缓存问题）
           if (navigator.serviceWorker.controller) {
             navigator.serviceWorker.addEventListener("controllerchange", () => location.reload());

@@ -384,6 +384,8 @@ const Student = {
     closeSheet();
     this.askCtx = null;                 // 卡片自带章节范围，不继承「路径」上下文
     this.learnChat = true; this.knowledgeIdx = false; this.knowledgeDeck = false;
+    // 选中相关课题：资料范围切到该卡所属章，否则 viewLearnChat 会把 activeChapter 覆盖成旧选集首章（scope 与卡片不符）
+    if (c.chapter_id) { this.selChapters = [c.chapter_id]; this.saveSelChapters(); }
     App.activeChapter = c.chapter_id;
     await this.doSend(
       `请围绕「${c.front}」这个知识点详细展开讲解：它是什么意思、核心要点、具体例子，以及容易搞错的地方。`,
@@ -473,8 +475,26 @@ const Student = {
     const el = this._kcCardEl(); if (!el) return;
     this.knowledgeFlipped = !this.knowledgeFlipped;
     el.classList.toggle('is-flipped');    // 同一 DOM 切 class → CSS transition 播放翻转动画
+    this.kcFit();                         // 长答案卡高随内容自适应（v2.6.2）
   },
   _kcCardEl() { return document.querySelector('.kc-card'); },
+  // 卡高自适应（v2.6.2 修）：卡面是 absolute + inset:0，卡高不随内容走 → 长答案被裁切/溢出。
+  // 上限取「卡顶 → 底部 tabbar 上沿」的真实可用高（不与底栏重叠、不必滚动页面），超出部分在卡面内滚动（CSS overflow-y:auto）
+  kcFit() {
+    const card = this._kcCardEl(); if (!card) return;
+    const face = card.querySelector(this.knowledgeFlipped ? '.kc-back' : '.kc-front');
+    if (!face) return;
+    card.style.height = '';               // 先落回 min-height，才量得到内容真实高（否则量到的是被旧卡高撑大的值）
+    const sc = document.getElementById('screen');
+    // 布局坐标（把当前滚动量加回去）→ 卡高上限不随「用户在页面里滚到哪」变化
+    const topInView = card.getBoundingClientRect().top - (sc ? sc.getBoundingClientRect().top : 0);
+    const layoutTop = topInView + (sc ? sc.scrollTop : 0);
+    const tab = document.querySelector('.tabbar');
+    const tabH = tab ? tab.offsetHeight : 64;
+    const avail = Math.round((sc ? sc.clientHeight : window.innerHeight) - layoutTop - tabH - 12);
+    const cap = Math.min(avail, 620);     // 大屏兜底：再长也不超过 620px，改为卡面内滚动
+    card.style.height = Math.max(320, Math.min(face.scrollHeight, cap)) + 'px';
+  },
   // touch 拖拽（iOS 翻卡主路径）
   kcTouchStart(e) {
     if (this._kcBusy) return;
@@ -738,11 +758,15 @@ const Student = {
     for (const w of weeks) for (const x of (w.sessions || [])) if (x.id === sessionId) { s = x; break; }
     const chapter_ids = (s && s.chapter_ids) || [];
     this.askCtx = { chapter_ids, concept_tags: (s && s.concept_tags) || [] };
+    // 选中相关课题：把资料范围（学习页多选集）切到本节章节，对话页 scope-bar 才显示「就是这一节」
+    if (chapter_ids.length) { this.selChapters = chapter_ids.slice(); this.saveSelChapters(); }
     App.activeChapter = chapter_ids[0] || null;
     this.relatedVideos = [];
-    App.state.hash = "learn";
-    render();
-    toast("已进入该节提问，输入你的问题吧");
+    // 必须显式进对话子视图：历史 bug —— 只置 hash 不置 learnChat，render() 会落回学习主页（点了没进对话）
+    this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false;
+    this.learnChat = true;
+    if (App.state.hash === "learn") render(); else go("learn");
+    toast(`已进入「${(s && s.title) || '本节'}」提问 · 资料范围已选中该节`);
   },
 
   /* ===== 测评 ===== */

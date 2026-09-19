@@ -1,8 +1,11 @@
 /* ServiceWorker：network-first App Shell（联网必拿最新，离线回退缓存） */
 /* v43：v2.4.0 每日打卡连胜 + 通知中心 + Web Push（push/notificationclick），bump 以强制旧缓存失效 */
 /* v46：v2.6.0 教师端知识卡片核查页（课程页入口 + 章/主题/卡片钻取），bump 以强制旧缓存失效 */
-const CACHE = "aistudy-shell-v46";
-const ASSETS = ["/", "/css/style.css", "/js/api.js", "/js/app.js", "/js/student.js", "/js/teacher.js", "/manifest.webmanifest"];
+/* v47：v2.6.2 知识卡片长答案卡高自适应（css/js）+「去提问」直达对话并选中本节课题，bump 以强制旧缓存失效 */
+const CACHE = "aistudy-shell-v47";
+/* 预缓存 URL 必须与 index.html 里的 ?v= 同版（CF 对 .js/.css 强制 4h 浏览器缓存，换 URL 才能穿透） */
+const V = "2.6.2";
+const ASSETS = ["/", `/css/style.css?v=${V}`, `/js/api.js?v=${V}`, `/js/app.js?v=${V}`, `/js/student.js?v=${V}`, `/js/teacher.js?v=${V}`, "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

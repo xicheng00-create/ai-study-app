@@ -346,6 +346,8 @@ async function render() {
     }
     root.innerHTML = html;
     root.scrollTop = 0;
+    // 知识卡片全屏态：新卡入场后按卡面内容自适应卡高（v2.6.2，长答案不裁切）
+    if (window.Student && Student.knowledgeDeck) requestAnimationFrame(() => Student.kcFit());
   } catch (e) {
     root.innerHTML = `<div class="note"><div class="big">${ic('warn')}</div>${esc(e.message)}<br><button class="btn ghost sm" style="margin-top:14px" onclick="render()">重试</button></div>`;
   }
@@ -396,6 +398,9 @@ async function boot() {
 window.addEventListener("hashchange", () => {
   if (App.state.role) { App.state.hash = location.hash.replace("#", "") || App.state.hash; render(); }
 });
+
+/* 旋转/窗口尺寸变化：知识卡片全屏态重算卡高上限（62vh 随视口变） */
+window.addEventListener("resize", () => { if (window.Student && Student.knowledgeDeck) Student.kcFit(); });
 
 /* 键盘弹起时固定输入框不错位：--kb 补偿安卓键盘高度（iOS 下 offsetTop 随键盘上移，约 0） */
 function syncVisualViewport() {

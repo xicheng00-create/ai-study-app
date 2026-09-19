@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.6.2] - 2026-09-19
+
+### Fixed
+- **知识卡片长答案被裁切（学生端）**：卡面是 `position:absolute;inset:0` 的 3D 翻转结构，卡高只由 CSS `min-height:320px` 决定、**不随内容走**——答案稍长（本库单卡答案实测最长 522 字 = 卡面内约 709px 高，卡框只有 320px）文字就溢出卡框、卡背显示不全，做题时看不到完整解析。
+  - 修法：新增 `Student.kcFit()`，翻转/换卡/窗口尺寸变化时**按当前卡面真实内容高**设卡高（下限 320px，上限取**「卡顶 → 底部 tabbar 上沿」的真实可用高**，大屏兜底 620px —— 长卡既不用滚页面、也不被底栏遮住），CSS 给 `.kc-face` 加 `overflow-y:auto`；超出上限的部分在**卡面内滚动**而不是被切掉，`transition:height .3s` 让拉伸与翻转同步播放。
+  - 卡背对齐：`.kc-back` 改 `justify-content:flex-start` + 首尾子元素 `margin:auto`（安全居中）——短答案仍视觉居中，长答案**从顶部开始**（避免 flex 居中把顶部内容顶出可视区导致滚不到）。
+- **「去提问」不进入对话页、也没有选中对应课题（学生端）**：`Student.askSession()` 只设 `App.state.hash = "learn"` 而**没设 `learnChat`**，`render()` 因此落回学习主页——点了按钮人还停在原地；同时「资料范围」沿用学习页旧的勾选，对话页 scope-bar 显示的还是上一次的范围。
+  - 修法：`askSession()` 显式置 `learnChat = true` 并清掉卡片/详情子视图态，用 `go("learn")` 走正规路由；并把 `selChapters` 置为该 Session 的 `chapter_ids`（落 localStorage），scope-bar 随即显示「就是这一节」。同路径缺陷一并修在卡片侧 `askKcTutor()`（原先设了 `activeChapter` 但 `selChapters` 不含该章，进对话页会被 `viewLearnChat()` 的兜底逻辑**覆盖回旧选集首章**，scope 与卡片不符）。
+
+### Changed
+- `backend/frontend/js/student.js`：新增 `Student.kcFit()`；`askSession()` / `askKcTutor()` 补「选中相关课题」。
+- `backend/frontend/js/app.js`：`render()` 尾追加钩子——知识卡片全屏态下新卡入场后 `requestAnimationFrame` 调 `kcFit()`。
+- `backend/frontend/css/style.css`：`.kc-face` 加 `overflow-y:auto`；`.kc-card` transition 加 `height .3s`；`.kc-back` 安全居中。
+- **静态资源版本号穿透缓存（新上线规则）**：Cloudflare 对 `/js/*.js`、`/css/*.css` 强制下发 `cache-control: max-age=14400`（4 小时）**且覆盖源站头**——前端上线后用户（含 PWA）会继续跑旧 JS 数小时，Service Worker 的 network-first 也走这层 HTTP 缓存，bump CACHE 名并**不能**解决。修法：`index.html` 给 css/js 与 SW 注册 URL 加 `?v=<版本号>`、`sw.js` 的预缓存 ASSETS 同步同版本。**新规则：每次前端改动必须同时改 `index.html` 的 `?v=` 与 `sw.js` 的 CACHE 名**（写进 index.html 顶部注释）。
+- `backend/frontend/sw.js` CACHE `aistudy-shell-v46` → **`v47`**（前端有改动，强制旧缓存失效）。
+- `backend/app.py` 版本 → `2.6.2`。
+
+### Tests
+- 本地 + 公网 `/health` 均 `2.6.2`；线上 `index.html` 已带 `?v=2.6.2`、`/js/student.js?v=2.6.2` 含新代码。
+- 学生端浏览器实测（脚本化驱动真实 DOM）：① 最长答案卡（522 字 / 内容高 709px）——正面卡高 320px，翻面后卡高 322px（= 当时可用高），卡底 487 < 底栏顶 499（**不重叠**），`overflow-y:auto` 生效、可滚到底（`scrollTop` 达最大值），文字不出卡框；② 「学习路径 → 第2周·第2节 → 去提问」真实按钮点击 → 落点 `#learn` 且 h1＝「对话」、scope-bar＝「第2周·第2节 · 真实落地案例」、`selChapters` 同步并持久化到 localStorage。
+
 ## [2.6.1] - 2026-09-19
 
 ### Fixed
