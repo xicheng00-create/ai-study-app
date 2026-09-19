@@ -723,12 +723,24 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=0, help="配合 --fill-orphans：每章只处理前 N 条切片")
     ap.add_argument("--rebind-recent", type=int, default=0,
                     help="把最近 N 张卡片重绑到内容最吻合的切片（补漏后必跑）")
+    ap.add_argument("--no-rebind", action="store_true",
+                    help="跳过生成后的绑定精度回绑（默认会跑；绑定错位是历史最大缺陷，别关）")
     ap.add_argument("--db", default=str(DB))
     args = ap.parse_args()
 
     con = sqlite3.connect(args.db, timeout=60)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA busy_timeout=60000")
+
+    def _rebind() -> None:
+        """生成后自动回绑：卡片绑到同资料内更吻合的切片（见 scripts/audit_binding.py 头注）。"""
+        if args.no_rebind:
+            return
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from audit_binding import rebind_weak
+        con.commit()
+        rebind_weak(Path(args.db))
+        con.execute("PRAGMA busy_timeout=60000")
     if args.rebind_recent:
         print("=== 重绑切片 ===")
         print(rebind_recent(con, args.rebind_recent))
@@ -742,11 +754,13 @@ def main() -> int:
     if args.fill_gaps:
         print("=== 考点补漏 ===")
         print(fill_gaps(con, Path(args.fill_gaps)))
+        _rebind()
         con.close()
         return 0
     if args.fill_orphans is not None:
         print("=== 无卡切片补卡 ===")
         print(fill_orphans(con, args.fill_orphans or None, args.dry_run, args.limit))
+        _rebind()
         con.close()
         return 0
     rows = con.execute(
@@ -766,6 +780,8 @@ def main() -> int:
               f"sub_concept {s['sub_concepts']} 个"
               + (f"，继承复习 {s.get('carried_reviews', 0)} 条（旧卡 {s.get('old_cards', 0)} 张）"
                  if not args.dry_run else " [dry-run]"))
+    if not args.dry_run:
+        _rebind()
     con.close()
     return 0
 
