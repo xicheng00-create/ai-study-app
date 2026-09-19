@@ -14,10 +14,14 @@ const Teacher = {
   },
   sessions: [],     // 课程管理缓存（周→节）
   videos: [],
+  kcardChapterId: null,  // 知识卡片核查：当前章
+  kcardOpen: {},         // 知识卡片核查：已展开的主题（key = 分组下标）
+  kcardData: null,       // 知识卡片核查：当前章接口返回缓存
 
   async render() {
     const h = App.state.hash;
     if (h === "curriculum") return await this.viewCurriculum();
+    if (h === "knowledge") return await this.viewKnowledge();
     if (h === "quiz") return await this.viewQuiz();
     if (h === "progress") return await this.viewProgress();
     if (h === "class") return await this.viewClassActivity();
@@ -157,6 +161,8 @@ const Teacher = {
     let weeks = [];
     try { weeks = (await API.get("/api/curriculum")).weeks || []; } catch (e) {}
     try { this.videos = (await API.get("/api/curriculum/videos")).videos || []; } catch (e) { this.videos = []; }
+    let ksum = {};
+    try { ((await API.get("/api/teacher/knowledge")).chapters || []).forEach(c => { ksum[c.id] = c; }); } catch (e) {}
     this.sessions = [];
     weeks.forEach(w => (w.sessions || []).forEach(s => this.sessions.push(s)));
 
@@ -168,6 +174,7 @@ const Teacher = {
           <div style="display:flex;align-items:center;gap:10px"><div style="font-weight:700;flex:1">第${w.week_no}周 · 第${s.session_no}节 ${esc(s.title)}</div>${badge}</div>
           ${s.goal ? `<div class="muted" style="font-size:12px;margin:4px 0">${ic('target','coral')}${esc(s.goal)}</div>` : ''}
           <div class="muted" style="font-size:12px;margin-bottom:4px">关联章节：${(s.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、') || '无'}</div>
+          ${(s.chapter_ids || []).some(cid => ksum[cid]) ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 6px">${(s.chapter_ids || []).filter(cid => ksum[cid]).map(cid => `<span class="mini-btn" onclick="Teacher.openKcards('${cid}')">${ic('quiz')} ${esc(App.chapterName(cid))} · ${ksum[cid].cards} 张卡</span>`).join('')}</div>` : ''}
           <div>${vids}</div>
           <div style="display:flex;gap:8px;margin-top:10px">
             ${s.status === 'published'
@@ -193,6 +200,51 @@ const Teacher = {
       <div class="sec-head">学习路径</div>${sessHtml}
       <div class="sec-head">视频课</div>${vidsHtml}
     </div>` + tabbar();
+  },
+
+  /* ===== 知识卡片核查（教师只读，钻取式：章 → 主题 → 卡片）===== */
+  async openKcards(chapterId) { this.kcardChapterId = chapterId || null; this.kcardOpen = {}; this.kcardData = null; go("knowledge"); },
+  backToKcardList() { this.kcardChapterId = null; this.kcardData = null; render(); },
+  toggleKgroup(i) { this.kcardOpen[i] = !this.kcardOpen[i]; render(); },
+  showKcard(id) {
+    let card = null;
+    ((this.kcardData || {}).groups || []).forEach(g => (g.cards || []).forEach(c => { if (c.id === id) card = c; }));
+    if (!card) return;
+    openSheet(`<div class="row" style="font-weight:700;cursor:default;text-align:left;line-height:1.55">${esc(card.front)}</div>
+      <div class="row" style="cursor:default;text-align:left;line-height:1.7;color:var(--text-2)">${esc(card.back)}</div>
+      <div class="row" style="cursor:default;text-align:left;font-size:12px;color:var(--text-3);line-height:1.55">来源资料：${esc(card.source_material || '—')}<br>原文切片：${esc(card.source_snippet || '（未绑定切片）')}</div>
+      <div class="row cancel" onclick="closeSheet()">关闭</div>`);
+  },
+  async viewKnowledge() {
+    if (!this.kcardChapterId) {
+      let rows = [];
+      try { rows = (await API.get("/api/teacher/knowledge")).chapters || []; } catch (e) { toast(e.message); }
+      const html = rows.map(c => {
+        const badge = c.status === 'published' ? '<span class="badge master">已发布</span>' : '<span class="badge na">草稿</span>';
+        return `<div class="adm-card" style="cursor:pointer" onclick="Teacher.openKcards('${c.id}')">
+          <div class="av">卡</div>
+          <div class="meta" style="flex:1;min-width:0"><div class="nm">${esc(c.name)}</div>
+            <div class="st">${esc(c.folder || '未分组')} · ${c.cards} 张卡片 · ${c.sub_concepts} 个主题 · ${c.chunks} 条切片</div>
+            <div class="st">${c.orphan_chunks ? `未覆盖切片 ${c.orphan_chunks} 条` : '全部切片均已覆盖'}</div></div>${badge}</div>`;
+      }).join('') || '<div class="muted">暂无章节</div>';
+      return appbar('知识卡片核查', '教师专有 · 只读') + `<div class="content">
+        <div class="muted" style="font-size:12px;margin-bottom:10px">点章节 → 按主题分组 → 展开看卡片；点卡片看答案与来源切片原文</div>${html}</div>` + tabbar();
+    }
+    let d = { chapter: {}, groups: [], card_total: 0 };
+    try { d = await API.get("/api/teacher/knowledge/" + this.kcardChapterId); } catch (e) { toast(e.message); }
+    this.kcardData = d;
+    const groups = (d.groups || []).map((g, i) => {
+      const open = !!this.kcardOpen[i];
+      const cards = open ? (g.cards || []).map(c => `<div style="padding:9px 0;border-top:1px solid var(--border);cursor:pointer" onclick="Teacher.showKcard('${c.id}')">
+        <div style="font-size:13px;font-weight:600;line-height:1.45">${esc(c.front)}</div>
+        <div class="muted" style="font-size:11px;margin-top:3px">${c.source_chunk_id ? '来源：' + esc(c.source_material || '课件') : '未绑定切片'}</div></div>`).join('') : '';
+      return `<div class="kc-ch">
+        <button class="kc-ch-head" onclick="Teacher.toggleKgroup(${i})"><div style="flex:1;text-align:left"><b>${esc(g.sub_concept)}</b><small>${g.count} 张卡片</small></div><span class="caret">${open ? '▾' : '▸'}</span></button>
+        ${cards}</div>`;
+    }).join('') || '<div class="muted">本章暂无卡片，或尚未生成</div>';
+    const ch = d.chapter || {};
+    return appbar(`${ch.name || '章节'} · 知识卡片`, `${d.card_total} 张卡片 · ${(d.groups || []).length} 个主题`, 'Teacher.backToKcardList()') + `<div class="content">
+      <div class="muted" style="font-size:12px;margin-bottom:10px">默认折叠；点主题展开，点卡片看答案与来源切片原文</div>${groups}</div>` + tabbar();
   },
 
   _splitTags(raw) { return (raw || "").split(/[,，]/).map(s => s.trim()).filter(Boolean); },

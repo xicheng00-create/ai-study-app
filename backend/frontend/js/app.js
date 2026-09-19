@@ -131,7 +131,7 @@ function tabbar() {
   const h = App.state.hash;
   if (App.state.role === 'teacher') {
     const tabs = [["curriculum", "课程", ICONS.path], ["admin", "管理", ICONS.admin], ["quiz", "测评", ICONS.quiz], ["progress", "进度", ICONS.progress], ["class", "班级活动", ICONS.class]];
-    return `<div class="tabbar">${tabs.map(([k, l, ic]) => `<button class="tab teacher ${h === k ? 'active' : ''}" onclick="go('${k}')">${ic}<span>${l}</span></button>`).join('')}</div>`;
+    return `<div class="tabbar">${tabs.map(([k, l, ic]) => `<button class="tab teacher ${(h === k || (h === 'knowledge' && k === 'curriculum')) ? 'active' : ''}" onclick="go('${k}')">${ic}<span>${l}</span></button>`).join('')}</div>`;
   }
   const tabs = [["learn", "学习", ICONS.learn], ["path", "路径", ICONS.path], ["quiz", "测评", ICONS.quiz], ["progress", "进度", ICONS.progress], ["class", "班级", ICONS.class]];
   // 学习 tab：再次点击（已在学习区子视图：对话/知识卡片）→ 回学习主菜单

@@ -219,13 +219,15 @@
 | KNOW-001 | student | P1 | **学习路径发布 / 资料发布时自动**从章节资料抽取知识点生成知识卡片（正面=知识点/问题，背面=答案/解析+一句示例）存库，**学生无需手动生成**（每章一组 ≥20 知识点，全章覆盖；已有卡复用不再重复调 LLM；失败可懒加载兜底） |
 | KNOW-002 | student | P1 | 点卡 3D 翻转看答案；**左滑=没记住、右滑=记住了**（底部兜底按钮 ←没记住\|记住了→）；顶部进度 第N/总数 + 每卡状态色 |
 | KNOW-003 | student | P1 | 系统记录每知识点**学习次数（learn_count）**+ **复习状况**（new/learning/reviewing/mastered + 间隔 1→3→7）；每日「待复习」队列优先，再学新卡 |
-| KNOW-004 | student | P1 | **卡片必须应试级细粒度且全章覆盖**（CR-2026-0919-CARDS）：① 生成时投喂**全章每一份资料的每一个切片**（按资料分层、每份保底、总预算 2 万字），不再抽样 ~18 片×300 字；② 提示词硬性要求「**一个考点一张卡**」——概念定义/数字指标/流程步骤/术语英文名/易混区别/常见误区/案例结论逐条成卡，禁止「主要包含以下几方面」式概括，且能出选择题的细节（数字、专有名词、顺序、比例、阈值、年份）必须单独成卡，每章 ≥40 张；③ **只抽本 Session 内容**——课程共用素材（如全课程行业术语表）中属于其它周次的词条一律跳过，禁止跨章错配；④ 每张卡必须绑定 `source_chunk_id`，可回溯课件原文切片 |
+| KNOW-004 | student | P1 | **卡片必须应试级细粒度且全章覆盖**（CR-2026-0919-CARDS）：① 生成时投喂**全章每一份资料的每一个切片**（按资料分层、每份保底、总预算 2 万字），不再抽样 ~18 片×300 字；② 提示词硬性要求「**一个考点一张卡**」——概念定义/数字指标/流程步骤/术语英文名/易混区别/常见误区/案例结论逐条成卡，禁止「主要包含以下几方面」式概括，且能出选择题的细节（数字、专有名词、顺序、比例、阈值、年份）必须单独成卡，每章 ≥40 张；③ **只抽本 Session 内容**——课程共用素材（如全课程行业术语表）中属于其它周次的词条一律跳过，禁止跨章错配；④ 每张卡必须绑定 `source_chunk_id`，可回溯课件原文切片；⑤ **反向也要成立**：任何一条课件切片都必须至少被一张卡片引用（无卡切片 = 覆盖缺口，须补卡），做到「课上有讲、卡片必有」 |
+| KNOW-005 | teacher | P2 | **教师端知识卡片核查（REQ-TEACH-KNOW-001）**：教师可在后台**逐章/逐主题/逐卡**核对卡片内容，不再依赖查库或铸学生 token。① 章级汇总：卡片数 / 主题数 / 切片数 / **未覆盖切片数**、发布状态；② 单章明细：按 `sub_concept` 分组，每张卡附**来源资料名 + 源切片原文摘录**（可判断「卡片是否真出自课件」）；③ 只读，不改卡、不发布；④ 学生角色访问一律 403（与 `GET /api/knowledge/*` 的学生专属相反） |
 
 **Technical**
 - **独立数据层（共享内容 + 每生独立复习态，v1.17.x 重构）**：`knowledge_cards`（id, chapter_id, sub_concept, front, back, source_chunk_id, created_at）——**无 user_id，是共享内容**（每章一组，发布时生成一次）；`knowledge_reviews`（id, card_id, user_id, learn_count, interval_days, next_review_at, status CHECK(new/learning/reviewing/mastered), last_review_at, created_at, UNIQUE(card_id,user_id)）——**每学生独立复习状态**，学生首次打开该章卡组时**懒建**（默认 new）。已废弃 v1.17.0 的「knowledge_cards 带 user_id」旧形（表空可安全重建）。
 - **状态机复用 `review_sched`**（architecture §5.4）：记住了 → `learn_count++`、`interval_days = next_interval(True, cur)`（1→3→7 封顶）、状态上移（new→learning→reviewing→mastered）、`next_review_at` 按间隔顺延；没记住 → `learn_count++`、`interval_days=1`、状态降回 learning、`next_review_at` 次日重排。同卡片跨会话复习。**先翻转看答案再判 remember，不在 open 期强行判定**。
 - **AI 抽取（v2.5.1 整改，CR-2026-0919-CARDS）**：`backend/ai/knowledge.py` `generate_knowledge_cards(chapter_ids)` + `prompts.py` `KNOWLEDGE_SYSTEM`。**历史缺陷**：旧实现用 `quizzer._retrieve_chunks` 抽 ~18 个切片、每片截断 300 字、总长再砍到 6000 字 → 长资料（W1S2 有 96 片）只能被模型看到约 1/5，卡片必然「只覆盖大框架、遗漏细碎考点」，用户实报「无法支撑做题」。**整改后**：`_chapter_text()` 按资料分层投喂**全章每个切片**（每片 ≤600 字、每份资料保底 1200 字、总预算 `CONTENT_BUDGET=20000`），配合 KNOW-004 的提示词硬性要求 + `MIN_CARDS=40`，并过滤重复/空正面。**批量重做历史章节**走 `scripts/rebuild_cards.py`（逐片组独立调模型，片组按教案小节切分、每片组上限 16 张，按 front 归一化精确继承复习态）。LLM 真返空返空列表、端点提示「生成失败请重试」。
 - **路由（去掉「学生手动生成」主路径）**：`POST /api/knowledge/generate`（保留为**懒加载兜底**：卡片缺失时教师/系统可触发，学生一般不必点）、`GET /api/knowledge/:chapter`（卡组+该生复习态，学生首次打开自动懒建 review 行）、`POST /api/knowledge/:card/review`（body `{remembered: true|false}` → 更新该生 learn_count/interval/status/next_review）、`GET /api/knowledge/overview`（各章该生掌握进度：已掌握/学习中/未学/今日待复习）。学生本人，越权 403；蓝图 `knowledge_bp` 注册进 app.py。
+- **教师端核查路由（v2.6.0，KNOW-005）**：`GET /api/teacher/knowledge`（章级汇总：`cards/sub_concepts/chunks/orphan_chunks/status`，教师可见 draft 章）+ `GET /api/teacher/knowledge/<chapter_id>`（单章明细：`groups[{sub_concept,count,cards[{front,back,source_material,source_snippet}]}]`，源切片 `re.sub(r"\s+"," ")` 折叠后截 220 字；章节不存在 404）。均 `@jwt_required + @role_required("teacher")`，**只读**（不写库、不改卡、不发布），学生访问 403。前身缺口：`GET /api/knowledge/<chapter_id>` 是**学生专属**且要求章节已发布，教师只能查库/铸学生 token 才能核对卡片内容。
 - **⚠️ 自动生成钩子（v1.17.x，核心）**：`knowledge.ensure_chapter_cards(chapter_id)`（查 `knowledge_cards` 该章已有卡则复用返 True，无则 LLM 生成 + 入库返 False；LLM 失败返回 False，由懒加载兜底）。在**学习路径发布**（`curriculum_bp` 发布 session → 对其 `chapter_ids` 逐个 `ensure_chapter_cards`）与**资料发布**（`materials_bp` 发布 material → 其 `chapter_id` `ensure_chapter_cards`）处调用。同步调用 + try/except（发布请求可容忍 ~秒级 LLM 延迟，3 学生规模可接受）。
 - **前端（v2.0.0 导航+多选+动画重构）**：「学习」tab = **学习主菜单 hub**（资料库**可滚动多选 list**——每章圆形勾选框 + 已选计数 + 全选/清空，勾选记忆 localStorage `aistudy_sel_chapters`；对话页原横滑选章卡已撤除，选章统一在此）；「对话」子页（多选集驱动**跨章检索**：`post_message` 带 `chapter_ids` → `tutor._retrieve_multi` 逐章 RAG 合并去重、片段【章名】标注）；点「知识卡片」→ **跨章卡片列表页**（所选各章全部卡按章分组折叠、点章头展开卡网格，「开始复习」按钮置顶）+ 复习 deck（每卡标章名，跨章合并）。复习进度 localStorage `aistudy_kc_progress` 存**章 id 集签名 `ids`**（兼容旧 `{cid}` 单章格式），暂停退出/续学；换选集不误续旧进度。**卡片动画**：翻转 = 同一 DOM 切 `is-flipped` class 驱动 3D 过渡（非整页 render）；touch/mouse 跟手拖拽（`translateX + rotate`，拖拽期 `.dragging` 关 transition），超 70px 甩出判定（右滑=记住了/左滑=没记住，播 `.out-r/.out-l` 飞出）否则弹回；按钮点击同样先飞后提交；换卡 `.kc-in` 入场动画。`Student` 状态 `learnChat`/`knowledgeIdx`/`knowledgeDeck`/`selChapters` + `viewLearnHome()`/`viewLearnChat()`/`viewKnowledge()`/`viewKnowledgeDeck()`。改前端须 bump sw.js CACHE + app.py version。
 
@@ -937,4 +939,48 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 - **版本一致性**：`backend/app.py version == 2.5.1` == `CHANGELOG.md` 最新条目；前端与 `sw.js` CACHE **无改动**（本次纯后端 + 脚本），保持 `aistudy-shell-v45`。
 - **范围边界（未越界）**：未改学习路径/打卡/通知/测评任何既有逻辑；未改前端；未新增运行时依赖（OCR 走 macOS 自带 Swift/Vision，脚本仅在本地跑）；`backups/`（含学生数据）已加 `.gitignore`。
 - **诚实清单（未做）**：W2S1/W2S2 发布动作留给用户在教师端确认（本次只到 `draft`）；「题库超纲」的 4~5 道题未擅自改写或删除（属教研决策）；卡片质量抽样人工复核仍建议由 Ray 抽看。
+
+### 12.29 实现状态回写（v2.6.0，2026-09-19，无卡切片补卡 + 教师端卡片核查页）
+
+- **本次迭代 REQ**：`KNOW-004`⑤（**反向覆盖**：每条切片都必须被卡片引用）+ `KNOW-005`（教师端知识卡片核查）。变更请求号 `CR-2026-0919-CARDS2`。
+- **状态：已实现。** 触发原因：用户要求「先做 C（补 339 条无卡切片），再做 B（教师端可逐章查卡），最后做 A（发布 W2S1/W2S2）」。
+
+**C — 无卡切片补卡（`scripts/rebuild_cards.py --fill-orphans`）**
+
+| 轮次 | 触发原因 | 待补切片 | 补卡 |
+|---|---|---|---|
+| 1 | 首版噪声过滤 | 282 | +1064 |
+| 2 | 修「水印整条丢弃」误杀 | 51（W2S1 50 + W1S1 1） | +198 |
+| 3 | 修「表格分隔行触发重复检测」误杀 | 6 | +22 |
+| **合计** | | | **+1284 → 全场 2384 张** |
+
+- **为什么必须做**：卡片按「片组」生成、`source_chunk_id` 是单值、绑片按重合度取最吻合的一条 → 一个片组只有 1–2 条切片「中签」。实测 483 条切片里 **339 条无卡**，抽样确认其中确有实质考点（术语对照表、价格阶梯表、厂商底模对比、检索流程、公式、代码片段）。
+- **绑定策略**：`1 切片 = 1 次调用`，卡片直接绑定该切片 —— **由构造保证精确**，不做事后反查（对比 `fill_gaps` + `--rebind-recent` 的「按重合度找片」）。
+- **噪声过滤两次自我纠错（本轮最重要教训）**：
+  1. **水印必须按词删，不能按切片删**：旧规则「文本含 `教学监督邮箱：feedback@…` 即整条丢弃」误杀 50 条「水印+真考点」混排切片（「从优化工具效率转向重构创作模式」「移动互联网的逻辑陷阱」）。改为 `_clean()` 清洗后再判。
+  2. **表格分隔行不是内容**：12 字片段出现 ≥4 次即判噪声的规则被 Markdown 表格分隔行触发，把「AI 编程工具四家对比表」「技术概念清单表」「Redis 会话代码」整条丢掉——**那正是最典型的细碎考点**。改为先按行删分隔行/框线行（保留数据行），重复阈值收紧到 ≥6 次（否则 `current_state.` 这类变量名重复 4 次也会误判）。
+- **代码**：`_clean()` / `_boiler()` / `_max_repeat()` / `orphan_chunks()` / `gen_for_orphan()` / `fill_orphans()`；CLI `--fill-orphans [chapter_id前缀] [--limit N] [--dry-run]`。
+
+**B — 教师端知识卡片核查页**
+
+- 后端 `backend/api/teacher.py`：`knowledge_summary()` + `knowledge_chapter()`（详见 §3.4.2 Technical）。只读；学生 403；未知章节 404。
+- 前端 `teacher.js`：`viewKnowledge()` / `openKcards()` / `toggleKgroup(i)` / `showKcard(id)` / `backToKcardList()`；`render()` 增 `knowledge` 分支；`app.js` tabbar 在 `knowledge` 视图高亮「课程」。
+- 设计取舍：**不新增第 6 个 tab**（教师端已有 5 个 tab，再加会挤），改为从「课程」页各 Session 的关联章节钻进去；列表**默认折叠**、点主题展开、点卡弹窗——符合「钻取式 + 纵向折叠 + 无横滑」的既定 UI 基线。
+
+**产出（本地库，不入 git）**
+
+| 章节 | 切片 | 有卡切片 | 卡片（本轮前 → 后） | sub_concept | 绑定 | 状态 |
+|---|---|---|---|---|---|---|
+| 第1周·第1节 大模型是什么 | 106 | 106 | 208 → **437** | 247 | 437/437 | published |
+| 第1周·第2节 AI 产品地图 | 114 | 114 | 279 → **625** | 235 | 625/625 | published |
+| 第2周·第1节 AIPM vs 传统 PM | 139 | 138 | 359 → **733** | 375 | 733/733 | published（v2.6.0 随 A） |
+| 第2周·第2节 真实落地案例 | 124 | 124 | 254 → **589** | 282 | 589/589 | published（v2.6.0 随 A） |
+| **合计** | **483** | **482** | **1100 → 2384** | **1139** | **2384/2384** | — |
+
+- **唯一未覆盖切片**：OCR 纯噪声 `oai.cn • • •`（清洗后 30 字），结构上不构成考点。
+- **结构审计**：`audit_alignment.py` → **✓ 未发现结构性问题**；悬空绑定 0、未绑切片 0。
+- **实测证据**：`ruff check backend/` 通过；`tests/test_teacher.py` 3 项通过；`pytest -q` 全绿（覆盖率见 §12.28 口径）；`make smoke` → `{"version":"2.6.0","status":"up"}`。
+- **版本一致性**：`backend/app.py version == 2.6.0` == `CHANGELOG.md` 最新条目；前端有改动 → `sw.js` CACHE **v45 → v46**。
+- **范围边界（未越界）**：未改学生端卡片/对话/练习/打卡/测评任何逻辑；教师端新增仅只读；未新增运行时依赖（OCR 走 macOS 自带 Swift/Vision，仅本地跑）。
+- **诚实清单（未做）**：① 「题库超纲」的 4 条仍待教研决策；② 卡片总量 1100 → 2384 是**抽样式增长**，质量仍需人工抽样（教师端核查页 v2.6.0 起可直接在后台抽查，不必再查库）；③ 补卡后**未重跑 LLM 考点覆盖审计**（`--llm` 会再花一轮 LLM 调用），覆盖结论仍以 §12.28 的 51/55 为准——若要刷新需另跑一次。
 

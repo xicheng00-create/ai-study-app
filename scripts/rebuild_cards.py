@@ -536,6 +536,166 @@ def _bind_by_content(con, card_ids: list[str]) -> int:
     return reb
 
 
+# ---- 无卡切片补卡（orphan chunks）：切片↔卡片一一对应的最后一环 ----
+ORPHAN_MIN_CHARS = 80     # 太短的切片无实质内容，不补卡
+ORPHAN_CAP = 6            # 单切片卡片数上限
+ORPHAN_MAX_CHARS = 1400   # 单切片送模型的最大字数
+
+
+def _clean(text: str) -> str:
+    """剔除水印/邮箱/重复片段，**保留同一条切片里的实质内容**。
+
+    ⚠️ 血泪教训（2026-09-19）：早期版本只要切片里出现「教学监督邮箱：feedback@…」
+    就整条丢弃，结果 W2S1 有 55 条切片被误杀——它们其实是「水印 + 真考点」混排
+    （如「从优化工具效率转向重构创作模式」「移动互联网的逻辑陷阱」）。
+    **水印是按词删的，不是按切片删的。**
+    """
+    t = text or ""
+    # ① 先按行删 Markdown 表格分隔行 / 框线行（⚠️必须在压平换行之前，
+    #    只删「分隔行」，表格数据行必须保留——血泪教训 2026-09-19：不删这些，
+    #    下面的重复检测会把「厂商对比表 / 技术概念清单表」整条判成噪声丢掉，
+    #    而那正是最典型的细碎考点）
+    t = re.sub(r"(?m)^\s*\|?\s*:?-{2,}[\s:|-]*$", " ", t)
+    t = re.sub(r"(?m)^[\s─━═│┌┐└┘├┤┬┴┼]+$", " ", t)
+    # ② 行内噪声：邮箱 / 分隔线 / 页码 / 框线 / 长横线 / 圆点
+    t = re.sub(r"(教学监督邮箱[:：]?\s*)?[A-Za-z0-9._%+-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", " ", t)
+    t = re.sub(r"={3,}[^=]{0,80}?={3,}", " ", t)
+    t = re.sub(r"\[第\d+页\]", " ", t)
+    t = re.sub(r"[─━│┌┐└┘├┤┬┴┼═]+", " ", t)
+    t = re.sub(r"[-—–=]{4,}", " ", t)
+    t = re.sub(r"[•·▪●○]{2,}", " ", t)
+    t = " ".join(t.split())
+    # ③ 同一短语被清洗后仍反复出现 N 次（水印型）→ 只留一次
+    #    阈值取 ≥6 次且重复单元 ≥16 字：太松会误杀代码片段
+    #    （2026-09-19：「current_state.」在 Redis 会话代码里出现 4 次，曾被误判为水印）
+    for unit in (16, 24, 32):
+        out, i = [], 0
+        while i < len(t):
+            seg = t[i:i + unit]
+            j = i + unit
+            n = 1
+            while t[j:j + unit] == seg:
+                j += unit
+                n += 1
+            out.append(seg)
+            i = j
+        t = "".join(out)
+    return " ".join(t.split())
+
+
+def _max_repeat(t: str) -> int:
+    """清洗后文本里 12 字片段的最大出现次数（判真噪声用）。"""
+    seg = t[:1400]
+    cnt: dict[str, int] = {}
+    for i in range(0, max(1, len(seg) - 12), 6):
+        s = seg[i:i + 12]
+        cnt[s] = cnt.get(s, 0) + 1
+    return max(cnt.values()) if cnt else 0
+
+
+def _boiler(text: str) -> bool:
+    """判断切片**清洗后**是否已无实质内容（真噪声才丢）。
+
+    只在两种情况下丢：① 有效正文不足 ORPHAN_MIN_CHARS；② 清洗后仍是同一片段反复重复。
+    """
+    t = _clean(text)
+    if len(t) < ORPHAN_MIN_CHARS:
+        return True
+    return _max_repeat(t) >= 6
+
+
+def orphan_chunks(con, chapter_id: str) -> list:
+    """本章「没有任何卡片指向」的切片（已剔除噪声）。"""
+    rows = con.execute(
+        "SELECT c.id, c.chunk_idx, c.text, m.original_name AS src"
+        " FROM chunks c LEFT JOIN materials m ON m.id = c.material_id"
+        " WHERE c.chapter_id=?"
+        "   AND NOT EXISTS (SELECT 1 FROM knowledge_cards k WHERE k.source_chunk_id = c.id)"
+        " ORDER BY c.chunk_idx", (chapter_id,)).fetchall()
+    return [r for r in rows if not _boiler(r["text"])]
+
+
+def gen_for_orphan(job: tuple) -> tuple:
+    """单切片补卡：1 切片 = 1 次调用，绑定关系**由构造保证精确**（无需事后猜片）。"""
+    goal, tags, row = job
+    body = _clean(row["text"])[:ORPHAN_MAX_CHARS]
+    n = max(2, min(5, len(body) // 350))
+    src = row["src"] or "补充切片"
+    shared = any(k in src for k in SHARED_MATERIALS)
+    rule = (RULE_STRICT if shared else RULE_NORMAL) + \
+        " 本片组是**尚未建档的补充切片**，务必穷尽其中全部可考点。"
+    fallback_sub = re.sub(r"\.[a-z]+$", "", src)[:12] or "补充考点"
+    try:
+        cards = call_llm(SYSTEM_TMPL.format(source=f"{src} · 补充切片", content=body, goal=goal,
+                                            tags=tags, n=n, relevance_rule=rule))
+        out = []
+        for c in cards[:ORPHAN_CAP]:
+            c["sub_concept"] = str(c.get("sub_concept") or "").strip()[:40] or fallback_sub
+            out.append(c)
+        return row, out, None
+    except Exception as e:  # noqa: BLE001
+        return row, [], str(e)
+
+
+def fill_orphans(con, chapter: str | None, dry: bool, limit: int) -> dict:
+    """给「无卡切片」逐条补卡，实现切片↔卡片一一对应。
+
+    与 fill_gaps 的区别：fill_gaps 是「按考点关键词反查原文」；本函数是
+    「把每一片尚未建档的课件原文都过一遍」，因此能覆盖长资料里被片组粒度漏掉的碎片内容
+    （2026-09-19 实测 483 片里 339 片无卡，含术语表/价格表/厂商对比/流程步骤等实质考点）。
+    绑定采用「谁生成的、就绑给谁」，不做内容重合度反查。
+    """
+    chapters = con.execute("SELECT id, name FROM chapters ORDER BY folder, order_no").fetchall()
+    if chapter:
+        chapters = [c for c in chapters if c["id"].startswith(chapter) or c["name"] == chapter]
+    out = []
+    for ch in chapters:
+        cid = ch["id"]
+        goal, tags = session_ctx(con, cid)
+        pool = orphan_chunks(con, cid)
+        if limit:
+            pool = pool[:limit]
+        idx = [(r["front"], _tokens(f"{r['front']} {r['back'] or ''}"))
+               for r in con.execute("SELECT front, back FROM knowledge_cards WHERE chapter_id=?", (cid,))]
+        seen = {norm_front(f) for f, _ in idx}
+        print(f"\n[{ch['name']}] 无卡切片 {len(pool)} 条待补卡", flush=True)
+        added = 0
+        jobs = [(goal, tags, r) for r in pool]
+        with futures.ThreadPoolExecutor(max_workers=WORKERS) as ex:
+            for i, (row, cards, err) in enumerate(ex.map(gen_for_orphan, jobs), start=1):
+                if err:
+                    print(f"   [{i}/{len(pool)}] 失败: {err}", flush=True)
+                    continue
+                for c in cards:
+                    front = str(c.get("front") or "").strip()
+                    back = str(c.get("back") or "").strip()
+                    if not front or not back:
+                        continue
+                    k = norm_front(front)
+                    if len(k) < 4 or k in seen:
+                        continue
+                    toks = _tokens(front)
+                    if any(is_near_dup(front, toks, f, tk) for f, tk in idx):
+                        continue
+                    if not dry:
+                        con.execute(
+                            "INSERT INTO knowledge_cards (id, chapter_id, sub_concept, front, back,"
+                            " source_chunk_id, created_at) VALUES (?,?,?,?,?,?,datetime('now'))",
+                            (str(uuid.uuid4()), cid, c["sub_concept"], front, back, row["id"]))
+                    seen.add(k)
+                    idx.append((front, toks))
+                    added += 1
+                if i % 10 == 0:
+                    if not dry:
+                        con.commit()
+                    print(f"   [{i}/{len(pool)}] 累计补 {added} 张", flush=True)
+        if not dry:
+            con.commit()
+        out.append({"chapter": ch["name"], "orphans": len(pool), "added": added})
+        print(f"  → {ch['name']}: 无卡切片 {len(pool)} 条 → 补卡 {added} 张", flush=True)
+    return {"added": sum(o["added"] for o in out), "chapters": out}
+
+
 def rebind_recent(con, n: int) -> dict:
     """把最近插入的 N 张卡片重绑到**内容最吻合**的切片。
 
@@ -558,6 +718,9 @@ def main() -> int:
     ap.add_argument("--dedupe-db", action="store_true", help="对库中已有卡片做近似去重")
     ap.add_argument("--fill-gaps", default=None,
                     help="考点补漏：传入 audit_alignment.py --llm --save-report 产出的 JSON 报告路径")
+    ap.add_argument("--fill-orphans", nargs="?", const="", default=None,
+                    help="给「无卡切片」逐条补卡（可带 chapter_id 前缀限定单章）")
+    ap.add_argument("--limit", type=int, default=0, help="配合 --fill-orphans：每章只处理前 N 条切片")
     ap.add_argument("--rebind-recent", type=int, default=0,
                     help="把最近 N 张卡片重绑到内容最吻合的切片（补漏后必跑）")
     ap.add_argument("--db", default=str(DB))
@@ -579,6 +742,11 @@ def main() -> int:
     if args.fill_gaps:
         print("=== 考点补漏 ===")
         print(fill_gaps(con, Path(args.fill_gaps)))
+        con.close()
+        return 0
+    if args.fill_orphans is not None:
+        print("=== 无卡切片补卡 ===")
+        print(fill_orphans(con, args.fill_orphans or None, args.dry_run, args.limit))
         con.close()
         return 0
     rows = con.execute(

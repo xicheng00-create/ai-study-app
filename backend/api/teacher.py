@@ -1,4 +1,5 @@
 """教师管理后台 Blueprint（REQ-ADMIN-001~003）：聚合走独立路由，不经 @user_scope。"""
+import re
 from collections import Counter
 
 from ai import mastery
@@ -57,6 +58,67 @@ def overview():
         "student_count": len(students),
         "students": students,
         "common_weak_chapters": common_weak,
+    })
+
+
+@teacher_bp.route("/knowledge", methods=["GET"])
+@jwt_required
+@role_required("teacher")
+def knowledge_summary():
+    """教师端知识卡片核查（汇总）：各章卡片/切片/主题数与未覆盖切片数。
+
+    学生专属的 /api/knowledge/<chapter_id> 对教师返回 403，且要求章节已发布，
+    教师无法在后台核对卡片内容——本路由补齐该能力（只读，不影响学生端）。
+    """
+    con = get_db()
+    rows = con.execute(
+        "SELECT c.id, c.name, c.folder, c.order_no, c.status,"
+        " (SELECT COUNT(*) FROM chunks k WHERE k.chapter_id=c.id) AS chunks,"
+        " (SELECT COUNT(*) FROM knowledge_cards k WHERE k.chapter_id=c.id) AS cards,"
+        " (SELECT COUNT(DISTINCT sub_concept) FROM knowledge_cards k WHERE k.chapter_id=c.id)"
+        "   AS sub_concepts,"
+        " (SELECT COUNT(*) FROM chunks k WHERE k.chapter_id=c.id AND NOT EXISTS"
+        "   (SELECT 1 FROM knowledge_cards d WHERE d.source_chunk_id=k.id)) AS orphan_chunks"
+        " FROM chapters c ORDER BY c.folder, c.order_no"
+    ).fetchall()
+    return ok({"chapters": [dict(r) for r in rows]})
+
+
+@teacher_bp.route("/knowledge/<chapter_id>", methods=["GET"])
+@jwt_required
+@role_required("teacher")
+def knowledge_chapter(chapter_id):
+    """单章卡片明细：按 sub_concept 分组，每张卡附来源切片摘录（教师逐卡核查）。"""
+    con = get_db()
+    ch = con.execute(
+        "SELECT id, name, folder, status FROM chapters WHERE id=?", (chapter_id,)
+    ).fetchone()
+    if ch is None:
+        return e_not_found("章节不存在")
+    rows = con.execute(
+        "SELECT kc.id, kc.sub_concept, kc.front, kc.back, kc.source_chunk_id,"
+        " c.text AS chunk_text, m.original_name AS src_name"
+        " FROM knowledge_cards kc"
+        " LEFT JOIN chunks c ON c.id = kc.source_chunk_id"
+        " LEFT JOIN materials m ON m.id = c.material_id"
+        " WHERE kc.chapter_id=? ORDER BY kc.sub_concept, kc.created_at",
+        (chapter_id,),
+    ).fetchall()
+    groups: dict = {}
+    for r in rows:
+        key = r["sub_concept"] or "未分组"
+        groups.setdefault(key, []).append({
+            "id": r["id"],
+            "front": r["front"],
+            "back": r["back"],
+            "source_chunk_id": r["source_chunk_id"],
+            "source_material": r["src_name"] or "",
+            "source_snippet": re.sub(r"\s+", " ", r["chunk_text"] or "")[:220],
+        })
+    return ok({
+        "chapter": dict(ch),
+        "card_total": len(rows),
+        "groups": [{"sub_concept": k, "count": len(v), "cards": v} for k, v in groups.items()],
     })
 
 
