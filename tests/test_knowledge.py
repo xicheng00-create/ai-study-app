@@ -46,6 +46,49 @@ def test_session_publish_ensures_chapter_cards(client, teacher_headers, monkeypa
     assert calls == [cid]
 
 
+def test_overview_due_excludes_unlearned_and_counts_overdue(client, teacher_headers, monkeypatch):
+    """v2.6.4：未学卡片不算「今日待复习」；已学且到期/逾期才计入；deck_max 随响应下发。
+
+    故障现场（2026-09-19）：刚发布章节时「今日待复习 2384 张」（= 全部未学卡片）。
+    """
+    from datetime import timedelta
+
+    from config import SESSION_DECK_MAX
+    from data import timeutil
+    from data.db import get_db
+
+    cid = _chapter(client, teacher_headers); one = _student(client, teacher_headers, 'carddue')
+    monkeypatch.setattr(knowledge, 'generate_knowledge_cards', lambda ids: [
+        {'front': '概念 A', 'back': '答案 A', 'sub_concept': 'A'},
+        {'front': '概念 B', 'back': '答案 B', 'sub_concept': 'B'}])
+    cards = client.post('/api/knowledge/generate', json={'chapter_ids': [cid]}, headers=one).get_json()['data']
+    assert cards['deck_max'] == SESSION_DECK_MAX
+
+    def counts():
+        ov = client.get('/api/knowledge/overview', headers=one).get_json()['data']
+        assert ov['deck_max'] == SESSION_DECK_MAX
+        return [c['counts'] for c in ov['chapters'] if c['chapter_id'] == cid][0]
+
+    got = client.get('/api/knowledge/' + cid, headers=one).get_json()['data']
+    assert got['deck_max'] == SESSION_DECK_MAX
+    first = counts()
+    assert first['total'] == 2 and first['today_due'] == 0 and first['new'] == 2   # 未学 ≠ 待复习
+
+    # 复习一张且记住：interval=3 天 → 未到期，仍不计入今日待复习
+    card_id = cards['cards'][0]['id']
+    client.post('/api/knowledge/' + card_id + '/review', json={'remembered': True}, headers=one)
+    assert counts()['today_due'] == 0
+
+    # 把到期日改到昨天（逾期未复习）→ 计入今日待复习
+    past = (timeutil.shanghai_now() - timedelta(days=1)).astimezone().isoformat()
+    with client.application.app_context():
+        con = get_db()
+        con.execute("UPDATE knowledge_reviews SET next_review_at=? WHERE card_id=?", (past, card_id))
+        con.commit()
+    after = counts()
+    assert after['today_due'] == 1 and after['learning'] == 1
+
+
 def _seed_materials(client, cid, n_materials=4, n_chunks=20):
     """直插资料与切片：模拟长资料章节（旧实现只抽 ~18 片，必然漏内容）。"""
     from data.db import get_db

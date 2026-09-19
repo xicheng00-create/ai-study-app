@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.6.4] - 2026-09-19
+
+### Changed
+- **单次复习卡组上限 100 张**（新增 `config.SESSION_DECK_MAX = 100`，KNOW-006 / `REQ-KNOW-DECK-001`）：学生端点「开始复习」装配的卡组不再等于「全量卡片」，而是 **≤100 张**，排序 = ①今日待复习（到期/逾期）→ ②未学 → ③学习中/复习中未到期 → ④已掌握。阈值单点在后端并**随响应下发**（`GET /api/knowledge/overview`、`GET /api/knowledge/<chapter_id>` 均带 `deck_max`），学生端 `student.js` 读字段装配（缺字段兜底 100）。**学习记录（`knowledge_reviews`）长期累计、绝不按天清空**；本次没复习完的卡次日自动进入下一批。
+- **AI 学习建议生成窗口 = 上一条建议所在日（含）→ 今天**（`REQ-RPT-ADVICE-002`）：此前只统计当天（UTC+8），上午生成即漏掉当天后续学习。现在 `advice_gen.today_stats(con, uid, since=...)` 支持窗口统计，`stats` 增 `window_since / window_days / window_label / today / yesterday` 明细；`POST /api/progress/advice/generate` 自动取「最近一条建议的 `advice_date`」为窗口起点（首条则当天）。近 7 天的章节活动 / 掌握度 / 错题知识点上下文（`recent_learning_context`）**本来就已覆盖昨天到今天**，本次补齐的是四个计数口径与文案。
+- `backend/frontend/sw.js` CACHE `aistudy-shell-v48` → **`v49`**；`const V` / `index.html` 静态资源与 SW 注册 URL → `?v=2.6.4`（三处同步）。
+- `backend/app.py` 版本 → `2.6.4`。
+
+### Fixed
+- **「今日待复习」把未学的卡也算进去（学生端实报：2384 张）**：`GET /api/knowledge/overview` 原口径为「非 mastered 且 `next_review_at` = 今天」，而 `knowledge_reviews` 是**学生第一次打开章节时懒建**的（`next_review_at = now`）→ 刚发布的大章会把**全部未学卡片**算成「今日待复习」。修法：待复习 = **已学过（`learn_count > 0`）且已到期或逾期（`next_review_at ≤ 今天`）且未掌握**；未学的卡只计「未学」。学生端列表页 / 进度页同步改用 `Student.kcDue()`（含本地日期兜底，不再依赖 `toISOString()` 的 UTC 日）。
+- **AI 学习建议停在 09-08 且没有「生成建议」按钮（学生端实报）**：`GET /api/progress/advice` 今天没有建议时会**回退返回最近一条历史建议**（`has_advice=True`），而学生端按钮的显示条件写成只看 `has_advice` → 只要有历史建议，按钮**永久消失**，建议再也无法更新（该账号自 09-08 起 11 天没生成过）。
+  - 修法：`/advice` 增 `is_today` / `can_generate`（今天是否已生成 / 今天是否还能生成），`/advice/generate` 同步返回；学生端改为 **`can_generate` 决定按钮可见性**——历史建议照常展示，但标注「今日还没生成（每天最多一次）」并给出按钮；已生成则显示「今日已生成」且不再显示按钮。
+  - 回归用例：`tests/test_daily_advice.py::test_advice_stale_row_keeps_generate_button`（历史建议 → `can_generate=True` → 生成后 `window_since` = 该历史建议日）、`::test_advice_window_covers_yesterday_and_today`。
+- `tests/test_knowledge.py::test_overview_due_excludes_unlearned_and_counts_overdue`：未学不算待复习、复习后未到期仍不算、逾期才计入，并断言 `deck_max` 三处下发。
+
+### Tests
+- `make lint` → `All checks passed!`（venv ruff 0.16.5）｜`make test` → 覆盖率 **76.60%**（门槛 50%）｜`make smoke` → `version 2.6.4`。
+- 新增 3 个回归用例（见上），`tests/test_knowledge.py` / `tests/test_daily_advice.py` 全绿。
+
 ## [2.6.3] - 2026-09-19
 
 ### Changed

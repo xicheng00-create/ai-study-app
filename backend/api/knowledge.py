@@ -2,6 +2,7 @@
 from ai import knowledge
 from ai.review_sched import next_interval, next_review_at_iso
 from auth.jwt_utils import jwt_required, role_required
+from config import SESSION_DECK_MAX
 from data import checkin, models, timeutil
 from data.db import get_db
 from flask import Blueprint, g, request
@@ -48,14 +49,25 @@ def generate():
 @jwt_required
 @role_required("student")
 def overview():
+    """知识卡片总览（KNOW-003/004）。
+
+    口径（v2.6.4 修正）：
+    - today_due「今日待复习」= **已学过**（learn_count>0）且**已到期或逾期**且未掌握的卡；
+      未学的卡单独计入 new，不再被算成「待复习」（旧口径把懒建的 new 行也算进去，
+      导致刚发布章节时显示「今日待复习 = 全部卡片数」）。
+    - deck_max：单次复习卡组上限（`config.SESSION_DECK_MAX`），随响应下发，前端不得硬编码。
+    """
     con = get_db(); today = timeutil.today_str()
-    rows = con.execute("SELECT kc.chapter_id,kr.status,kr.next_review_at FROM knowledge_reviews kr JOIN knowledge_cards kc ON kc.id=kr.card_id WHERE kr.user_id=?", (g.user_id,)).fetchall()
+    rows = con.execute("SELECT kc.chapter_id,kr.status,kr.learn_count,kr.next_review_at FROM knowledge_reviews kr JOIN knowledge_cards kc ON kc.id=kr.card_id WHERE kr.user_id=?", (g.user_id,)).fetchall()
     groups = {}
     for row in rows:
         d = groups.setdefault(row["chapter_id"], {"new": 0, "learning": 0, "reviewing": 0, "mastered": 0, "total": 0, "today_due": 0})
         d[row["status"]] += 1; d["total"] += 1
-        if row["status"] != "mastered" and timeutil.shanghai_date(row["next_review_at"]) == today: d["today_due"] += 1
-    return ok({"chapters": [{"chapter_id": cid, "counts": counts} for cid, counts in groups.items()]})
+        due_at = timeutil.shanghai_date(row["next_review_at"]) if row["next_review_at"] else today
+        if row["status"] != "mastered" and (row["learn_count"] or 0) > 0 and due_at <= today:
+            d["today_due"] += 1
+    return ok({"chapters": [{"chapter_id": cid, "counts": counts} for cid, counts in groups.items()],
+               "deck_max": SESSION_DECK_MAX})
 
 
 @knowledge_bp.route("/today", methods=["GET"])
@@ -81,7 +93,7 @@ def cards(chapter_id):
     for card in shared: _review(con, card["id"])
     con.commit()
     rows = con.execute("SELECT kc.id,kc.chapter_id,kc.sub_concept,kc.front,kc.back,kr.learn_count,kr.interval_days,kr.next_review_at,kr.status,kr.last_review_at FROM knowledge_cards kc JOIN knowledge_reviews kr ON kr.card_id=kc.id WHERE kc.chapter_id=? AND kr.user_id=? ORDER BY CASE kr.status WHEN 'new' THEN 0 WHEN 'learning' THEN 1 WHEN 'reviewing' THEN 2 ELSE 3 END,kr.next_review_at", (chapter_id, g.user_id)).fetchall()
-    return ok({"chapter_id": chapter_id, "cards": [_card(r) for r in rows]})
+    return ok({"chapter_id": chapter_id, "cards": [_card(r) for r in rows], "deck_max": SESSION_DECK_MAX})
 
 
 @knowledge_bp.route("/<card_id>/review", methods=["POST"])

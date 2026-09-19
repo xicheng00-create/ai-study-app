@@ -2,31 +2,58 @@
 
 daily_advice_gen 定时脚本与进度页「生成今日建议」共用，避免统计口径漂移。
 """
-from datetime import timedelta
+from datetime import date, timedelta
 
 
-def today_stats(con, user_id: str):
-    """当日（UTC+8）活动统计 + 薄弱章名，返回 (stats dict, weak_names list)。"""
+def today_stats(con, user_id: str, since: str | None = None):
+    """活动统计（UTC+8）+ 薄弱章名，返回 (stats dict, weak_names list)。
+
+    窗口口径（v2.6.4）：
+    - `since=None`：只算当天（定时脚本/默认口径，语义不变）。
+    - `since='YYYY-MM-DD'`：算 **该日（含）→ 今天** 的全部活动，用于「自上一条建议以来」，
+      保证「昨天到今天」的更新一定被涵盖；返回值额外带 window_since / window_days /
+      window_label 以及 today / yesterday 明细，供建议文案引用。
+    """
     from data import timeutil
 
     today = timeutil.today_str()
+    win_since = since if (since and since <= today) else today
+    yesterday = (timeutil.shanghai_now().date() - timedelta(days=1)).isoformat()
+
+    def in_window(ts):
+        d = timeutil.shanghai_date(ts)
+        return bool(d) and win_since <= d <= today
+
     convs = con.execute(
         "SELECT created_at FROM conversations WHERE user_id=?", (user_id,)
     ).fetchall()
-    today_convs = sum(timeutil.shanghai_date(r["created_at"]) == today for r in convs)
+    today_convs = sum(in_window(r["created_at"]) for r in convs)
     msgs = con.execute(
         "SELECT m.created_at FROM messages m JOIN conversations c ON c.id=m.conversation_id"
-        " WHERE c.user_id=? AND m.role='user'", (user_id,)
+        " WHERE c.user_id=? AND m.role='user'",
+        (user_id,),
     ).fetchall()
-    today_turns = sum(timeutil.shanghai_date(r["created_at"]) == today for r in msgs)
+    today_turns = sum(in_window(r["created_at"]) for r in msgs)
     practices = con.execute(
         "SELECT created_at FROM practice_sessions WHERE user_id=?", (user_id,)
     ).fetchall()
-    today_practice = sum(timeutil.shanghai_date(r["created_at"]) == today for r in practices)
+    today_practice = sum(in_window(r["created_at"]) for r in practices)
     quiz_subs = con.execute(
         "SELECT DISTINCT quiz_id, quiz_version, created_at FROM attempts WHERE user_id=?", (user_id,)
     ).fetchall()
-    today_quizzes = sum(timeutil.shanghai_date(r["created_at"]) == today for r in quiz_subs)
+    today_quizzes = sum(in_window(r["created_at"]) for r in quiz_subs)
+
+    def split(ts_list):
+        """窗口内活动按「今天 / 昨天」拆分。"""
+        return (
+            sum(timeutil.shanghai_date(t) == today for t in ts_list),
+            sum(timeutil.shanghai_date(t) == yesterday for t in ts_list),
+        )
+
+    c_t, c_y = split([r["created_at"] for r in convs])
+    t_t, t_y = split([r["created_at"] for r in msgs])
+    p_t, p_y = split([r["created_at"] for r in practices])
+    q_t, q_y = split([r["created_at"] for r in quiz_subs])
 
     from ai import mastery
     chapters = con.execute("SELECT * FROM chapters WHERE status='published'").fetchall()
@@ -35,11 +62,17 @@ def today_stats(con, user_id: str):
         m = mastery.compute_mastery(con, user_id, ch["id"])
         if mastery.mastery_state(m["m"], m["attempts"]) == "weak":
             weak_names.append(ch["name"])
+    days = (timeutil.shanghai_now().date() - date.fromisoformat(win_since)).days + 1
     return {
         "conversations": today_convs,
         "turns": today_turns,
         "practice": today_practice,
         "quizzes": today_quizzes,
+        "window_since": win_since,
+        "window_days": days,
+        "window_label": "今天" if win_since == today else f"{win_since} 起 {days} 天",
+        "today": {"conversations": c_t, "turns": t_t, "practice": p_t, "quizzes": q_t},
+        "yesterday": {"conversations": c_y, "turns": t_y, "practice": p_y, "quizzes": q_y},
     }, weak_names
 
 
@@ -138,7 +171,7 @@ def _fallback_advice(stats: dict, context: dict) -> str:
 
 
 def build_advice_text(con, user_id: str, stats: dict, weak_names: list) -> str:
-    """AI 建议：结合今天与近 7 天上下文；不可用时按事实模板兜底。"""
+    """AI 建议：结合统计窗口与近 7 天上下文；不可用时按事实模板兜底。"""
     from ai import agents
 
     context = recent_learning_context(con, user_id)
@@ -149,12 +182,17 @@ def build_advice_text(con, user_id: str, stats: dict, weak_names: list) -> str:
     weak = "、".join(context["weak_concepts"]) or "无"
     quiz = (f"近 7 天做过测评：{context['latest_quiz_date']}，章节：{context['latest_quiz_chapter']}"
             if context["has_recent_quiz"] else "近 7 天未做测评")
+    label = stats.get("window_label", "今天")
+    ty, ye = stats.get("today", {}), stats.get("yesterday", {})
     sys_prompt = (
-        "你是「AI 学习小组」的学习教练。结合今天数据、最近 7 天重点、各章掌握度和薄弱知识点，"
-        "给出 3 条因人而异且针对具体内容的学习建议，每条一句、必须用「• 」开头。"
+        "你是「AI 学习小组」的学习教练。结合统计窗口内的活动（含昨天与今天的更新）、最近 7 天重点、"
+        "各章掌握度和薄弱知识点，给出 3 条因人而异且针对具体内容的学习建议，每条一句、必须用「• 」开头。"
         "若最近 7 天做过测评，必须引用该事实，不可写『测评还没做』；仅在确实未做时才提示测评。"
-        f"今天：对话 {stats.get('conversations', 0)} 次，练习 {stats.get('practice', 0)} 次，"
-        f"测评 {stats.get('quizzes', 0)} 次，薄弱章节：{'、'.join(weak_names) or '无'}。"
+        f"统计窗口：{label}（{stats.get('window_since', '')} → 今天）。"
+        f"窗口内：对话 {stats.get('conversations', 0)} 次，练习 {stats.get('practice', 0)} 次，"
+        f"测评 {stats.get('quizzes', 0)} 次；其中今天 对话{ty.get('conversations', 0)}/练习{ty.get('practice', 0)}/"
+        f"测评{ty.get('quizzes', 0)}，昨天 对话{ye.get('conversations', 0)}/练习{ye.get('practice', 0)}/"
+        f"测评{ye.get('quizzes', 0)}。薄弱章节：{'、'.join(weak_names) or '无'}。"
         f"近期章节：{chapters}。薄弱知识点：{weak}。测评：{quiz}。"
     )
     out = agents.tutor_reply(sys_prompt, [])

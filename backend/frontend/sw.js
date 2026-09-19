@@ -2,9 +2,10 @@
 /* v43：v2.4.0 每日打卡连胜 + 通知中心 + Web Push（push/notificationclick），bump 以强制旧缓存失效 */
 /* v46：v2.6.0 教师端知识卡片核查页（课程页入口 + 章/主题/卡片钻取），bump 以强制旧缓存失效 */
 /* v48：v2.6.3 每日任务卡片阈值 10→30（阈值改由后端下发，前端不再硬编码）+ 进度不回退（消除「4/10 卡却显示已完成」） */
-const CACHE = "aistudy-shell-v48";
+/* v49：v2.6.4 单次复习卡组上限 100 张（deck_max 后端下发）+ 待复习不再含未学卡 + AI 建议按钮由 can_generate 决定/窗口覆盖昨天到今天 */
+const CACHE = "aistudy-shell-v49";
 /* 预缓存 URL 必须与 index.html 里的 ?v= 同版（CF 对 .js/.css 强制 4h 浏览器缓存，换 URL 才能穿透） */
-const V = "2.6.3";
+const V = "2.6.4";
 const ASSETS = ["/", `/css/style.css?v=${V}`, `/js/api.js?v=${V}`, `/js/app.js?v=${V}`, `/js/student.js?v=${V}`, `/js/teacher.js?v=${V}`, "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

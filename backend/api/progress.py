@@ -313,22 +313,30 @@ def trend():
 @jwt_required
 @role_required("student")
 def advice():
-    """AI 学习建议（RPT-003 改每日）：优先取今天（UTC+8），否则最近一条。"""
+    """AI 学习建议（RPT-003 改每日 / v2.6.4 补 is_today + can_generate）。
+
+    优先取今天（UTC+8）；今天没有则回退最近一条（前端仍能看到旧建议），
+    但**是否会显示「生成今日建议」按钮由 `can_generate` 决定**——只看「有没有建议」
+    会让旧建议永久锁死按钮（2026-09-19 故障：停留在 09-08 且无法再生成）。
+    """
     con = get_db()
     today = timeutil.today_str()
     row = con.execute(
         "SELECT * FROM daily_advice WHERE user_id=? AND advice_date=?",
         (g.user_id, today),
     ).fetchone()
+    is_today = row is not None
     if row is None:
         row = con.execute(
             "SELECT * FROM daily_advice WHERE user_id=? ORDER BY advice_date DESC LIMIT 1",
             (g.user_id,),
         ).fetchone()
     if row is None:
-        return ok({"has_advice": False})
+        return ok({"has_advice": False, "is_today": False, "can_generate": True})
     return ok({
         "has_advice": True,
+        "is_today": is_today,
+        "can_generate": not is_today,
         "advice_date": row["advice_date"],
         "stats": json.loads(row["stats"] or "{}"),
         "advice": row["advice"],
@@ -345,6 +353,8 @@ def advice_generate():
 
     v2.1.0：launchd 22:00 自动生成长期未生效（学生从未见到建议），
     改为进度页手动点击生成——统计/文案逻辑与定时脚本共用 ai/advice_gen.py。
+    v2.6.4：统计窗口 = **上一条建议所在日（含）→ 今天**，保证「昨天到今天」的更新
+    一定进建议（此前只算当天，上午生成即漏掉当天后续学习）。
     """
     con = get_db()
     today = timeutil.today_str()
@@ -355,13 +365,21 @@ def advice_generate():
     if row is not None:
         return ok({
             "has_advice": True,
+            "is_today": True,
+            "can_generate": False,
             "advice_date": row["advice_date"],
             "stats": json.loads(row["stats"] or "{}"),
             "advice": row["advice"],
             "created_at": row["created_at"],
             "generated": False,
         })
-    stats, weak_names = advice_gen.today_stats(con, g.user_id)
+    last = con.execute(
+        "SELECT advice_date FROM daily_advice WHERE user_id=? ORDER BY advice_date DESC LIMIT 1",
+        (g.user_id,),
+    ).fetchone()
+    stats, weak_names = advice_gen.today_stats(
+        con, g.user_id, since=last["advice_date"] if last else None
+    )
     advice = advice_gen.build_advice_text(con, g.user_id, stats, weak_names)
     now = models.utcnow()
     con.execute(
@@ -374,6 +392,8 @@ def advice_generate():
     con.commit()
     return ok({
         "has_advice": True,
+        "is_today": True,
+        "can_generate": False,
         "advice_date": today,
         "stats": stats,
         "advice": advice,

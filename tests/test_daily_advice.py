@@ -124,3 +124,58 @@ def test_advice_uses_recent_quiz_chapter_mastery_and_wrong_concept(client, teach
     assert "最近一次测评" in text
     assert "测评还没做" not in text
 
+
+def test_advice_stale_row_keeps_generate_button(client, teacher_headers):
+    """v2.6.4 回归：只有历史建议（非今天）时按钮必须仍可用，且生成窗口起点 = 该历史建议日。
+
+    故障现场（2026-09-19）：卡在 09-08 的建议把「生成今日建议」按钮永久锁死。
+    """
+    uid = make_student(client, teacher_headers, "alice")
+    _insert_advice(client, uid, "2026-09-08", "旧建议")
+    h = {"Authorization": f"Bearer {login(client, 'alice', 'student123')}"}
+    d = client.get("/api/progress/advice", headers=h).get_json()["data"]
+    assert d["has_advice"] is True and d["advice_date"] == "2026-09-08"
+    assert d["is_today"] is False and d["can_generate"] is True   # ← 按钮必须还在
+    g = client.post("/api/progress/advice/generate", json={}, headers=h).get_json()["data"]
+    assert (g["generated"], g["is_today"], g["can_generate"]) == (True, True, False)
+    assert g["stats"]["window_since"] == "2026-09-08"             # 窗口覆盖历史建议日 → 今天
+    assert g["stats"]["window_days"] >= 2
+    d2 = client.get("/api/progress/advice", headers=h).get_json()["data"]
+    assert d2["is_today"] is True and d2["can_generate"] is False
+
+
+def test_advice_window_covers_yesterday_and_today(client, teacher_headers):
+    """v2.6.4：统计窗口内「昨天 + 今天」的活动都要被统计，并给出明细。"""
+    from datetime import timedelta
+
+    from ai import advice_gen
+    from data.db import get_db
+
+    uid = make_student(client, teacher_headers, "alice")
+    now = timeutil.shanghai_now()
+    yday = (now.date() - timedelta(days=1)).isoformat()
+    stamps = [(now - timedelta(days=1)).astimezone().isoformat(), now.astimezone().isoformat()]
+    with client.application.app_context():
+        con = get_db()
+        for i, ts in enumerate(stamps):
+            con.execute(
+                "INSERT INTO conversations (id, user_id, chapter_id, title, created_at)"
+                " VALUES (?, ?, NULL, '对话', ?)",
+                (f"conv-{i}", uid, ts),
+            )
+            con.execute(
+                "INSERT INTO messages (id, conversation_id, role, content, turn, created_at)"
+                " VALUES (?, ?, 'user', '问题', 1, ?)",
+                (f"msg-{i}", f"conv-{i}", ts),
+            )
+        con.commit()
+        s_today, _ = advice_gen.today_stats(con, uid)
+        s_win, _ = advice_gen.today_stats(con, uid, since=yday)
+
+    assert s_today["conversations"] == 1 and s_today["turns"] == 1
+    assert s_today["window_label"] == "今天" and s_today["window_days"] == 1
+    assert s_win["conversations"] == 2 and s_win["turns"] == 2
+    assert s_win["window_since"] == yday and s_win["window_days"] == 2
+    assert s_win["today"]["conversations"] == 1
+    assert s_win["yesterday"]["conversations"] == 1
+

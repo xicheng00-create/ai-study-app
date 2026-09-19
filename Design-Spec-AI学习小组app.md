@@ -218,9 +218,10 @@
 |-----|------|--------|------|
 | KNOW-001 | student | P1 | **学习路径发布 / 资料发布时自动**从章节资料抽取知识点生成知识卡片（正面=知识点/问题，背面=答案/解析+一句示例）存库，**学生无需手动生成**（每章一组 ≥20 知识点，全章覆盖；已有卡复用不再重复调 LLM；失败可懒加载兜底） |
 | KNOW-002 | student | P1 | 点卡 3D 翻转看答案；**左滑=没记住、右滑=记住了**（底部兜底按钮 ←没记住\|记住了→）；顶部进度 第N/总数 + 每卡状态色；**卡高随内容自适应**——长答案不裁切：卡高 = 当前卡面内容高（下限 320px，上限取「卡顶→tabbar 上沿」的可用高，大屏兜底 620px），超出上限在**卡面内滚动**（v2.6.2，REQ-KNOW-CARDFIT-001） |
-| KNOW-003 | student | P1 | 系统记录每知识点**学习次数（learn_count）**+ **复习状况**（new/learning/reviewing/mastered + 间隔 1→3→7）；每日「待复习」队列优先，再学新卡 |
+| KNOW-003 | student | P1 | 系统记录每知识点**学习次数（learn_count）**+ **复习状况**（new/learning/reviewing/mastered + 间隔 1→3→7）；每日「待复习」队列优先，再学新卡。**「今日待复习」口径（v2.6.4，REQ-KNOW-DUE-001）**：= 已学过（`learn_count>0`）且**已到期或逾期**（`next_review_at ≤ 今天`，UTC+8）且未掌握；**未学的卡只算「未学」，不计入待复习**（旧口径把懒建的 new 行也当到期 → 新发布章节显示「待复习 = 全部卡片」）。**学习记录长期累计、绝不按天清空** |
 | KNOW-004 | student | P1 | **卡片必须应试级细粒度且全章覆盖**（CR-2026-0919-CARDS）：① 生成时投喂**全章每一份资料的每一个切片**（按资料分层、每份保底、总预算 2 万字），不再抽样 ~18 片×300 字；② 提示词硬性要求「**一个考点一张卡**」——概念定义/数字指标/流程步骤/术语英文名/易混区别/常见误区/案例结论逐条成卡，禁止「主要包含以下几方面」式概括，且能出选择题的细节（数字、专有名词、顺序、比例、阈值、年份）必须单独成卡，每章 ≥40 张；③ **只抽本 Session 内容**——课程共用素材（如全课程行业术语表）中属于其它周次的词条一律跳过，禁止跨章错配；④ 每张卡必须绑定 `source_chunk_id`，可回溯课件原文切片；⑤ **反向也要成立**：任何一条课件切片都必须至少被一张卡片引用（无卡切片 = 覆盖缺口，须补卡），做到「课上有讲、卡片必有」 |
 | KNOW-005 | teacher | P2 | **教师端知识卡片核查（REQ-TEACH-KNOW-001）**：教师可在后台**逐章/逐主题/逐卡**核对卡片内容，不再依赖查库或铸学生 token。① 章级汇总：卡片数 / 主题数 / 切片数 / **未覆盖切片数**、发布状态；② 单章明细：按 `sub_concept` 分组，每张卡附**来源资料名 + 源切片原文摘录**（可判断「卡片是否真出自课件」）；③ 只读，不改卡、不发布；④ 学生角色访问一律 403（与 `GET /api/knowledge/*` 的学生专属相反）；⑤ **绑定必须精确到「同资料内最吻合的那一条切片」**，不能只保证「片子属于同一份资料」——弱匹配（同资料内 BM25 排名 > 3 且最佳切片得分 ≥ 1.35 倍）一律改绑 |
+| KNOW-006 | student | P1 | **单次复习卡组上限 100 张（v2.6.4，REQ-KNOW-DECK-001）**：点「开始复习」一次性装配的卡组 ≤ `config.SESSION_DECK_MAX`（默认 100），排序 = ①今日待复习（到期/逾期）→ ②未学 → ③学习中/复习中未到期 → ④已掌握；**阈值单点在后端并随响应下发**（`GET /api/knowledge/overview` / `GET /api/knowledge/<chapter_id>` 的 `deck_max`），前端禁止硬编码。**学习记录（`knowledge_reviews`）长期累计、绝不按天清空**；本次没复习完的卡次日自动进入下一批，无需人工干预 |
 
 **Technical**
 - **独立数据层（共享内容 + 每生独立复习态，v1.17.x 重构）**：`knowledge_cards`（id, chapter_id, sub_concept, front, back, source_chunk_id, created_at）——**无 user_id，是共享内容**（每章一组，发布时生成一次）；`knowledge_reviews`（id, card_id, user_id, learn_count, interval_days, next_review_at, status CHECK(new/learning/reviewing/mastered), last_review_at, created_at, UNIQUE(card_id,user_id)）——**每学生独立复习状态**，学生首次打开该章卡组时**懒建**（默认 new）。已废弃 v1.17.0 的「knowledge_cards 带 user_id」旧形（表空可安全重建）。
@@ -256,7 +257,7 @@
 |-----|------|--------|------|
 | RPT-001 | student | P1 | 本周概况（天数/对话/测评）→ **v1.9.0 迁移至进度页**（`GET /api/progress/weekly-stats`） |
 | RPT-002 | student | P1 | 成绩分析（平均/最高/薄弱）→ **v1.9.0 迁移至进度页** |
-| RPT-003 | student | P1 | AI 学习建议 → **v1.9.0 改「每日」生成**（`daily_advice` 表 + `GET /api/progress/advice` + launchd 每日脚本） |
+| RPT-003 | student | P1 | AI 学习建议 → **v1.9.0 改「每日」生成**（`daily_advice` 表 + `GET /api/progress/advice` + launchd 每日脚本）。**v2.6.4（REQ-RPT-ADVICE-001/002）**：① 响应增 `is_today` / `can_generate`，**按钮可用性只看「今天是否已生成」**，不能只看 `has_advice`（旧逻辑被历史建议永久锁死按钮 → 实报「停在 09-08 且无生成按钮」）；② 生成窗口 = **上一条建议所在日（含）→ 今天**（首条则当天），窗口内「昨天+今天」的活动必须全部计入，`stats` 带 `window_since/window_days/window_label/today/yesterday` |
 | RPT-004 | teacher | P2 | 教师全班周报 → **v1.9.0 改为「班级活动」**（`/api/class/leaderboard` + 共性薄弱） |
 | RPT-005 | 全部 | P2 | 导出 Markdown/PDF → **v1.9.0 移除**（周报整体废弃） |
 
@@ -1107,3 +1108,34 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 - 使用者手机上那个账号（Hermes 测试学生）**当天已有的一条 10 卡达标快照保留不动**（属既成历史）；按新口径它会显示 `10/30 卡 · ✓ 今日已完成`——即「当天达标过一次」的事实 + 只有 10 张被计数的现实，二者不再互相矛盾。
 - 30 张卡组由服务端三档装配（未学 → 到期 → 低掌握度补足）自动凑满，库存 2384 张、4 章全 published，容量充足。
 - `make lint` ✓ ｜ `make test` 覆盖率 **76.45%** ｜ `make smoke` → `2.6.3`。
+
+### 12.34 实现状态回写（v2.6.4，2026-09-19，待复习口径 + 单次卡组上限 100 + AI 建议按钮/窗口）
+
+**本次迭代 REQ**：`KNOW-003`（追加：「今日待复习」口径 = 已学且到期/逾期，未学不算）、`KNOW-006`（新增：单次复习卡组上限 100 张，阈值后端下发）、`RPT-003`（追加：`is_today`/`can_generate` + 生成窗口 = 上一条建议日 → 今天）。变更请求号 `CR-2026-0919-DECKADVICE`。
+
+**三项实报 → 根因 → 修法**
+
+| # | 用户实报 | 根因（数据确凿） | 修法（v2.6.4） |
+|---|---------|----------------|---------------|
+| 1 | 待复习「两千多张」，太多 | `GET /api/knowledge/overview` 的 `today_due` = 「非 mastered 且 `next_review_at` = 今天」；而 `knowledge_reviews` 是**首次打开章节时懒建**（`next_review_at = now`）⇒ 4 章 2384 张**未学**卡片全部落进「今日待复习」 | 口径改为：`learn_count > 0` 且 `next_review_at ≤ 今天` 且 `status != mastered`；未学只计 `new`。学生端同步新增 `Student.kcDue()`（含**本地日期**兜底，弃用 `toISOString()` 的 UTC 日） |
+| 2 | 「每次学习最多一百张」，不要每天清空 | 「开始复习」一次性装配**全量**卡组（`cardsAll.length` = 2384）；`knowledge_reviews` 其实**从未被清空**（全库无 `DELETE FROM knowledge_reviews`），是**卡组装配**没有上限所致 | 新增 `config.SESSION_DECK_MAX = 100`（单点）；`kcDeckOrder()` = 待复习 → 未学 → 学习中/复习中未到期 → 已掌握，`slice(0, cap)`；`deck_max` 随 `overview` 与 `/{chapter_id}` 响应下发，前端不硬编码；`knowledgeCards`（本次卡组）与 `knowledgeAllCards`（全量）分离，退出复习恢复全量 |
+| 3 | AI 建议停在 09-08，且**没有**生成按钮；窗口是否含昨天→今天 | ① `GET /api/progress/advice` 今天无建议时**回退返回历史建议**（`has_advice=True`），前端按钮条件写成只看 `has_advice` ⇒ 有历史建议 = 按钮永久消失（该账号 11 天未更新）；② 生成只统计**当天**（`today_stats`，UTC+8），上午生成即漏掉当天后续；③ `recent_learning_context`（近 7 天章节活动/掌握度/错题）**本来就覆盖昨天→今天**，缺的是四个计数与文案 | ① `/advice` 增 `is_today` / `can_generate`，前端**按键可见性由 `can_generate` 决定**（历史建议照常展示 + 标注「今日还没生成」+ 给按钮）；② `today_stats(con, uid, since=...)` 支持窗口，`/advice/generate` 取「最近一条建议的 `advice_date`」为起点，`stats` 带 `window_since/window_days/window_label/today/yesterday`；③ 提示词明确「统计窗口 + 今天/昨天明细」 |
+
+**阈值与口径单点（新增，防漂移）**
+
+| 项 | 唯一定义 | 下发位置 | 前端读取点 |
+|----|---------|---------|-----------|
+| 单次卡组上限 | `config.SESSION_DECK_MAX = 100` | `GET /api/knowledge/overview.deck_max`、`GET /api/knowledge/<chapter_id>.deck_max` | `student.js::kcDeckOrder/kcDeckSize`、列表页按钮与总览文案 |
+| 每日任务张数/题数 | `config.TASK_CARDS_REQUIRED` / `TASK_QUESTIONS_REQUIRED` | `GET /api/checkin/today.task.*`、`GET /api/checkin/class.required` | `app.js::streakBar`、`student.js::taskCardHtml/_checkinBlock`（v2.6.3 已做） |
+| 建议可生成性 | 当天 `daily_advice` 行是否存在 | `GET /api/progress/advice.can_generate`、`POST /api/progress/advice/generate` | `student.js` 进度页建议卡 |
+
+**回归用例（3 个新增）**
+- `tests/test_knowledge.py::test_overview_due_excludes_unlearned_and_counts_overdue`：未学 → `today_due=0`；复习后（interval 3 天）→ 仍 0；`next_review_at` 改昨日（逾期）→ 1；三处 `deck_max` 断言。
+- `tests/test_daily_advice.py::test_advice_stale_row_keeps_generate_button`：仅有 09-08 历史建议时 `can_generate=True`（按钮必须在）→ 生成后 `is_today=True/can_generate=False`，且 `stats.window_since == "2026-09-08"`。
+- `tests/test_daily_advice.py::test_advice_window_covers_yesterday_and_today`：`since=昨天` → 窗口内 2 次对话（今天 1 / 昨天 1）、`window_days=2`；`since=None` → 仅今天 1 次。
+
+**范围边界与诚实清单**
+- 改 3 个后端文件（`config.py` / `api/knowledge.py`、`api/progress.py`、`ai/advice_gen.py`）+ 1 个前端文件（`student.js`）+ 2 个测试文件；**未重新生成卡片、未改卡片内容、未删除任何复习记录**。
+- 手工数据操作（经用户明确指示）：删除测试学生 `hermesstu` **2026-09-19 当天那一条打卡行**（改前备份 `backups/2026-09-19-cards/aistudy.sqlite3.pre-clean-checkin.bak`）→ 连胜归零、今日任务回到未完成态，可完整复现「学 100 张卡」的新流程。
+- 「每次最多 100 张」= **单次装配上限**，不等于每日上限；每日任务卡组仍是 30 张（CHECKIN-002）。当天学完 100 张后可再次进入，卡组按「待复习 → 未学」继续装配下一批。
+- `make lint` → `All checks passed!` ｜ `make test` → 覆盖率 **76.60%**（门槛 50%）｜ `make smoke` → `version 2.6.4`。

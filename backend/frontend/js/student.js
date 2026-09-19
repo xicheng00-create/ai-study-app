@@ -40,7 +40,8 @@ const Student = {
   practiceChapters: [],  // 练习选章（可多选）
   practiceSessions: [],  // 练习历史列表
   practiceCount: 5,     // 每次练习题数
-  knowledgeIdx: false, knowledgeDeck: false, knowledgeCards: [], knowledgePos: 0,
+  knowledgeIdx: false, knowledgeDeck: false, knowledgeCards: [], knowledgeAllCards: [], knowledgePos: 0,
+  kcDeckMax: 0,  // 单次复习卡组上限（服务端 config.SESSION_DECK_MAX 下发；前端不硬编码，缺字段兜底 100）
   knowledgeFlipped: false, knowledgeSwipe: null, knowledgeGroupOpen: {},  // 知识卡片列表页按章分组展开态（cid → bool）
   todayDeck: false,   // 今日任务卡组模式（数据源 GET /api/knowledge/today，进度 key aistudy_kc_today_<date>）
   todayExtra: false,  // 超额学习卡组（mode=extra，进度 key 加 _extra 后缀，与任务组隔离）
@@ -259,6 +260,8 @@ const Student = {
   // 知识卡片视图退出：落回来源（从对话进→回对话；从主菜单进→回主菜单）
   leaveKnowledge() {
     this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false;
+    // 复习卡组是 knowledgeAllCards 的子集（本次上限 100 张），退出时恢复全量供列表页/详情用
+    if (this.knowledgeAllCards && this.knowledgeAllCards.length) this.knowledgeCards = this.knowledgeAllCards;
     render();
   },
 
@@ -331,6 +334,7 @@ const Student = {
       let d = null;
       try { d = await API.get('/api/knowledge/' + cid); } catch (e) { errN++; continue; }
       const cs = (d && d.cards) || [];
+      if (d && d.deck_max) this.kcDeckMax = d.deck_max;   // 单次卡组上限随响应下发（KNOW-004）
       if (!cs.length) continue;
       const chName = App.chapterName(cid);
       cs.forEach(c => { c.chName = chName; cardsAll.push(c); });
@@ -339,6 +343,7 @@ const Student = {
     if (errN) toast(errN + ' 个章节加载失败');
     this.knowledgeGroups = groups;
     this.knowledgeCards = cardsAll;
+    this.knowledgeAllCards = cardsAll;   // 全量（列表页/详情用）；进复习时 knowledgeCards 会换成「本次卡组」（≤100 张）
     if (!cardsAll.length) {
       return appbar('知识卡片', `已选 ${sel.length} 章`, 'Student.leaveKnowledge()') + `<div class="content">
         <div class="note"><div class="big">${ic('cards')}</div>所选章节还没有知识卡片</div>
@@ -347,11 +352,11 @@ const Student = {
       </div>` + tabbar();
     }
     const count = k => cardsAll.filter(c => c.status === k).length;
-    const due = cardsAll.filter(c => c.status !== 'mastered' && String(c.next_review_at || '').slice(0, 10) <= new Date().toISOString().slice(0, 10)).length;
+    const due = cardsAll.filter(c => this.kcDue(c)).length;
     const gBody = groups.map(g => {
       const gc = g.cards;
       const gcount = k => gc.filter(c => c.status === k).length;
-      const gdue = gc.filter(c => c.status !== 'mastered' && String(c.next_review_at || '').slice(0, 10) <= new Date().toISOString().slice(0, 10)).length;
+      const gdue = gc.filter(c => this.kcDue(c)).length;
       const open = !!this.knowledgeGroupOpen[g.cid];
       return `<div class="kc-ch">
         <div class="kc-ch-head" onclick="Student.toggleKnowledgeGroup('${g.cid}')">
@@ -360,8 +365,8 @@ const Student = {
         ${open ? `<div class="kc-grid">${gc.map(c => `<div class="kc-mini ${c.status}" onclick="Student.kcDetail('${c.id}')"><b>${esc(c.front)}</b><small>${esc(c.sub_concept || '知识点')}</small></div>`).join('')}</div>` : ''}</div>`;
     }).join('');
     return appbar('知识卡片', `已选 ${sel.length} 章 · 共 ${cardsAll.length} 张`, 'Student.leaveKnowledge()') + `<div class="content">
-      <button class="btn" style="width:100%;margin-bottom:14px" onclick="Student.startKnowledgeDeck()">${ic('cards')}开始复习（${cardsAll.length} 张${due ? ` · 今日待复习 ${due}` : ''}）</button>
-      <div class="kc-summary"><b>总览</b><span>已掌握 ${count('mastered')} · 学习中 ${count('learning') + count('reviewing')} · 未学 ${count('new')} · 今日待复习 ${due} · 点章头展开看卡片</span></div>
+      <button class="btn" style="width:100%;margin-bottom:14px" onclick="Student.startKnowledgeDeck()">${ic('cards')}开始复习（本次 ${this.kcDeckSize(cardsAll)} 张 · 上限 ${this.kcDeckMax || 100}${due ? ` · 今日待复习 ${due}` : ''}）</button>
+      <div class="kc-summary"><b>总览</b><span>共 ${cardsAll.length} 张 · 已掌握 ${count('mastered')} · 学习中 ${count('learning') + count('reviewing')} · 未学 ${count('new')} · 今日待复习 ${due} · 每次最多 ${this.kcDeckMax || 100} 张，学习记录长期累计</span></div>
       ${gBody}
     </div>` + tabbar();
   },
@@ -373,7 +378,7 @@ const Student = {
   },
   // 点卡片 → 详情 sheet（正/反面 + 去问 TUTOR）
   kcDetail(id) {
-    const c = (this.knowledgeCards || []).find(x => x.id === id); if (!c) return;
+    const c = this._kcFind(id); if (!c) return;
     openSheet(`<div class="row" style="font-weight:700;cursor:default;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${ic('cards')}知识卡片${c.chName ? `<span class="muted" style="font-size:12px;font-weight:500">${esc(c.chName)}</span>` : ''}${this.kcStatusBadge(c.status)}</div>
       <div class="sheet-txt"><b>${esc(c.front)}</b></div>
       <div class="sheet-txt dim">${esc(c.back)}</div>
@@ -383,7 +388,7 @@ const Student = {
   // 知识卡片 → 对话（v2.1.0）：跳到对话页并自动提问该卡知识点；
   // kc_ctx 带卡片答案进 payload，TUTOR 基于它发散讲解（卡片内容不进聊天历史文本）
   async askKcTutor(id) {
-    const c = (this.knowledgeCards || []).find(x => x.id === id); if (!c) return;
+    const c = this._kcFind(id); if (!c) return;
     closeSheet();
     this.askCtx = null;                 // 卡片自带章节范围，不继承「路径」上下文
     this.learnChat = true; this.knowledgeIdx = false; this.knowledgeDeck = false;
@@ -400,8 +405,9 @@ const Student = {
   },
   // 复习进度本地存储（暂停退出/续学）；v2.0 卡集跨章：记录签名（章 id 集）而非单 cid
   _kcKey() {
+    const src = (this.knowledgeAllCards && this.knowledgeAllCards.length) ? this.knowledgeAllCards : this.knowledgeCards;
     const ids = [];
-    this.knowledgeCards.forEach(c => { if (ids.indexOf(c.chapter_id) < 0) ids.push(c.chapter_id); });
+    src.forEach(c => { if (ids.indexOf(c.chapter_id) < 0) ids.push(c.chapter_id); });
     return ids.slice().sort().join(',');
   },
   _kcTodayKey() {
@@ -432,7 +438,34 @@ const Student = {
     // 兼容旧格式 {cid}：单章卡集且章号一致
     return !!(saved.cid && key && key.indexOf(',') < 0 && key === saved.cid);
   },
+  // 今日待复习口径（KNOW-003，v2.6.4）：已学过（learn_count>0）且已到期/逾期且未掌握。
+  // 未学的卡只算「未学」，不再被算成「待复习」（旧口径把懒建的 new 行也算进去 → 刚发布章节显示「待复习 = 全部卡片」）
+  kcDue(c) {
+    if (!c || c.status === 'mastered' || !(c.learn_count > 0)) return false;
+    const due = c.next_review_at ? String(c.next_review_at).slice(0, 10) : '';
+    return !due || due <= this._kcToday();
+  },
+  _kcToday() {
+    if (App.checkin && App.checkin.today) return App.checkin.today;
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  },
+  // 本次复习卡组（KNOW-004，v2.6.4）：排序 = 待复习 → 未学 → 学习中/复习中未到期 → 已掌握，
+  // 上限 = 服务端下发 kcDeckMax（默认 100）。学习记录长期累计，不按天清空；没复习完的次日自动进下一批。
+  kcDeckOrder(list) {
+    const rank = c => (this.kcDue(c) ? 0 : (c.status === 'new' ? 1 : (c.status !== 'mastered' ? 2 : 3)));
+    const cap = this.kcDeckMax || 100;
+    return (list || []).slice().sort((a, b) => rank(a) - rank(b)).slice(0, cap);
+  },
+  kcDeckSize(list) { return this.kcDeckOrder(list).length; },
+  _kcFind(id) {
+    const lists = [this.knowledgeAllCards || [], this.knowledgeCards || []];
+    for (const list of lists) { const c = list.find(x => x.id === id); if (c) return c; }
+    return null;
+  },
   startKnowledgeDeck() {
+    const all = (this.knowledgeAllCards && this.knowledgeAllCards.length) ? this.knowledgeAllCards : this.knowledgeCards;
+    this.knowledgeCards = this.kcDeckOrder(all);   // 本次卡组（≤ kcDeckMax）
     const saved = this._kcLoad();
     if (saved && this._kcSavedMatch(saved) && saved.pos > 0 && saved.pos < this.knowledgeCards.length) {
       openSheet(`<div class="row" style="font-weight:700">继续上次复习？</div>
@@ -446,7 +479,10 @@ const Student = {
   },
   resumeKnowledgeDeck() {
     const saved = this._kcLoad(); closeSheet();
-    this.knowledgePos = this._kcSavedMatch(saved) ? saved.pos : 0;
+    const all = (this.knowledgeAllCards && this.knowledgeAllCards.length) ? this.knowledgeAllCards : this.knowledgeCards;
+    this.knowledgeCards = this.kcDeckOrder(all);
+    const pos = (saved && this._kcSavedMatch(saved)) ? saved.pos : 0;
+    this.knowledgePos = Math.min(pos, Math.max(0, this.knowledgeCards.length - 1));
     this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
   },
   resetKnowledgeDeck() {
@@ -1076,13 +1112,17 @@ const Student = {
       <span class="badge ${r.status === 'done' ? 'master' : 'weak'}">${esc(App.chapterName(r.chapter_id))}</span>
       <div style="flex:1;font-size:13px">${r.status === 'done' ? '已完成' : (r.due ? '已到期，可作答' : '下次复习 ' + r.interval_days + ' 天后')}</div>
       ${r.status === 'pending' && r.due ? `<button class="mini-btn" style="border-color:var(--coral);color:var(--coral-strong)" onclick="Student.openReview('${r.id}')">作答</button>` : ''}</div>`).join('') || '<div class="muted" style="font-size:12.5px">尚未生成复习计划</div>';
-    // AI 学习建议（RPT-003 改每日，v2.1.0：自动生成长期未生效 → 改为点击生成，一天最多一次）
+    // AI 学习建议（RPT-003 改每日，v2.1.0：点击生成一天一次；v2.6.4：修「旧建议锁死按钮」）
+    // 按钮显示由 can_generate（今天是否还没生成）决定，不能只看 has_advice——否则历史建议会让按钮永久消失
     const adviceLines = (advice.advice || "").split("\n").filter(Boolean);
+    const canGen = advice.can_generate !== false;   // 缺字段（旧响应）兜底为可生成
+    const genBtn = `<button class="btn sm" onclick="Student.genAdvice()" ${this._adviceBusy ? 'disabled' : ''}>${ic('sparkle')}${this._adviceBusy ? '正在生成…' : (advice.has_advice ? '生成今日建议' : '立即生成学习建议')}</button>`;
     const adviceHtml = advice.has_advice && adviceLines.length
       ? adviceLines.map(t => `<div class="ai-tip"><div class="ic">AI</div><div style="font-size:13.5px;line-height:1.5">${esc(t)}</div></div>`).join('')
-        + `<div class="muted" style="font-size:11.5px;margin-top:6px">${esc(advice.advice_date || '')} 生成 · 每天最多生成一次</div>`
-      : `<div class="muted" style="margin-bottom:8px">还没有学习建议——点下方按钮立即生成：AI 根据你今天的对话、练习、测评与薄弱章节给出 3 条建议（每天一次）</div>
-         <button class="btn sm" onclick="Student.genAdvice()" ${this._adviceBusy ? 'disabled' : ''}>${ic('sparkle')}${this._adviceBusy ? '正在生成…' : '生成今日建议'}</button>`;
+        + `<div class="muted" style="font-size:11.5px;margin-top:6px">${esc(advice.advice_date || '')} 生成 · ${advice.is_today ? '今日已生成（每天最多一次）' : '今日还没生成（每天最多一次）'}</div>`
+        + (canGen ? `<div style="margin-top:8px">${genBtn}</div>` : '')
+      : `<div class="muted" style="margin-bottom:8px">还没有学习建议——点下方按钮立即生成：AI 根据你自上一条建议以来的对话、练习、测评与薄弱章节给出 3 条建议（每天最多一次）</div>
+         ${genBtn}`;
     // 本周概况 + 成绩分析（RPT-001/002 迁移）
     const s = weekly.stats || {};
     const weeklyHtml = `<div class="card"><div style="font-weight:700;margin-bottom:12px">本周概况</div>
