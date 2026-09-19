@@ -390,3 +390,56 @@ def test_deck_order_follows_course_order(client, teacher_headers, monkeypatch):
         # 先 order_no=1 章的 2 张，再 order_no=2 章的 2 张
         assert ids[:2] == ["zzz-ch-1-c0", "zzz-ch-1-c1"]
         assert ids[2:4] == ["aaa-ch-2-c0", "aaa-ch-2-c1"]
+
+
+# ---- 范围自定（v2.6.5 / CHECKIN-013）：学生勾选范围驱动卡组与练习 ----
+
+def test_today_deck_respects_student_scope(client, teacher_headers, monkeypatch):
+    """卡组只从勾选章节装配；不带范围=全部已发布；范围内无卡→明确 reason，不偷偷回落全部。"""
+    h = _student(client, teacher_headers, "scope_deck")
+    c1 = _chapter(client, teacher_headers, "范围甲")
+    c2 = _chapter(client, teacher_headers, "范围乙")
+    _cards(client, h, monkeypatch, c1, 3)
+    _cards(client, h, monkeypatch, c2, 4)
+
+    d = client.get(f"/api/knowledge/today?chapter_ids={c1}", headers=h).get_json()["data"]
+    assert d["scope"] == {"chapter_ids": [c1], "scoped": True, "count": 1}
+    assert len(d["cards"]) == 3
+    assert {c["chapter_id"] for c in d["cards"]} == {c1}
+
+    d2 = client.get("/api/knowledge/today", headers=h).get_json()["data"]
+    assert d2["scope"]["scoped"] is False
+    assert {c["chapter_id"] for c in d2["cards"]} == {c1, c2}
+
+    c3 = _chapter(client, teacher_headers, "范围丙无卡")
+    d3 = client.get(f"/api/knowledge/today?chapter_ids={c3}", headers=h).get_json()["data"]
+    assert d3["cards"] == []
+    assert d3["empty_reason"] == "no_cards_in_scope"
+
+
+def test_start_practice_respects_student_scope(client, teacher_headers, monkeypatch):
+    """练习出题只在勾选章节内；同范围可续答；未勾选=不锁范围（老行为）。"""
+    h = _student(client, teacher_headers, "scope_practice")
+    c1 = _chapter(client, teacher_headers, "练甲")
+    c2 = _chapter(client, teacher_headers, "练乙")
+    _mock_practice(monkeypatch, 5)
+
+    r = client.post("/api/checkin/start-practice", json={"chapter_ids": [c1]}, headers=h)
+    assert r.status_code == 200, r.get_json()
+    assert not r.get_json()["data"].get("reused")
+    sid = r.get_json()["data"]["session_id"]
+    with client.application.app_context():
+        from data.db import get_db
+        con = get_db()
+        used = {x["chapter_id"] for x in con.execute(
+            "SELECT DISTINCT chapter_id FROM practice_questions WHERE session_id=?", (sid,)).fetchall()}
+        scope = str(con.execute("SELECT chapter_ids FROM practice_sessions WHERE id=?",
+                                (sid,)).fetchone()["chapter_ids"])
+    assert used == {c1}
+    assert c1 in scope and c2 not in scope
+
+    r2 = client.post("/api/checkin/start-practice", json={"chapter_ids": [c1]}, headers=h)
+    assert r2.get_json()["data"]["reused"] is True
+
+    r3 = client.post("/api/checkin/start-practice", json={}, headers=h)
+    assert r3.status_code == 200

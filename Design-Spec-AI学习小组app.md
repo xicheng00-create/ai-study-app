@@ -310,6 +310,7 @@
 - **CHECKIN-010（P0）卡组三档兜底，永不返回空**（CR-2026-0919-DECK）：装配优先级 **① 未学习卡 → ② 到期复习卡 → ③ 低掌握度随机补足**。第③档（**CHECKIN-010 核心**）解决用户实报死路——学生把全部卡学成 `mastered` / 未到期时会拿到 **0 张卡**，前端 `toast('今天没有可复习的卡片')` 后直接 return，**学生卡死、无法凑够当日目标张数、连胜断掉且无任何出路**。掌握度序 = `status 档位权重（new<learning<reviewing<mastered）→ learn_count → interval_days` 升序（越小越差）；从**最差的前 `max(3×limit, 20)` 张候选池内随机洗牌**后取 `limit`，同时满足「掌握度低」与「随机」。只要库中有已发布章节的卡片，卡组**绝不空**。 ✅
 - **CHECKIN-011（P0）超额学习（想多学也可以）**（CR-2026-0919-DECK）：学生**可以无限继续学**，不受每日目标张数（v2.6.3 起 30 张）限制。任务行 100% 后按钮由「已完成 / disabled」变为**可点的「再学一组」**；额外卡组**排除今日已复习过的卡**（避免重复劳动刷进度），继续计入 distinct 与掌握度，但**不改变任务进度条的 10/10 语义**（`counts_today` 仍是上限口径，达标判定不受影响；**所有进度显示一律夹取到阈值上限（v2.6.3 起 30/5）**，避免超额学习后出现「19/10 卡」观感）。 ✅
 - **CHECKIN-012（P1）真空引导**（CR-2026-0919-DECK）：若库中确实**一张已发布卡都没有**（真真空，非三档兜底能救），接口返回明确的 `empty_reason`；前端不再只弹一句 toast 了事，改为**给出可点击的出路**（跳「资料库」勾选章节 → 生成知识卡片）。 ✅
+- **CHECKIN-013（P0）学习范围由学生自定**（CR-2026-0919-SCOPE，v2.6.5）：**每日任务只作统计数字，绝不锁定学生能学什么。** 学生勾选范围（学习 hub →「资料库」下拉多选）同时驱动 ① 对话跨章检索 ② 知识卡片复习 ③ 今日任务卡组 ④ 今日练习出题。接口：`GET /api/knowledge/today?chapter_ids=a,b,c`、`POST /api/checkin/start-practice {chapter_ids:[...]}`；响应新增 `scope:{chapter_ids,scoped,count}`。**显式范围内无卡 → `empty_reason="no_cards_in_scope"`，绝不偷偷回落全部**（否则学生以为限制了范围却拿到全量卡）；未传/空 = 全部已发布章节（老行为不变）。练习续答只复用**范围内**未答完的 session。 ✅
 
 **Technical**
 - **判定只在服务端**（**CHECKIN-004**，P0）：前端无权上报「我打卡了」。计数口径 = `knowledge_reviews` 中当前用户、`date(last_review_at, UTC+8) == 今天` 的 **distinct `card_id`**；`practice_questions` 中属于该生 session、当日 `answered_at` 且已作答的 **distinct id**。阈值常量 `TASK_CARDS_REQUIRED=10` / `TASK_QUESTIONS_REQUIRED=5` 集中在 `backend/config.py`。 ✅
@@ -881,6 +882,7 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 | CHECKIN-010 | ✅ | 三档装配 ①未学 → ②到期复习 → ③低掌握随机补足；只要存在已发布卡则 `cards` 必非空 |
 | CHECKIN-011 | ✅ | 任务行达标后「再学一组」（可点）→ `?mode=extra` 卡组，排除今日已复习，进度 key 隔离 |
 | CHECKIN-012 | ✅ | 接口返回 `empty_reason`；真真空前端给「去资料库」可点出路 |
+| CHECKIN-013 | ✅ | `chapter_ids` 贯通今日卡组与练习；范围外无卡不回落；hub 资料库下移 + 折叠下拉多选 |
 
 - **缺陷定位（触发本迭代，Hermes 已实测复现，2026-09-19，只读诊断）**：
   - 真实库中 `hermesstu` 已学满 64 张卡（43 `mastered` + 21 `reviewing`，`next_review_at=2026-09-21` 未到期）→ 旧 `build_today_deck` 返回 **0 张**、`short=True` → 前端直接 `toast('今天没有可复习的卡片')` 并 `return`，**无任何出路**。
@@ -1139,3 +1141,16 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 - 手工数据操作（经用户明确指示）：删除测试学生 `hermesstu` **2026-09-19 当天那一条打卡行**（改前备份 `backups/2026-09-19-cards/aistudy.sqlite3.pre-clean-checkin.bak`）→ 连胜归零、今日任务回到未完成态，可完整复现「学 100 张卡」的新流程。
 - 「每次最多 100 张」= **单次装配上限**，不等于每日上限；每日任务卡组仍是 30 张（CHECKIN-002）。当天学完 100 张后可再次进入，卡组按「待复习 → 未学」继续装配下一批。
 - `make lint` → `All checks passed!` ｜ `make test` → 覆盖率 **76.60%**（门槛 50%）｜ `make smoke` → `version 2.6.4`。
+
+### 12.35 实现状态回写（v2.6.5，2026-09-19，范围自定 + 资料库折叠下拉 + 建议按钮常显）
+
+- **后端**：`data/checkin.build_today_deck(con, user_id, limit=None, mode="task", rng=None, chapter_ids=None)`
+  —— `chapter_ids` 非空时先 `SELECT ... WHERE chapter_id IN (...)` 收窄三档候选池；返回体加 `scope`；
+  `empty_reason` 三分支：`no_published_cards`（库真空）/ `no_cards_in_scope`（范围真空）/ `short`（凑不满）。
+  `api/knowledge.today_deck()` 读 `?chapter_ids=`（逗号分隔）；`api/checkin.start_practice()` 读 body `chapter_ids`，
+  续答查询同样按范围过滤（`pq.chapter_id IN (...)`），范围外无卡返回 `所选章节暂无可练习内容`。
+- **前端**：`student._scopeIds()` / `_scopeQs()` 统一拼范围查询串；`startTodayDeck` / `startExtraDeck` / `continuePractice` 全部带范围。
+  hub 顺序 = 今日任务 → 对话 → 知识卡片 → 资料库；资料库 `.lib-head` 可点折叠（localStorage `aistudy_lib_open`，默认收起）。
+  RPT-003 建议按钮**常显**：`can_generate=false` 时渲染 disabled 的「今日已生成 · 明天可再生成」。
+- **测试**：`tests/test_checkin.py::test_today_deck_respects_student_scope`、
+  `::test_start_practice_respects_student_scope`（16 passed）。

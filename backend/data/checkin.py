@@ -137,17 +137,26 @@ def evaluate_and_maybe_complete(con, user_id) -> dict:
     return streak_info(con, user_id)
 
 
-def build_today_deck(con, user_id, limit=None, mode="task", rng=None) -> dict:
+def build_today_deck(con, user_id, limit=None, mode="task", rng=None, chapter_ids=None) -> dict:
     """今日卡组（CHECKIN-005/009/010/011）三档装配：①未学习 → ②到期复习 → ③低掌握度随机补足。
 
     只要库中存在「已发布章节的卡」，cards 必非空（永不返回空 → 前端不卡死）。
     mode="extra" 排除今日已复习过的卡（额外组不承诺凑满 limit）。
+
+    `chapter_ids`（v2.6.5 / CHECKIN-013）：**范围由学生自定**——只从学生勾选的章节里装配；
+    未传 / 传空 = 全部已发布章节（老行为）。勾选的章若没有可学卡，返回空 +
+    `empty_reason="no_cards_in_scope"`（前端引导改范围，不偷偷回落到全部）。
     """
     limit = limit or TASK_CARDS_REQUIRED
     if mode not in ("task", "extra"):
         mode = "task"  # 白名单回落，不报错
     rng = rng or random.Random()
     today = timeutil.today_str()
+
+    pub_rows = con.execute("SELECT id FROM chapters WHERE status='published'").fetchall()
+    pub_ids = [r["id"] for r in pub_rows]
+    scope = [c for c in (chapter_ids or []) if c in pub_ids]
+    scoped = bool(chapter_ids)  # 显式指定了范围（即使全部无效也按「有范围」处理）
 
     rows = con.execute(
         "SELECT kc.id, kc.chapter_id, kc.sub_concept, kc.front, kc.back,"
@@ -160,6 +169,8 @@ def build_today_deck(con, user_id, limit=None, mode="task", rng=None) -> dict:
         (user_id,),
     ).fetchall()
     has_published = len(rows) > 0
+    if scoped:
+        rows = [r for r in rows if r["chapter_id"] in scope]
 
     # 无 review 行归一：视为未学（status='new'、learn_count=0、interval_days=0、next_review_at=None）
     cards = []
@@ -237,12 +248,20 @@ def build_today_deck(con, user_id, limit=None, mode="task", rng=None) -> dict:
         "cards": [_fmt(c) for c in picked],
         "required": limit,
         "short": len(picked) < limit,
+        "scope": {"chapter_ids": scope, "scoped": scoped, "count": len(scope)},
     }
     if mode == "extra":
         result["extra"] = True
         result["short"] = False  # 额外组不承诺凑满 limit
     # 真真空（库中无已发布章节的卡）才给明确引导；额外组学完属正常，不给 reason
-    result["empty_reason"] = "" if (picked or has_published) else "no_published_cards"
+    if picked:
+        result["empty_reason"] = ""
+    elif not has_published:
+        result["empty_reason"] = "no_published_cards"
+    elif scoped:
+        result["empty_reason"] = "no_cards_in_scope"  # 所选范围内没卡（引导改范围）
+    else:
+        result["empty_reason"] = ""
     return result
 
 

@@ -78,8 +78,10 @@ def today_deck():
     mode = (request.args.get("mode") or "task").strip()
     if mode not in ("task", "extra"):
         mode = "task"
+    raw = (request.args.get("chapter_ids") or "").strip()
+    chapter_ids = [x for x in raw.split(",") if x]      # v2.6.5：范围由学生自定（CHECKIN-013）
     con = get_db()
-    deck = checkin.build_today_deck(con, g.user_id, mode=mode)
+    deck = checkin.build_today_deck(con, g.user_id, mode=mode, chapter_ids=chapter_ids)
     return ok(deck)
 
 

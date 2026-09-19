@@ -127,17 +127,27 @@ def start_practice():
     """今日练习自动装配（CHECKIN-006）：当天有未答完 session 优先续答，否则生成 5 道。"""
     con = get_db()
 
+    # v2.6.5（CHECKIN-013）：范围由学生自定——前端可带 chapter_ids；只在勾选范围内续答/出题
+    data = request.get_json(silent=True) or {}
+    want = [c for c in (data.get("chapter_ids") or []) if isinstance(c, str)]
+    if want:
+        pub = {r["id"] for r in con.execute("SELECT id FROM chapters WHERE status='published'").fetchall()}
+        want = [c for c in want if c in pub]
+        if not want:
+            return e_input("所选章节暂无可练习内容")
+    in_scope = " AND pq.chapter_id IN ({})".format(",".join("?" * len(want))) if want else ""
+
     row = con.execute(
         "SELECT ps.id, COUNT(pq.id) AS remain"
         " FROM practice_sessions ps JOIN practice_questions pq ON pq.session_id=ps.id"
-        " WHERE ps.user_id=? AND pq.answered_at IS NULL"
+        " WHERE ps.user_id=? AND pq.answered_at IS NULL" + in_scope +
         " GROUP BY ps.id ORDER BY ps.created_at DESC LIMIT 1",
-        (g.user_id,),
+        (g.user_id, *want),
     ).fetchone()
     if row:
         return ok({"session_id": row["id"], "reused": True, "count": row["remain"]})
 
-    chapter_ids = _practice_chapters(con, g.user_id)
+    chapter_ids = want or _practice_chapters(con, g.user_id)
     if not chapter_ids:
         return e_input("暂无可用章节")
 

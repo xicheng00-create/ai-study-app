@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.6.5] - 2026-09-19
+
+### 新增 / 变更
+- **学习范围由学生自定（CHECKIN-013）**：每日任务不再是「锁定范围」的枷锁，只作为统计数字存在。
+  - 新增 `GET /api/knowledge/today?chapter_ids=a,b,c`（今日卡组按勾选章节装配）与
+    `POST /api/checkin/start-practice {chapter_ids:[...]}`（练习出题/续答只在勾选章节内）。
+  - `build_today_deck(..., chapter_ids=None)`：显式范围只在该范围内装配；
+    范围内无卡返回 `empty_reason="no_cards_in_scope"`，**不偷偷回落全部**；
+    未传/空 = 全部已发布章节（老行为不变）。响应新增 `scope:{chapter_ids,scoped,count}`。
+- **学习 hub 布局重排**：今日任务 → 对话 → 知识卡片 → 资料库（资料库移到最下）。
+- **资料库改为折叠下拉多选**：默认收起（记忆到 `aistudy_lib_open`），点标题行展开；
+  全选/清空与章节多选不再常驻占屏；收起时提示「范围自定：勾选章节后，对话 / 知识卡片 / 今日任务都按这个范围走」。
+- **AI 学习建议按钮常显（RPT-003）**：今日已生成时按钮置灰显示「今日已生成 · 明天可再生成」，
+  不再隐藏按钮（此前会造成「按钮根本不存在」的误判）。
+
+### 测试
+- 新增 `test_today_deck_respects_student_scope`、`test_start_practice_respects_student_scope`（tests/test_checkin.py）。
+
 ## [2.6.4] - 2026-09-19
 
 ### Changed

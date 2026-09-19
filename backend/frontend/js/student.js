@@ -45,6 +45,8 @@ const Student = {
   knowledgeFlipped: false, knowledgeSwipe: null, knowledgeGroupOpen: {},  // 知识卡片列表页按章分组展开态（cid → bool）
   todayDeck: false,   // 今日任务卡组模式（数据源 GET /api/knowledge/today，进度 key aistudy_kc_today_<date>）
   todayExtra: false,  // 超额学习卡组（mode=extra，进度 key 加 _extra 后缀，与任务组隔离）
+  libOpen: (function () { try { return localStorage.getItem('aistudy_lib_open') === '1'; } catch (e) { return false; } })(),
+  // 资料库折叠下拉展开态（v2.6.5：默认收起，点标题展开多选）
   selChapters: null,    // 学习多选集（hub 资料库勾选，localStorage 记忆；null=未初始化 → 全选）
   _kcBusy: false,       // 翻卡异步锁：飞出动画/提交期间防连点与重入
   learnChat: false,     // 学习 tab 子视图：true=对话页；false=学习主菜单（hub：对话/知识卡片两入口）
@@ -101,14 +103,11 @@ const Student = {
     const selN = sel.length, totalN = App.chapters.length;
     const sub = totalN ? `已选 ${selN}/${totalN} 章 · 跨章对话 + 卡片复习` : '';
     const scope = selN ? `已勾 ${selN} 章` : '未勾选（按全部资料）';
+    // v2.6.5 布局：今日任务 → 对话 → 知识卡片 → 资料库（折叠下拉多选，默认收起）
+    // 学生的勾选范围驱动对话检索 / 知识卡片复习 / 今日任务卡组 / 今日练习出题（范围自定，不锁死）
     return `<div class="chat-head">` + appbar('学习', sub) +
     `</div><div class="content">
       ${this.taskCardHtml()}
-      <div class="card sm mb-12">
-        <div class="card-head"><div class="card-title">${ic('book', 'coral')}资料库</div><span class="card-count">${totalN} 篇 · 已选 <b class="sel-count">${selN}</b></span></div>
-        <div class="lib-tools"><button class="mini-btn" onclick="Student.setAllChapters(true)">全选</button><button class="mini-btn" onclick="Student.setAllChapters(false)">清空</button></div>
-        <div class="lib-list">${rows || '<div class="muted">暂无章节</div>'}</div>
-      </div>
       <button class="home-card" onclick="Student.openChat()">
         <span class="home-ic">${ic('chat')}</span>
         <span class="home-txt"><b>对话</b><small>${scope} · 向 TUTOR 跨章提问，自动标注来源</small></span>
@@ -119,7 +118,22 @@ const Student = {
         <span class="home-txt"><b>知识卡片</b><small>${scope} · 翻卡记忆，进度计入掌握度</small></span>
         <span class="home-go">›</span>
       </button>
+      <div class="card sm mb-12 lib-card">
+        <div class="lib-head" onclick="Student.toggleLib()">
+          <div class="card-title">${ic('book', 'coral')}资料库</div>
+          <span class="card-count">${totalN} 篇 · 已选 <b class="sel-count">${selN}</b></span>
+          <span class="lib-caret ${this.libOpen ? 'on' : ''}">▾</span>
+        </div>
+        ${this.libOpen ? `<div class="lib-tools"><button class="mini-btn" onclick="event.stopPropagation();Student.setAllChapters(true)">全选</button><button class="mini-btn" onclick="event.stopPropagation();Student.setAllChapters(false)">清空</button></div>
+        <div class="lib-list">${rows || '<div class="muted">暂无章节</div>'}</div>` : `<div class="muted lib-hint">范围自定：勾选章节后，对话 / 知识卡片 / 今日任务都按这个范围走</div>`}
+      </div>
     </div>` + tabbar();
+  },
+  // 资料库折叠下拉开合（记忆到 localStorage，默认收起）
+  toggleLib() {
+    this.libOpen = !this.libOpen;
+    try { localStorage.setItem('aistudy_lib_open', this.libOpen ? '1' : '0'); } catch (e) {}
+    render();
   },
   // ===== 今日任务卡（CHECKIN-001/007）：登录即见，两行进度 + 继续按钮 =====
   taskCardHtml() {
@@ -148,19 +162,33 @@ const Student = {
       <div class="card-head"><div class="card-title">${ic('target', 'coral')}今日任务</div>${head}</div>
       ${task('复习卡片', cards, need, 'Student.startTodayDeck()', '已完成', { label: '再学一组', onClick: 'Student.startExtraDeck()' })}
       ${task('刷练习题', questions, needQ, 'Student.continuePractice()', '已完成')}
+      <div class="muted task-hint">范围自定：任何章节的学习都计入进度，学哪章由你在「资料库」勾选</div>
     </div>`;
+  },
+  // 学生自定范围（v2.6.5/CHECKIN-013）：勾选集 → 查询串；未勾选 = 不带参（服务端按全部）
+  _scopeIds() { try { return this.selChapterIds() || []; } catch (e) { return []; } },
+  _scopeQs(tail) {
+    const ids = this._scopeIds();
+    const q = ids.length ? 'chapter_ids=' + ids.join(',') : '';
+    if (!q) return tail ? (tail.indexOf('?') === 0 ? tail : '?' + tail) : '';
+    return (tail ? (tail.indexOf('?') === 0 ? tail + '&' : '?' + tail + '&') : '?') + q;
   },
   // 今日任务卡组：数据源 GET /api/knowledge/today，复用现有翻卡/滑动/复习提交
   async startTodayDeck() {
     let d;
-    try { d = await API.get('/api/knowledge/today'); } catch (e) { toast(e.message); return; }
+    try { d = await API.get('/api/knowledge/today' + this._scopeQs()); } catch (e) { toast(e.message); return; }
     const cards = (d.cards || []).map(c => { c.chName = c.chapter_name || ''; return c; });
     if (!cards.length) {
-      // CHECKIN-012 真空引导：真真空（无已发布卡）给可点出路，否则提示稍后再试
+      // CHECKIN-012/013 真空引导：所选范围没卡 → 引导改范围；库中真没卡 → 引导去生成
       if (d.empty_reason === 'no_published_cards') {
         openSheet(`<div class="row" style="font-weight:700">还没有可学的卡片</div>
           <div class="row" style="text-align:left;border:none;background:transparent;cursor:default;font-size:13px;color:var(--text-2)">去「资料库」勾选章节 → 点「知识卡片」生成后即可开始今日复习。</div>
           <div class="row" onclick="closeSheet();Student.enterKnowledge()">去资料库</div>
+          <div class="row cancel" onclick="closeSheet()">取消</div>`);
+      } else if (d.empty_reason === 'no_cards_in_scope') {
+        openSheet(`<div class="row" style="font-weight:700">所选章节里没有可学的卡片</div>
+          <div class="row" style="text-align:left;border:none;background:transparent;cursor:default;font-size:13px;color:var(--text-2)">今日任务的范围由你自定——去「资料库」多勾几章，或换个范围再试。</div>
+          <div class="row" onclick="closeSheet();go('learn')">去资料库调范围</div>
           <div class="row cancel" onclick="closeSheet()">取消</div>`);
       } else {
         toast('暂时没有可复习的卡片，稍后再试');
@@ -193,7 +221,7 @@ const Student = {
   // 「再学一组」（CHECKIN-011）：mode=extra 卡组，排除今日已复习的卡，从第 0 张开始（不走续学弹层）
   async startExtraDeck() {
     let d;
-    try { d = await API.get('/api/knowledge/today?mode=extra'); } catch (e) { toast(e.message); return; }
+    try { d = await API.get('/api/knowledge/today' + this._scopeQs('mode=extra')); } catch (e) { toast(e.message); return; }
     const cards = (d.cards || []).map(c => { c.chName = c.chapter_name || ''; return c; });
     if (!cards.length) { toast('今天的卡片都学完啦，明天再来 🔥'); return; }
     this.todayDeck = true;
@@ -205,7 +233,8 @@ const Student = {
   // 「继续刷题」：POST /api/checkin/start-practice → 进现有 viewPracticeTake
   async continuePractice() {
     try {
-      const d = await API.post('/api/checkin/start-practice', {});
+      // 范围自定（v2.6.5）：练习出题/续答只走学生勾选的章节
+      const d = await API.post('/api/checkin/start-practice', { chapter_ids: this._scopeIds() });
       App.state.hash = 'quiz';
       await this.openPractice(d.session_id);
     } catch (e) { toast(e.message); }
@@ -1112,15 +1141,16 @@ const Student = {
       <span class="badge ${r.status === 'done' ? 'master' : 'weak'}">${esc(App.chapterName(r.chapter_id))}</span>
       <div style="flex:1;font-size:13px">${r.status === 'done' ? '已完成' : (r.due ? '已到期，可作答' : '下次复习 ' + r.interval_days + ' 天后')}</div>
       ${r.status === 'pending' && r.due ? `<button class="mini-btn" style="border-color:var(--coral);color:var(--coral-strong)" onclick="Student.openReview('${r.id}')">作答</button>` : ''}</div>`).join('') || '<div class="muted" style="font-size:12.5px">尚未生成复习计划</div>';
-    // AI 学习建议（RPT-003 改每日，v2.1.0：点击生成一天一次；v2.6.4：修「旧建议锁死按钮」）
-    // 按钮显示由 can_generate（今天是否还没生成）决定，不能只看 has_advice——否则历史建议会让按钮永久消失
+    // AI 学习建议（RPT-003；v2.6.4 修「旧建议锁死按钮」；v2.6.5 按钮常显——已生成时置灰不隐藏，避免误判「没有按钮」）
     const adviceLines = (advice.advice || "").split("\n").filter(Boolean);
     const canGen = advice.can_generate !== false;   // 缺字段（旧响应）兜底为可生成
-    const genBtn = `<button class="btn sm" onclick="Student.genAdvice()" ${this._adviceBusy ? 'disabled' : ''}>${ic('sparkle')}${this._adviceBusy ? '正在生成…' : (advice.has_advice ? '生成今日建议' : '立即生成学习建议')}</button>`;
+    const genBtn = canGen
+      ? `<button class="btn sm" onclick="Student.genAdvice()" ${this._adviceBusy ? 'disabled' : ''}>${ic('sparkle')}${this._adviceBusy ? '正在生成…' : '生成今日建议'}</button>`
+      : `<button class="btn sm" disabled>${ic('sparkle')}今日已生成 · 明天可再生成</button>`;
     const adviceHtml = advice.has_advice && adviceLines.length
       ? adviceLines.map(t => `<div class="ai-tip"><div class="ic">AI</div><div style="font-size:13.5px;line-height:1.5">${esc(t)}</div></div>`).join('')
         + `<div class="muted" style="font-size:11.5px;margin-top:6px">${esc(advice.advice_date || '')} 生成 · ${advice.is_today ? '今日已生成（每天最多一次）' : '今日还没生成（每天最多一次）'}</div>`
-        + (canGen ? `<div style="margin-top:8px">${genBtn}</div>` : '')
+        + `<div style="margin-top:8px">${genBtn}</div>`
       : `<div class="muted" style="margin-bottom:8px">还没有学习建议——点下方按钮立即生成：AI 根据你自上一条建议以来的对话、练习、测评与薄弱章节给出 3 条建议（每天最多一次）</div>
          ${genBtn}`;
     // 本周概况 + 成绩分析（RPT-001/002 迁移）
