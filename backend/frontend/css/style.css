@@ -285,12 +285,12 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text);overflow:hidde
 .lib-list .chapter .chk.on{border-color:var(--coral);background:var(--coral)}
 .lib-tools{display:flex;gap:6px;justify-content:flex-end;margin:-4px 0 8px}
 .lib-tools .mini-btn{height:26px;min-width:0;padding:0 12px;border-radius:13px;font-size:12px;background:var(--surface)}
-/* v2.6.5 资料库改为折叠下拉多选（默认收起）：标题行可点，caret 指示展开态 */
+/* v2.6.5/2.6.6 资料库折叠下拉：标题 | pill | caret 三段互不挤压（caret 不旋转，用 ▾/▴ 换字符避免圆心偏移压住 pill） */
 .lib-card{padding:12px}
-.lib-head{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
-.lib-head .card-title{flex:1;margin:0}
-.lib-caret{display:inline-block;color:var(--text-2);font-size:12px;transition:transform .18s;transform:rotate(-90deg)}
-.lib-caret.on{transform:rotate(0deg)}
+.lib-head{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
+.lib-head .card-title{flex:1 1 auto;min-width:0;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib-head .card-count{flex:0 0 auto;margin:0}
+.lib-caret{flex:0 0 auto;width:16px;text-align:center;color:var(--text-2);font-size:11px;line-height:1}
 .lib-hint{font-size:12px;line-height:1.5;margin-top:6px}
 .task-hint{font-size:11.5px;line-height:1.5;margin-top:8px}
 .sel-count{color:var(--coral-strong)}

@@ -100,9 +100,14 @@ const Student = {
       <div><div class="nm">${esc(c.name)}</div><div class="mt">${esc(c.folder || '未分组')}</div></div>
       <span class="chk${on ? ' on' : ''}">${on ? ic('check') : ''}</span></div>`;
     }).join('');
-    const selN = sel.length, totalN = App.chapters.length;
-    const sub = totalN ? `已选 ${selN}/${totalN} 章 · 跨章对话 + 卡片复习` : '';
-    const scope = selN ? `已勾 ${selN} 章` : '未勾选（按全部资料）';
+    const selN = sel.length, totalN = App.chapters.length;   // selN 仅用于行渲染前的选集，不再直接上屏
+    // v2.6.6 口径统一：勾选为空 = 按全部资料生效（与 selChapterIds() 兜底一致），显示不能再写「已选 0」
+    const pickedN = (this.selChapters || []).filter(id => App.chapters.some(c => c.id === id)).length;
+    const effN = pickedN || totalN;
+    const scopeLabel = pickedN ? `已选 ${pickedN}/${totalN}` : `全部 ${totalN}`;
+    const sub = totalN ? `${scopeLabel} 章 · 跨章对话 + 卡片复习` : '';
+    const scope = pickedN ? `已勾 ${pickedN} 章` : `全部 ${totalN} 章`;
+    const libCount = pickedN ? `${totalN} 篇 · 已选 ${pickedN}` : `${totalN} 篇 · 全部`;
     // v2.6.5 布局：今日任务 → 对话 → 知识卡片 → 资料库（折叠下拉多选，默认收起）
     // 学生的勾选范围驱动对话检索 / 知识卡片复习 / 今日任务卡组 / 今日练习出题（范围自定，不锁死）
     return `<div class="chat-head">` + appbar('学习', sub) +
@@ -121,11 +126,11 @@ const Student = {
       <div class="card sm mb-12 lib-card">
         <div class="lib-head" onclick="Student.toggleLib()">
           <div class="card-title">${ic('book', 'coral')}资料库</div>
-          <span class="card-count">${totalN} 篇 · 已选 <b class="sel-count">${selN}</b></span>
-          <span class="lib-caret ${this.libOpen ? 'on' : ''}">▾</span>
+          <span class="card-count">${libCount}</span>
+          <span class="lib-caret">${this.libOpen ? '▴' : '▾'}</span>
         </div>
         ${this.libOpen ? `<div class="lib-tools"><button class="mini-btn" onclick="event.stopPropagation();Student.setAllChapters(true)">全选</button><button class="mini-btn" onclick="event.stopPropagation();Student.setAllChapters(false)">清空</button></div>
-        <div class="lib-list">${rows || '<div class="muted">暂无章节</div>'}</div>` : `<div class="muted lib-hint">范围自定：勾选章节后，对话 / 知识卡片 / 今日任务都按这个范围走</div>`}
+        <div class="lib-list">${rows || '<div class="muted">暂无章节</div>'}</div>` : `<div class="muted lib-hint">范围自定：勾选章节后，对话 / 知识卡片 / 今日任务都按这个范围走（不勾选 = 按全部资料）</div>`}
       </div>
     </div>` + tabbar();
   },
