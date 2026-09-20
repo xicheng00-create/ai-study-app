@@ -96,6 +96,35 @@ def norm_front(s: str) -> str:
     return re.sub(r"[\W_]+", "", (s or "")).lower()
 
 
+def _log_usage(model: str, usage, feature: str = "") -> None:
+    """把一次成功的 LLM 调用追加到 app-usage JSONL，供 Token 账单看板精确归因。
+
+    背景（2026-09-20）：本脚本与 audit_alignment.py 直连 DeepSeek 官方 API 且
+    不写任何用量日志，导致 09-18/09-19 账单里 26% 的请求落进「无逐次记录」桶
+    （对账哨兵报警）。这里补上逐次记账，与 backend/ai/usage_log.py 同格式。
+    任何异常都吞掉，绝不影响主流程。
+    """
+    try:
+        from datetime import datetime, timedelta, timezone
+        path = (ENV.get("LLM_USAGE_LOG") or os.environ.get("LLM_USAGE_LOG")
+                or os.path.expanduser("~/.hermes/app-usage/aistudy.jsonl"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        u = usage or {}
+        rec = {
+            "timestamp": datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds"),
+            "model": str(model or "unknown"),
+            "feature": str(feature or os.path.basename(sys.argv[0] or "") or "offline-script"),
+            "prompt_tokens": int(u.get("prompt_tokens") or 0),
+            "prompt_cache_hit_tokens": int(u.get("prompt_cache_hit_tokens") or 0),
+            "completion_tokens": int(u.get("completion_tokens") or 0),
+            "total_tokens": int(u.get("total_tokens") or 0),
+        }
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 def call_llm_json(system: str) -> dict:
     """请求模型并解析出 JSON 对象（容错），供卡片抽取与审计复用。"""
     import requests
@@ -112,7 +141,9 @@ def call_llm_json(system: str) -> dict:
         timeout=TIMEOUT,
     )
     resp.raise_for_status()
-    return parse_json_obj(resp.json()["choices"][0]["message"]["content"])
+    data = resp.json()
+    _log_usage(model, data.get("usage"))
+    return parse_json_obj(data["choices"][0]["message"]["content"])
 
 
 def call_llm(system: str) -> list[dict]:
