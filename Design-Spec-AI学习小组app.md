@@ -1,10 +1,11 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.1（融合 Functional + Technical；严格对齐 `architecture-design.md` v1.1；**最新稳定版：v2.2.0（2026-09-09）**；2026-09-02 增补：测评百分制评分模型 + AI 评分与教师覆核双轨 + QUIZ-005 提 P1）
-> 日期：2026-09-02  
-> 状态：设计评审  
-> 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）  
+> 版本：v2.8.1（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
+> 日期：2026-09-22（随代码现状回写）
+> 状态：设计评审（正文静态章节以**当前生产代码**为准；§12.x 为实现状态回写历史）
+> 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）
 > 方法论：pm-toolkit 架构分层 / 领域建模 / API 契约 / 角色分端 UI 规格 + 架构再审（F1–F10）
+> ⚠️ **RAG 事实基线**：生产代码**不使用向量数据库**，检索为 SQLite `chunks` 表关键词/2-gram（Jaccard 重合度）检索，无 ChromaDB / 无 all-MiniLM / 无 embedding / 无 cosine 阈值。本文档任何"ChromaDB / 纯向量 / MiniLM / cosine"表述均为历史草稿残留，以本说明及 §12.1 偏离登记为准。
 
 ---
 
@@ -18,12 +19,12 @@
 |------|----------------|-----------------------------------|-----|
 | 整体形态 | 单 PWA + 师生账号 | **单体 Flask + waitress（单进程/4 线程）**；"单进程"≠单线程 | DEP-003, F6 |
 | AI 编排 | 引导式/出题/批改 | **极简三 Agent 提示词**（TUTOR/QUIZZER/GRADER）+ 两层 Fallback | CHAT-004, QUIZ-001/003 |
-| RAG | 纯向量检索 | ChromaDB cosine + `chapter_id` 过滤 + 阈值 ≥0.4 | MAT-003, ARCH-RAG |
-| 部署韧性 | 常驻 + 备份 | **LaunchDaemon**（非 LaunchAgent）+ iCloud rsync（先 `wal_checkpoint`） | DEP-006, DEP-008, F1/F2 |
-| 数据正确性 | 重出题不污染掌握度 | `attempts.quiz_version`，M 按 `(chapter_id, 最新 published version)` 聚合 | DM-006, PROG-007, F3 |
+| RAG | 资料原文检索 | SQLite `chunks` 表关键词/2-gram 检索（top-k=5，Jaccard 重合度；无向量库/无嵌入） | MAT-003, ARCH-RAG |
+| 部署韧性 | 常驻 + 备份 | 用户域 **LaunchAgent** `com.shuiyanhaha.aistudy`（KeepAlive+RunAtLoad，端口 5003）+ iCloud rsync（先 `wal_checkpoint`） | DEP-006, DEP-008, F1/F2 |
+| 数据正确性 | 重出题不污染掌握度 | `attempts.quiz_version`；M 聚合该章「最新 published version 测评 + 自主练习 + 已掌握知识卡片（仅奖不罚）」三部分，按章时间衰减加权（F3 仅约束测评不被重出题污染） | DM-006, PROG-007, F3 |
 | 安全护栏 | 越权防护 | `@user_scope` + `@role_required` + 越权读 403 集成测试 | AUTH-004, MAT-007, F9 |
 | 护栏兜底 | 不静默错答 | TUTOR 输出门控 + 三层降级（两层落地） | CHAT-004, F5 |
-| 测评评分 | 百分制（固定 20 道选择/是非，每题 5 分，合计 100；v1.10.0 取消问答） | AI(GRADER) 评客观分 + 教师可覆核改分；questions.points + attempts.score 改存实际得分 | QUIZ-003/005/009 |
+| 测评评分 | 百分制（默认 PRESET `20c`=20 道选择题×5 分合计 100；或 `20b`=20 道是非题；v1.10.0 起取消问答题；教师可配 choice/bool 组合凑满 100） | 客观题（选择/是非）由**系统确定性判分**（0 或满分）；问答题（仅兼容库里旧题）由 **AI(GRADER)** 评 0–10；教师可覆核改分；questions.points + attempts.score 改存实际得分 | QUIZ-003/005/009 |
 | 可恢复性 | 防误删 | 资料 `is_deleted` 软删除 + 7 天硬删窗口 + 二次确认 | MAT-005, F7 |
 
 ### 0.2 REQ ID 编码规则
@@ -71,7 +72,7 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │ L1 表现层   PWA（学生/教师，H5 + ServiceWorker，离线 App Shell）      │
 ├─────────────────────────────────────────────────────────────────────┤
-│ L2 接入层   Cloudflare 命名隧道（固定 HTTPS 域名，仅暴露 5001）       │
+│ L2 接入层   Cloudflare 命名隧道（固定 HTTPS 域名，仅暴露 5003）       │
 ├─────────────────────────────────────────────────────────────────────┤
 │ L3 应用层   Flask 单进程（waitress，单进程/4 线程）                  │
 │   ├ 静态托管(/) + PWA shell                                          │
@@ -79,9 +80,9 @@
 │   └ 业务 Blueprint: auth/chapters/materials/conversations/quizzes/    │
 │      attempts/progress/reports/teacher/health + AI 服务(rag/orch/review)│
 ├─────────────────────────────────────────────────────────────────────┤
-│ L4 AI 能力层   DeepSeek API（外部）+ all-MiniLM-L6-v2（本地嵌入）    │
+│ L4 AI 能力层   DeepSeek API（外部；检索走 SQLite 关键词，无本地嵌入）    │
 ├─────────────────────────────────────────────────────────────────────┤
-│ L5 数据层   SQLite WAL + ChromaDB + uploads/                        │
+│ L5 数据层   SQLite WAL + chunks 表（关键词检索）+ uploads/                        │
 └─────────────────────────────────────────────────────────────────────┘
 横切 A) 安全护栏：@jwt_required / @role_required / @rate_limit / @validate_json / @user_scope
 横切 B) 可观测+备份：/health + launchd KeepAlive + iCloud rsync(wal_checkpoint)
@@ -92,14 +93,14 @@
 | Functional 域 | Blueprint | 层 | AI Agent | 关键数据 | 状态机 |
 |---------------|-----------|----|----------|----------|--------|
 | AUTH | `auth_bp` | L3 | — | users | 用户启用态 |
-| MAT | `chapters_bp` + `materials_bp` | L3 | — | chapters/materials(+ChromaDB) | 软删除 |
+| MAT | `chapters_bp` + `materials_bp` | L3 | — | chapters/materials(+chunks 表) | 软删除 |
 | CHAT | `conversations_bp` | L3 | TUTOR | conversations/messages | 轮次护栏 |
 | QUIZ | `quizzes_bp` + `attempts_bp` | L3 | QUIZZER/GRADER | quizzes/questions/attempts | draft→published→superseded |
 | PROG | `progress_bp` + `review_sched` | L3 | QUIZZER(巩固) | attempts/review_items | 间隔复习 1→3→7 |
 | RPT | `reports_bp`（v1.9.0 废弃） | L3 | TUTOR(建议) | reports/daily_advice | — |
 | CLASS | `class_bp` | L3 | — | users/attempts/practice_questions/messages | — |
 | ADMIN | `teacher_bp` | L3 | — | users/materials/quizzes | — |
-| DEP | — | L2/L3/L5 | — | db/chroma/uploads | 备份状态 |
+| DEP | — | L2/L3/L5 | — | db/uploads（chunks 在 db 内） | 备份状态 |
 | 全局 | `health_bp` + 中间件 | L3/横切 | — | — | — |
 
 ---
@@ -134,18 +135,18 @@
 |-----|------|--------|------|
 | MAT-001 | teacher | P0 | 建/改/删 文件夹与章节 |
 | MAT-002 | teacher | P0 | 上传资料并归入章节，≤30MB |
-| MAT-003 | teacher | P0 | 解析分块写 ChromaDB（带 chapter_id） |
+| MAT-003 | teacher | P0 | 解析分块写 chunks 表（SQLite，带 chapter_id） |
 | MAT-004 | 全部 | P0 | 按章节浏览（共享只读） |
-| MAT-005 | teacher | P0 | 删除资料（清向量+级联） |
+| MAT-005 | teacher | P0 | 删除资料（清 chunks + 级联） |
 | MAT-006 | teacher | P2 | 批量拖拽归章 |
 | MAT-007 | 全部 | P0 | 读共享、写仅 teacher |
 
 **Technical**
 - 路由：`POST/PUT/DELETE /api/chapters`、`POST /api/materials/upload`、`GET /api/materials`、`DELETE /api/materials/:id`、`POST /api/materials/batch-upload`(P2)。
 - 中间件：写操作 `@role_required("teacher")`；读操作 `@user_scope` 不适用（资料全班共享，仅作用域为「全部可读、教师可写」）。
-- 解析管线（RAG §八）：`pdfplumber/python-pptx/python-docx` → 分块(≈500/overlap≈80, 按章切优先) → `all-MiniLM-L6-v2` 本地编码 → ChromaDB `material_chunks`（metadata 含 `chapter_id/page_no/chunk_idx`）。
-- **F7 软删除**：MAT-005 改为 `materials.is_deleted=1` 软删除 + 前端二次确认 + iCloud 保留 **7 天**硬删窗口，避免误删全班数据（硬级联清向量+对话+关联测评延至硬删时执行）。
-- 数据：chapters（DM-002）、materials（+uploaded_by/+chapter_id，DM-003）、ChromaDB（DM-010）。
+- 解析管线（RAG §八）：`pdfplumber/python-pptx/python-docx` → 分块(≈500/overlap≈80, 按章切优先) → 直接写入 SQLite `chunks` 表（字段 `material_id/chapter_id/chunk_idx/text`；**无嵌入模型、无向量库**，检索走关键词/2-gram，详见 §八）。
+- **F7 软删除**：MAT-005 改为 `materials.is_deleted=1` 软删除 + 前端二次确认 + iCloud 保留 **7 天**硬删窗口，避免误删全班数据（硬级联清 chunks + 对话 + 关联测评延至硬删时执行）。
+- 数据：chapters（DM-002）、materials（+uploaded_by/+chapter_id，DM-003）、chunks 表（DM-010）。
 
 ### 3.3 引导式对话 — `conversations_bp`（L3，REQ-CHAT，AI: TUTOR）
 **Functional**
@@ -163,7 +164,7 @@
 | CHAT-010 | student | P1 | 选择已作答测评错题交 TUTOR，按错题引导讲解与巩固 |
 
 **Technical**
-- 编排（architecture §5.2）：人设加载 → 选章 → ChromaDB 召回(`chapter_id` 过滤, top-k=5, cosine≥0.4) → 注入 TUTOR_SYSTEM + 历史(≤12 轮) → DeepSeek → 写回 conversations/messages。
+- 编排（architecture §5.2）：人设加载 → 选章 → `chunks` 表关键词检索(`chapter_id` 过滤, top-k=5, Jaccard 重合度) → 注入 TUTOR_SYSTEM + 历史(≤12 轮) → DeepSeek → 写回 conversations/messages。
 - **F5 TUTOR 输出门控**：a) 拒绝规则（涉政/暴力/成人/诱导泄露密钥 → 转固定引导语）；b) 越界检测（非学习话题 → 回资料引导）；c) 界面标注「回答由 AI 生成，请核对资料」。
 - **两层 Fallback**（architecture §5.5）：L1 DeepSeek；L2 TUTOR 提示词内固定引导语池（按意图/章节预生成）；触发（API>30s/5xx、召回为空、越界）→ 降级；**L3 固定答案不做**（宁可报错不静默错答）。
 - 状态机：单次对话 turn 计数，==12 强制转「给结论+推荐练习」（CHAT-005）。
@@ -187,7 +188,7 @@
 | QUIZ-011 | teacher | P1 | **出题题源严格限定知识卡片（v2.7.4，CR-2026-0922-CARDSCOPE）**：草稿与重出只用该章 `knowledge_cards` 组装题源，**不再对资料做 RAG 检索**；卡片未覆盖的内容一律不出题；该范围无卡片、或卡片不足以支撑所选题量时**报错不出题**（不再用通用模板兜底）|
 
 **Technical**
-- **百分制评分模型（QUIZ-003/005）**：**v1.10.0 起取消问答题（essay）**——固定 20 道题，题型仅限选择题（choice）与是非题（bool），每题 5 分、合计 100 分；`questions.points` 按题型写入，`quizzes.total_points=100`（由 QUIZZER 按 QUIZ-005 配置生成，预设 20 选择/20 是非）。`POINTS` 仍保留 `essay=10` 仅兼容库里旧题数据。学生单题得分 `attempts.score∈[0,points]`。
+- **百分制评分模型（QUIZ-003/005）**：**v1.10.0 起取消问答题（essay）**——题型仅限选择题（choice）与是非题（bool），每题 5 分；`questions.points` 按题型写入，`quizzes.total_points=100`；QUIZZER 默认 PRESET `20c`（20 选择题）凑满 100，另 `20b`（20 是非题）可选，教师亦可自定义 choice/bool 组合使 `config_total` 合计=100（QUIZ-005 校验）。`POINTS` 仍保留 `essay=10` 仅兼容库里旧题数据。学生单题得分 `attempts.score∈[0,points]`。
 - **题源=知识卡片（QUIZ-011，v2.7.4 取代「出题前注入 RAG」）**：`quizzer._retrieve_cards(chapter_ids)` 按 `sub_concept` 轮转取该章卡片（上限 `MAX_SOURCE_CARDS=50`），拼成 `source_cards` 注入 QUIZZER_SYSTEM，提示词明写「**唯一题源=知识卡片，卡片之外不得出题**」+「禁止死记硬背题（数值/价格/默认值/参数取值/排名）与课件代码细节题」；无卡片时 `generate_questions` **直接返回空、不调模型**，端点回「所选章节暂无可出题的卡片」。评分权双轨（QUIZ-003）与百分制组合（QUIZ-005）不变。**历史**：QUIZ-001/005 早期实现是 RAG 检索资料切片（`retrieved_chunks`）注入提示词，导致题目夹带课件代码细节与资料冗余（2026-09-22 用户反馈「Coder 参数/价格」类死记硬背题），该路径已废弃。
 - **评分权双轨（QUIZ-003 + QUIZ-009）**：① 客观题（选择/是非）由**系统确定性判分**（答案比对，0 或满分，零延迟零成本）；② 问答题由 **AI(GRADER)** 评 `score∈[0,10]` 并给 `reason`，`attempts.graded_by='ai'`（**v1.10.0 起新出题不再产生 essay，此分支仅兼容库里旧题**）；③ 教师可对任一题**覆核改分**（`PUT /api/attempts/:id/review` → 写 `reviewed_score`+`graded_by='teacher'`+`is_reviewed=1`）。教师默认不评分，仅在 AI 判分争议时介入。
 - 路由：`POST /api/quizzes/draft`(含 `config` 预设) → `POST /api/quizzes/:id/publish`、`POST /api/quizzes/:id/attempts`、`GET /api/quizzes/:id/report`、`PUT /api/attempts/:id/review`(QUIZ-009)、`POST /api/quizzes/:id/revision`(P1)、`GET /api/quizzes?status=published`。
@@ -200,14 +201,14 @@
 **Functional**
 | REQ | 角色 | 优先级 | 说明 |
 |-----|------|--------|------|
-| PRACTICE-001 | student | P1 | 选章 → AI 生成练习（difficulty=hard、**题数 5-10 自定义默认 5**、仅 choice/bool、基于章节资料、**单次题目覆盖不同知识点 + 跨会话知识点不重复**——历史练过的 sub_concept 排除，如 22 知识点每次 5 道约 4-5 次练习才开始重复；v1.10.0 取消问答、v1.16.0 起不再强制 20 道/100 分、v1.16.x 起检索全章多样化抽样）|
+| PRACTICE-001 | student | P1 | 选章 → AI 生成练习（difficulty=hard、**题数 5-10 自定义默认 5**、仅 choice/bool、**题源=该章知识卡片**，详见下方 Technical；**单次题目覆盖不同知识点 + 跨会话知识点不重复**——历史练过的 sub_concept 排除，如 22 知识点每次 5 道约 4-5 次练习才开始重复；v1.10.0 取消问答、v1.16.0 起不再强制 20 道/100 分、v2.7.4 起题源改知识卡片）|
 | PRACTICE-002 | student | P0 | 在线作答 + GRADER 批改 + 提供正确答案 |
 | PRACTICE-003 | student | P1 | 练习错题进入薄弱点/巩固练习依据（v1.9.0 起练习同时计入掌握度 M）|
 
 **Technical**
 - **独立数据层**：`practice_sessions`（user_id/chapter_ids/difficulty/total_points/config_json）+ `practice_questions`（session_id/chapter_id/sub_concept/type/content/options/answer_key/points/content_hash/correct/user_answer/score/reason/answered_at）。练习是学生**个人即席生成**，**不进老师 draft→publish 状态机**，不写 quizzes/questions/attempts；**v1.9.0 起练习（已作答）与测评同权重计入掌握度 M（任务书定义 A），不再是「不污染 M」**。
 - **题数 5-10 自定义默认 5 + 卡片驱动 + 难度 high + 同学生跨知识点不重复（v1.16.0 起，v1.17.x 强化跨会话知识点；v2.7.4 起题源改知识卡片）**：`quizzer.generate_practice_questions()` 基于章节**知识卡片**出 **count 道 choice/bool（count 默认 5、上限 10、下限 5，入参校验）**（**v1.10.0 起取消 essay**、v1.16.0 起不再强制 20 道/100 分），difficulty=hard；不再凑 100 分，`total_points` 写各题实际分之和，`_session_dict` 按实际 total_points 归一。**题源=知识卡片（v2.7.4）**：`quizzer._retrieve_cards()` 按 `sub_concept` 轮转取该章卡片（上限 `MAX_SOURCE_CARDS=50`）注入 QUIZZER_SYSTEM（`source_cards`），提示词明写「唯一题源=知识卡片」且禁死记硬背/代码细节题；无卡片或 LLM 真返空时返回空列表、由端点提示（无卡片 → 「所选章节暂无知识卡片，无法出题」，否则「练习生成失败，请稍后重试」），**不再硬塞通用模板**。**同学生跨会话去重（题干级）**：`practice_questions.content_hash`（题干规范化 hash，去空格/标点/大小写）存 `hash(q.content)`，生成前查该学生历史题干注入提示词「避免重复、基于资料衍生变体」，后端 `_cap_to_max` 再按规范化 hash 过滤已出题干；不同学生可相同、同考点不同问法不算重复。**⚠️ 知识点覆盖（v1.16.x 检索广 + v1.17.x 跨会话知识点不重复）**：`_retrieve_chunks` 对练习**不再只取 material_id/chunk_idx 排序前 5 条**（那样 82-chunk 的 md 主体内容一条都进不去、题目全撞同批知识点），改为**跨全章多样化抽样**（按 material 分层 + chunk 分段各取若干，喂料上限 ~6000 字符，保证大 md 全覆盖）；`_cap_to_max` 在题干 hash 之外**加 sub_concept 维度去重**（单次题目尽量不同知识点，不足才允许同点变体）；**跨会话知识点不重复（v1.17.x）**——生成前查该生历史练过的 `sub_concept`（`practice_questions.sub_concept` distinct）做成 `exclude_sub_concepts` 注入提示词（「避免这些子概念，从其余知识点出题」）+ 后端 `_cap_to_max` 过滤 `sub_concept ∈ exclude_sub_concepts` 的题。这样每次练习命中的知识点不同，~22 知识点每次 5 道约 4-5 次才开始重复。**（v2.7.4 起上文的「资料抽样」实现已废弃**——`_retrieve_chunks`/`_chunk_text` 删除，改由 `_retrieve_cards()` 按 `sub_concept` 轮转取该章知识卡片作唯一题源，取卡上限 `MAX_SOURCE_CARDS=50`，见 §3.4 Technical / QUIZ-011）**
-- **难度 hard**：`QUIZZER_SYSTEM` 注入 `{difficulty}`（normal/hard 指示）；练习固定 `difficulty='hard'`（综合运用/多步推理/概念辨析/跨知识点），老师测评默认 `normal` 不受影响。
+- **难度 hard（内部字段）**：`QUIZZER_SYSTEM` 注入 `{difficulty}`（normal/hard 指示）；练习固定 `difficulty='hard'`（综合运用/多步推理/概念辨析/跨知识点），老师测评默认 `normal` 不受影响。**注意**：`difficulty` 只是内部字段（无难度筛选项/徽章），但**前端确有一处难度文案**——`backend/frontend/js/student.js` 的自主练习 appbar 恒显示「AI 出题 · 5-10 题 · 高难度」（v1.16.0「自主练习改最多5道资料驱动高难度」起）；§12.7 记录的「移除难度标注」是 v1.9.0 当时的清理，不构成现状态依据（以代码为准）。
 - **批改复用 GRADER**：与测评一致（客观题确定性判分；essay AI 三档/启发式分支保留以兼容旧数据，v1.10.0 起不再产生）；`practice_questions` 写 `correct/score/user_answer/reason/answered_at`。
 - **错题联动（PROG-005/006）**：`progress_bp._practice_wrong` 读取本人练习错题（correct=0 或 score<points）作为薄弱点依据（`from_practice`）与巩固练习来源章/聚焦子概念；v1.9.0 起练习同时计入 M（全错→M 下降→薄弱），错题联动逻辑保留。
 - 路由：`GET /api/practice`、`POST /api/practice/generate`、`GET /api/practice/:id`、`POST /api/practice/:id/submit`（学生本人，越权 403）。
@@ -257,10 +258,10 @@
 | PROG-008 | 全部 | P1 | 四态映射阈值 |
 
 **Technical**
-- M 公式（百分制）：`M = Σ(wᵢ·score_earnedᵢ) / Σ(wᵢ·points_possibleᵢ) × 100`，`wᵢ=0.5^间隔周数`，`points_possibleᵢ` 取 `questions.points`（选择/是非 5、问答 10）；**v1.9.0 起聚合两部分——①该章最新 published version 的测评 attempts（F3），②该章自主练习 `practice_questions`（answered_at 非空，earned=score、possible=points），同一条加权公式、按章聚合、带时间衰减**；仅当两者皆无作答时才返回 `m=None`（未评估）。M 为 0–100 百分比。四态：已掌握 M≥80 且有效作答≥2；进行中 50≤M<80 或 M≥80 但<2 次；薄弱 M<50；未评估 从未测验/练习（不计入薄弱）。作答次数 = quiz attempt 行数 + 已作答 practice_questions 行数。
+- M 公式（百分制）：`M = Σ(wᵢ·score_earnedᵢ) / Σ(wᵢ·points_possibleᵢ) × 100`，`wᵢ=0.5^间隔周数`，`points_possibleᵢ` 取 `questions.points`（选择/是非 5，问答 10 仅兼容旧题）；**M 聚合三部分（同一条加权公式、按章聚合、带时间衰减，对应 `ai/mastery.py::compute_mastery`）**：① 该章最新 published version 的测评 attempts（F3）；② 该章自主练习 `practice_questions`（answered_at 非空，earned=score、possible=points）；③ 该章本人 `knowledge_reviews` 中 `status='mastered'` 的卡片（每张按 5 分满分计入分子与分母，**仅奖不罚**——new/learning/reviewing 卡不进分母，不因未掌握卡拉低 M）。仅当三者皆无作答/无掌握卡时才返回 `m=None`（未评估）。M 为 0–100 百分比。四态：已掌握 M≥80 且有效作答≥2；进行中 50≤M<80 或 M≥80 但<2 次；薄弱 M<50；未评估 从未测验/练习/掌握卡（不计入薄弱）。**有效作答次数 = 测评 attempt 行数 + 已作答 practice_questions 行数 + 已掌握卡片张数**（影响「已掌握≥2 次」门槛）。
 - 间隔复习状态机（architecture §5.4）：`review_items` `pending ─[到期+完成]─► done`；答对 `interval_days *=3`(1→3→7)，答错重置为 1。调度复用 launchd 每日扫描（不引入 Celery/Redis）。
 - 数据：attempts(DM-006, 含 quiz_version)、review_items(DM-007)、questions(DM-005)。
-- 薄弱点：章节级 + 知识点级(P2)，每条附 `attempts` 错题依据（拒绝凭空定性，PROG-005）；v1.8.0 起同时纳入**自主练习错题**（`practice_questions`，不改 M）作为薄弱点/巩固练习输入（REQ-PRACTICE-003）。
+- 薄弱点：章节级 + 知识点级(P2)，每条附 `attempts` 错题依据（拒绝凭空定性，PROG-005）；v1.8.0 起同时纳入**自主练习错题**（`practice_questions`）作为薄弱点/巩固练习输入，**v1.9.0 起练习（已作答）同权重计入掌握度 M**（见本节 M 公式；旧口径「不改 M」已作废）（REQ-PRACTICE-003）。
 
 ### 3.6 周报（已废弃 → 拆分迁移）— `reports_bp`（L3，REQ-RPT，AI: TUTOR 建议）
 **Functional**
@@ -381,18 +382,18 @@
 
 
 ```
-同学手机浏览器 ──HTTPS──► Cloudflare 命名隧道 (ai-study.<域>, 仅 5001)
+同学手机浏览器 ──HTTPS──► Cloudflare 命名隧道 (aistudygroup.<域>, 仅 5003)
                                     │
-                     iMac:127.0.0.1:5001 (仅本机, 防火墙不对外开)
+                     iMac:127.0.0.1:5003 (仅本机, 防火墙不对外开)
                                     ▼
             waitress 包裹 Flask app.py (caffeinate -ims 防休眠)
               ┌──────────────┼───────────────┐
               ▼              ▼               ▼
-        SQLite(WAL)      ChromaDB        uploads/
-        instance/...db   chroma_db/      files/
+        SQLite(WAL)      chunks 表       uploads/
+        instance/...db   （chunks 在库内）  files/
 
 launchd KeepAlive 崩溃自动拉起
-  ⚠️ F1：改 /Library/LaunchDaemons（开机即跑，无需登录），PRD §9.3 的 LaunchAgent 重启无人登录则挂。
+  ⚠️ F1：原设计拟改 /Library/LaunchDaemons（开机即跑，无需登录），PRD §9.3 的 LaunchAgent 重启无人登录则挂。**实际落地（2026-09-04 起）：生产 5003 由用户域 LaunchAgent `com.shuiyanhaha.aistudy` 托管；`/Library/LaunchDaemons/com.aistudy.service.plist`（5001）为已废弃旧实例，当前无监听。**
 iCloud Drive 每日 rsync
   ⚠️ F2：备份前先 PRAGMA wal_checkpoint(TRUNCATE) 或 sqlite3 .backup 刷盘，再 rsync，避免 half-write 损坏。
 ```
@@ -402,11 +403,11 @@ iCloud Drive 每日 rsync
 | DEP-001 | 单源托管 | Flask `serve_frontend` 托管 `frontend/`；`/` 与 `/<path>` 返 index.html；manifest/sw 同路由 |
 | DEP-002 | API 相对路径 | 前端 `BASE_URL=/api` |
 | DEP-003 | 生产配置 | `DEBUG=env("FLASK_ENV")!="production"`；**waitress 单进程/4 线程**（F6 澄清）；8GB 内存余量**待实测**（F4） |
-| DEP-004 | 公网暴露 | 仅 5001 经隧道；JWT 强制；防火墙不开端口 |
+| DEP-004 | 公网暴露 | 仅 5003 经隧道（`aistudygroup.shuiyanhaha.org`→`127.0.0.1:5003`）；JWT 强制；防火墙不开端口 |
 | DEP-005 | 命名隧道 | `cloudflared tunnel create` 固定域名；**F10：部署设证书/域名过期提醒** |
-| DEP-006 | 开机自启 | **/Library/LaunchDaemons**（F1，非 LaunchAgent）+ KeepAlive |
+| DEP-006 | 开机自启 | **用户域 LaunchAgent `com.shuiyanhaha.aistudy`**（KeepAlive+RunAtLoad，端口 5003）——F1 原拟 LaunchDaemon，实际落地为 LaunchAgent（system 域 `com.aistudy.service.plist` 已废弃） |
 | DEP-007 | 防休眠 | `caffeinate -ims python app.py` |
-| DEP-008 | 备份 | 每日 rsync（**先 wal_checkpoint**，F2）db+chroma+uploads → iCloud Drive |
+| DEP-008 | 备份 | 每日 rsync（**先 wal_checkpoint**，F2）db+uploads → iCloud Drive |
 | DEP-009 | CORS 收口 | 同源或 `origins=[隧道域名]`，去 `*` |
 | DEP-010 | 还原演练 | 上线前删库→iCloud 还原→3 同学数据可查 |
 
@@ -418,7 +419,7 @@ iCloud Drive 每日 rsync
 ```
 users ─< chapters
 users ─< conversations ─< messages
-chapters ─< materials ─(向量)─► ChromaDB material_chunks(chapter_id)
+chapters ─< materials ─► chunks 表（material_id/chapter_id/chunk_idx/text）
 chapters ─< quizzes ─< questions ─< attempts >─ users
 users ─< review_items >─ chapters
 users ─< reports
@@ -436,11 +437,11 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 | questions | id, quiz_id, chapter_id, sub_concept, type, content, answer_key, +points(选择/是非5；v1.10.0 取消问答，essay=10 仅兼容旧数据) | DM-005 | 掌握度溯源；单题满分 |
 | attempts | id, user_id, quiz_id, question_id, chapter_id, **+quiz_version(F3)**, correct, score(实际得分点), +graded_by('ai'/'teacher'), +is_reviewed, +reviewed_score, created_at | DM-006 | M 数据源之一；评分权双轨 |
 | review_items | id, user_id, chapter_id, question_id(NULL), next_review_at, interval_days, status | DM-007 | 间隔复习状态机 |
-| practice_sessions | id, user_id, chapter_ids(JSON), difficulty('hard', v1.9.0 隐藏不展示), total_points(实际各题分之和，v1.16.0 起非固定 100), config_json | REQ-PRACTICE-001 | 学生个人即席生成；v1.16.0 起最多 5 道；v1.9.0 起已作答计入 M |
+| practice_sessions | id, user_id, chapter_ids(JSON), difficulty('hard', v1.9.0 隐藏不展示), total_points(实际各题分之和，v1.16.0 起非固定 100), config_json | REQ-PRACTICE-001 | 学生个人即席生成；**题数 5–10 道（默认 5，上限 MAX_PRACTICE_QUESTIONS=10）**；v1.9.0 起已作答计入 M |
 | practice_questions | id, session_id, chapter_id, sub_concept, type, content, options, answer_key, points, content_hash(题干规范化 hash，v1.16.0), correct(可空), user_answer, score(可空), reason, answered_at | REQ-PRACTICE-001/002 | 作答结果留痕；v1.16.0 起 content_hash 供同学生跨会话去重；v1.9.0 起已作答计入 M；错题供薄弱点/巩固 |
 | reports | +user_id | DM-008 | 周报归属（v1.9.0 废弃，表保留） |
 | daily_advice | id, user_id, advice_date(UTC+8 日历日), stats(JSON), advice, created_at, UNIQUE(user_id, advice_date) | RPT-003(改每日) | 每日建议，每人每天一条 |
-| ChromaDB | material_chunks +chapter_id | DM-010 | 按章召回 |
+| chunks 表 | material_id/chapter_id/chunk_idx/text | DM-010 | 关键词/2-gram 检索，按章召回 |
 
 ### 5.3 状态机
 - **quiz**：`draft ─[确认]─► published ─[重出]─► superseded`（旧版保留）。
@@ -499,7 +500,7 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 
 ### 7.1 三 Agent 提示词（architecture §5.1）
 - **TUTOR**：注入 `weak_chapters`/`retrieved_chunks`（v1.5.0 起不再注入 `student_grade`）；规则「不直接给答案，以追问引导；答对或卡住才给点拨」；轮次 `{turn}/12` 护栏。
-- **QUIZZER**：输入 `chapter_ids/sub_concepts/spec + retrieved_chunks`（RAG 检索资料正文，题目基于资料难度出题）；产出结构化 JSON 题目集（含 `answer_key`/`sub_concept`）。
+- **QUIZZER**：输入 `chapter_ids/sub_concepts/spec + source_cards`（**知识卡片为唯一题源**，v2.7.4 起不再检索资料正文出题；卡片未覆盖内容一律不出题）；产出结构化 JSON 题目集（含 `answer_key`/`sub_concept`）。
 - **GRADER**：输入题目(含 `points`)+参考答案+学生作答；产出 `{correct, score, reason}`，`score∈[0,points]`（问答 0–10、客观题不调用 GRADER 改由系统确定性判分）。
 
 > 决策：提示词即一切，不引入工具注册表；保留 `def tool_x(ctx)->Result` 统一签名，未来 Agent>5 个再升级（§十四）。
@@ -519,10 +520,13 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 
 ---
 
-## 八、RAG 流水线（architecture §六）
+## 八、RAG 流水线（架构再审后实际落地：SQLite 关键词检索，无向量库）
 
-- **离线入索引**（教师上传同步）：解析 → 分块(≈500/overlap≈80, 按章切优先) → `all-MiniLM-L6-v2` 本地编码 → ChromaDB.add(metadata:{material_id,chapter_id,page_no,chunk_idx}) → 更新 `materials.chunk_count`。
-- **在线召回**：`retrieve(query, chapter_id, top_k=5)` → cosine 距离，取 `1-distance ≥ 0.4`；过弱视为召回不足触发兜底。
+> ⚠️ **与原始架构设计稿（`architecture-design.md`）的差异（已落地的偏离）**：原稿规划「ChromaDB 纯向量 + all-MiniLM-L6-v2 + cosine≥0.4」，实现阶段降维为 **SQLite `chunks` 表关键词/2-gram 检索**，不引入本地嵌入模型、不依赖任何向量数据库。4 人规模 + 章节粒度召回场景下，关键词 + 章节过滤命中率已够用（详见 §12.1 偏离登记）。
+
+- **离线入索引**（教师上传同步）：解析（`pdfplumber/python-pptx/python-docx`，MD/TXT 直读）→ 分块(≈500/overlap≈80, 按章切优先) → 直接写入 SQLite `chunks` 表（字段 `material_id/chapter_id/chunk_idx/text`）→ 更新 `materials.chunk_count`。**无嵌入、无向量。**
+- **在线召回**：`retrieve(query, chapter_id, top_k=5)`（`backend/ai/rag.py`）→ 中文按 2-gram、英文按词切分 → 与 `chunks` 文本做 Jaccard 重合度打分 → 取 `overlap>0` 的最高 5 条；`chapter_id` 过滤；无命中返回空列表（触发 L2 兜底）。**非 cosine、非向量相似度。**
+- 视频课**不进** `chunks`/向量库（RAG 纯度红线，见 CR-2026-0902-LPATH）：视频仅存 `video_resources` 结构化元数据，对话推荐走确定性标签匹配（`ai/video_link.py`），不调 RAG、不延误。
 - 不加 BM25/HyDE（PRD §13 首字≤3s，HyDE 多 1 次 LLM 延迟 +2-3s，违反）。
 
 ---
@@ -530,7 +534,7 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 ## 九、关键流程时序（Functional↔Technical，architecture §八）
 
 ### 9.1 引导式对话
-Student(PWA) → Flask(JWT+人设加载+ChromaDB 召回 chapter_id) → DeepSeek(SSE 逐 token, TUTOR, ≤12 轮) → 写 messages(user_id 隔离)。
+Student(PWA) → Flask(JWT+人设加载+`chunks` 关键词检索 chapter_id) → DeepSeek(SSE 逐 token, TUTOR, ≤12 轮) → 写 messages(user_id 隔离)。
 
 ### 9.2 教师发布测评
 Teacher → 选章+QUIZ-005 配置(凑满 100 分组合) → Flask(鉴权+`@role_required`, status=draft, QUIZZER 按配置生成 questions 并赋 `points`) → 教师预览/微调 → 确认(published, published_at, confirmed_at, total_points=100)。
@@ -561,7 +565,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 
 | 维度 | 实现 | 验收 |
 |------|------|------|
-| 探活 | `GET /health` → `{status,db,chroma}` | 隧道/health 200 |
+| 探活 | `GET /health` → `{status,db,rag:'keyword'}` | 隧道/health 200 |
 | 崩溃恢复 | launchd KeepAlive | `kill -9` 5s 内自起 |
 | 备份 | 每日 rsync（**先 wal_checkpoint**，F2） | 9.4 核查 + 演练 |
 | 日志 | Flask+waitress stderr → `logs/app.log` 按日轮转 | 异常可追溯 |
@@ -605,7 +609,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 ### 12.4 已实现（测评百分制评分模型，2026-09-02 设计增补，v2.1 → v1.3.0）
 
 > 以下 v2.1 新增设计已按本规格实现并落地（§三/§五/§七/§九/§十二 已含全部字段、接口与公式）：
-> - **QUIZ-005 提 P1**：教师可选 100 分组合（v1.10.0 起预设：20 选择 / 20 是非；或自定义并校验 `choice+bool===20`=100 分，取消问答）；QUIZZER 默认规格由「3 道题」改为 100 分组合（✅）。
+> - **QUIZ-005 提 P1**：教师可选 100 分组合（v1.10.0 起默认 PRESET `20c`=20 选择题，合计 100；可选 `20b`=20 是非题；或自定义 choice/bool 组合使 `config_total`=100，POINTS：选择/是非各 5 分，取消问答）；QUIZZER 默认规格由「3 道题」改为 100 分组合（✅）。
 > - **数据模型（DM-004/005/006）**：`quizzes.total_points=100` + `config_json`；`questions.points`（选择/是非 5、问答 10）；`attempts.score` 改存实际得分点、`graded_by('ai'/'teacher')`、`is_reviewed`、`reviewed_score`；SQLite 幂等迁移（存量题按题型补分、存量二元 score 一次性换算）已落地（✅）。
 > - **评分权双轨（QUIZ-003/009）**：客观题系统确定性判分；问答题 AI(GRADER) 评 0–10；新增 `PUT /api/attempts/:id/review` 教师覆核改分（✅）。
 > - **M 公式（PROG-007）**：由对错二元改为百分制得分率 `Σ(score)/Σ(points)×100`（✅）。
@@ -625,7 +629,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 > - **进度可见性修复（v1.5.0）**：`/api/progress/{mastery,weak-points,review-items/generate}` 的 `_all_chapters` 只查询 `status='published'` 章节——未发布 session（如 W1S2 draft）不再进学生进度/掌握度/薄弱点/巩固练习（修复「学生看到两个未测评」）（✅）。
 > - **TUTOR 视频推荐降频（v1.5.1）**：`tutor_orchestrate` 仅当学生提问主动问及视频课（含"视频/课程/b站/网课"等关键词）才召回 `related_videos`，普通提问返回空数组；TUTOR 提示词强化"优先基于【资料依据】引导、多指向章节资料原文，仅学生明确问视频才提一句"（修复"对话里一直出现相关视频课"）（✅）。
 > - **网络优化（v1.5.1）**：`deploy/run.sh` 服务默认绑定 `0.0.0.0`，允许局域网手机直连 iMac `192.168.50.22:5001`（实测 5ms），减少对不稳 Cloudflare tunnel（130ms+、QUIC 易断）的依赖（根治"点一下反应半秒"）（✅）。
-> - **iCloud 定时备份（v1.5.1，DEP-008）**：新增 launchd `com.xicheng.aistudy-icloud-backup`（每日 03:20），调用 `scripts/backup_icloud.sh`（wal_checkpoint 刷盘 + rsync 备份 db/uploads/chroma 到 iCloud Drive，保留7天）。此前仅四口之家有备份，本 app 脚本存在但未定时（✅）。
+> - **iCloud 定时备份（v1.5.1，DEP-008）**：新增 launchd `com.xicheng.aistudy-icloud-backup`（每日 03:20），调用 `scripts/backup_icloud.sh`（wal_checkpoint 刷盘 + rsync 备份 db/uploads 到 iCloud Drive，保留7天）。此前仅四口之家有备份，本 app 脚本存在但未定时（✅）。
 
 ### 12.6 实现状态回写（v1.7.0，2026-09-03）
 
@@ -680,8 +684,8 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 ### 12.15 实现状态回写（v1.16.0，2026-09-08）
 
 > - **自主练习出题全走兜底（根因修复，✅）**：生产 `.env` 的 `DEEPSEEK_MODEL` 由 `deepseek-v4-flash`（原生推理模型）改为 `deepseek-chat`（非推理）。实测推理模型对大 JSON 出题 prompt `finish_reason=length`、`content len=0`、`reasoning len=3612`、2000 completion_tokens 全烧在 reasoning → `_chat()` 拿空 content → `quizzer_generate()` 返回 None → 无条件兜底硬编码模板；改 `deepseek-chat` 后 `content len=4871`、`reasoning len=0`（真实资料题）。与四口之家 sikou「智能养护贴士」修法一致（短/结构化任务用 deepseek-chat）。
-> - **PRACTICE-001/002/003 重构（最多 5 道 + 资料驱动 + 难度 high + 同学生不重复，✅）**：`generate_practice_questions()` 不再强制 20 道/100 分，改为基于章节资料出 **2~5 道 choice/bool（difficulty=hard）**；端点放开 `total != 100` 校验，`total_points` 写实际分之和、`_session_dict` 按实际归一；LLM 真返空返回空列表、前端提示「生成失败，请重试」（不再硬塞通用模板）。`practice_questions` 新增 `content_hash`（题干规范化 hash），生成前查该学生历史题干注入提示词（避免重复 + 基于资料衍生变体）并在后端按 hash 过滤，同学生跨会话不重复、不同学生可相同。
-> - **前端文案（✅）**：练习入口/生成页/答题页「合计 100 分」改为「最多 5 题 · N 题 · 共 X 分」；sw.js `CACHE` bump `v31→v32`。
+> - **PRACTICE-001/002/003 重构（v1.16.0 当时＝最多 5 道 + 资料驱动 + 难度 high + 同学生不重复，✅；**现行**题数 5–10 默认 5、题源＝知识卡片，见 §3.4 Technical 与 §12.43）**：`generate_practice_questions()` 不再强制 20 道/100 分，改为基于章节资料出 **2~5 道 choice/bool（difficulty=hard）**；端点放开 `total != 100` 校验，`total_points` 写实际分之和、`_session_dict` 按实际归一；LLM 真返空返回空列表、前端提示「生成失败，请重试」（不再硬塞通用模板）。`practice_questions` 新增 `content_hash`（题干规范化 hash），生成前查该学生历史题干注入提示词（避免重复 + 基于卡片衍生变体）并在后端按 hash 过滤，同学生跨会话不重复、不同学生可相同。
+> - **前端文案（✅，v1.16.0 当时）**：练习入口/生成页/答题页「合计 100 分」改为「最多 5 题 · N 题 · 共 X 分」（现行上限 10，见 §3.4）；sw.js `CACHE` bump `v31→v32`。
 
 ### 12.16 实现状态回写（v1.14.0~v1.14.2，2026-09-07）
 
@@ -710,7 +714,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 1. **🔴 不做 Evals（F8）** — 触发补做：TUTOR 连续 2 次被吐槽质量下降 / QUIZZER 草稿 3 次以上大改 / 新增第 4 个 Agent / 换 DeepSeek 新模型。主动检测：埋点记录「护栏内给最终答案」比例，周报附教师，偏差超阈预警。
 2. **🟡 单点部署** — iMac 断电即停，约定项（通电+备份+演练）。
 3. **🟡 JWT in localStorage** — XSS 已知，4 人可接受，P2 升级 httpOnly。
-4. **🟡 8GB 内存（F4）** — 常驻余量**待实测** `memory_pressure`/`vm_stat`，保留 ≥1.5GB；不足则关后台重 App / ChromaDB 按需加载 / **不得**同时跑 Hermes 量化或本地 LLM。
+4. **🟡 8GB 内存（F4）** — 常驻余量**待实测** `memory_pressure`/`vm_stat`，保留 ≥1.5GB；不足则关后台重 App，且**不得**同时跑 Hermes 量化或本地 LLM（本项目无向量库，无 ChromaDB 内存负担）。
 5. **🟡 SQLite 并发** — WAL 4 人够；>10 人迁移 Postgres。
 6. **🟢 PWA iOS 限制** — 后台同步受限，本场景无碍。
 7. **🟢 成本** — 月 <¥10，但无上限，限速兜底。
@@ -744,13 +748,13 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 - [ ] MAT-002/003 + CHAT-004(F5)：教师传 PDF→学生引导式对话（不直接给答案、≤12 轮、TUTOR 输出门控生效）
 - [ ] QUIZ-001/008：草稿→确认两步；`draft` 不可作答
 - [x] QUIZ-002/003 + **F3**：完成测评→见百分制得分；`attempts.quiz_version` 与 `attempts.score`(实际得分) 落地
-- [ ] DEP-001/005/006(F1)：手机加主屏、离线启 Shell；**LaunchDaemon 开机自启（非 LaunchAgent）**
+- [ ] DEP-001/005/006(F1)：手机加主屏、离线启 Shell；**开机自启＝用户域 LaunchAgent `com.shuiyanhaha.aistudy`（5003）**
 - [ ] DEP-003(F6)：production 下无 Werkzeug debugger；waitress 单进程/4 线程
 
 **P1 阶段二**
 - [x] PROG-001/004 + **F3**：进度仅本人；教师概览聚合 3 人；M 按最新 version 聚合（百分制得分率）
 - [x] **QUIZ-005/009 + 百分制**：教师可选 100 分组合；AI 评分+教师覆核改分；questions.points/attempts.score 落地
-- [ ] RPT-001~003：周报含统计+AI 建议
+- [x] RPT-001~003（v1.9.0 已迁移至进度页，非「待办」）：本周概况/成绩分析 → `GET /api/progress/weekly-stats`；AI 建议改「每日」→ `GET /api/progress/advice` + 每日生成脚本；`reports_bp` 仅作兼容保留，前端已转进度页，原「周报」tab 改为「班级」
 - [ ] NFR-006：单用户超额 429
 - [ ] **F7**：资料删除走软删+二次确认+7 天窗口
 
@@ -770,7 +774,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 ## 十六、风险、演进与架构再审结论
 
 ### 16.1 架构再审（architecture §十六，F1–F10 已吸收）
-- 架构形态（单体/三 Agent/纯向量/SQLite+Chroma）维持不变。
+- 架构形态（单体 Flask / 三 Agent / SQLite+chunks 关键词检索（无向量库）/ waitress）维持不变。
 - 修订集中在**部署韧性（F1/F2）** 与 **数据正确性（F3）**，不引入新组件。
 - F4/F5/F7 为上线前必须落实的实现期清单。
 
@@ -784,7 +788,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 | 用户 >50 人 | 拆 AI 独立服务 + 消息队列 |
 
 ### 16.3 ChemAI 借鉴留痕（architecture §十二，降维要点）
-沿用：苏格拉底引导 + 人设、错因诊断 + 间隔复习(1→3→7)、SQLite WAL+ChromaDB、MiniLM、监理端护栏思想、Checkpoint→iCloud rsync。  
+沿用：苏格拉底引导 + 人设、错因诊断 + 间隔复习(1→3→7)、SQLite WAL + chunks 关键词检索（无向量库/无 MiniLM）、监理端护栏思想、Checkpoint→iCloud rsync。 
 不引入：ReAct、OCR 管道、四维审核、Docker、知识图谱、多客户端、三层评测 111 场景、SSE(降 P2)。
 
 ---
@@ -792,11 +796,12 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 ## 附录 A：代码组织（architecture 附录 A 精要）
 ```
 backend/ app.py(config+蓝图注册+静态托管) · config.py
-  auth/routes.py · api/{chapters,materials,conversations,quizzes,attempts,progress,reports,teacher,health}.py
-  ai/{prompts,rag,tutor,quizzer,grader,review_sched,fallback}.py
-  data/{models,chroma_client,seed}.py · middleware/{rate_limit,error_handler,input_validation}.py
-  scripts/{launchd_install,backup_rsync,restore_test}.sh
-frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz,progress,report,admin}.js · css/
+  api/{attempts,auth,chapters,checkin,class_bp,conversations,curriculum,health,knowledge,materials,notifications,practice,progress,quizzes,reports,teacher}.py
+  ai/{advice_gen,agents,cardtext,fallback,grader,knowledge,mastery,parser,prompts,quizzer,rag,reminder_copy,review_sched,tutor,usage_log,video_link}.py
+  data/{models,db,seed,checkin,timeutil}.py · middleware/{rate_limit,errors,input_validation}.py
+  scripts/{checkin_reminder,daily_advice_gen}.py
+frontend/ index.html · manifest.webmanifest · sw.js · js/{api,app,student,teacher}.js · css/
+scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_binding · backup_icloud.sh · courseware_files · group_cards · inject_curriculum · inject_w1 · merge_duplicate_cards · normalize_subconcepts · ocr.swift · ocr_materials · publish_sessions · rebuild_cards · rename_chapters
 ```
 
 ---
