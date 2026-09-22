@@ -223,8 +223,11 @@
 | KNOW-005 | teacher | P2 | **教师端知识卡片核查（REQ-TEACH-KNOW-001）**：教师可在后台**逐章/逐主题/逐卡**核对卡片内容，不再依赖查库或铸学生 token。① 章级汇总：卡片数 / 主题数 / 切片数 / **未覆盖切片数**、发布状态；② 单章明细：按 `sub_concept` 分组，每张卡附**来源资料名 + 源切片原文摘录**（可判断「卡片是否真出自课件」）；③ 只读，不改卡、不发布；④ 学生角色访问一律 403（与 `GET /api/knowledge/*` 的学生专属相反）；⑤ **绑定必须精确到「同资料内最吻合的那一条切片」**，不能只保证「片子属于同一份资料」——弱匹配（同资料内 BM25 排名 > 3 且最佳切片得分 ≥ 1.35 倍）一律改绑 |
 | KNOW-006 | student | P1 | **单次复习卡组上限 100 张（v2.6.4，REQ-KNOW-DECK-001）**：点「开始复习」一次性装配的卡组 ≤ `config.SESSION_DECK_MAX`（默认 100），排序 = ①今日待复习（到期/逾期）→ ②未学 → ③学习中/复习中未到期 → ④已掌握；**阈值单点在后端并随响应下发**（`GET /api/knowledge/overview` / `GET /api/knowledge/<chapter_id>` 的 `deck_max`），前端禁止硬编码。**学习记录（`knowledge_reviews`）长期累计、绝不按天清空**；本次没复习完的卡次日自动进入下一批，无需人工干预 |
 
+| KNOW-007 | student | P1 | **卡片库不得存在重复知识点（v2.6.8，CR-2026-0922-DEDUP）**：同一知识点只保留一张卡。① 答法/详略不同但同一考点的重复卡**合并为一张**，且整合后**保留各原卡独有的全部事实**（数字、名称、步骤、示例一条不丢）；② **跨章重复同样合并**（同一概念在第 1 周与第 2 周各出一张 → 只留最早出现的那张，内容取并集）；③ 判重必须同时看**主体**与**答案**——同问句但主体不同（四家 IDE 插件同模板、下限 vs 上限、通义千问 Max/Flash/Coder）**不算重复、必须保留**；④ 合并只删重复卡，**不得动考点覆盖**（被合并卡的学生复习进度自动并入保留卡，不产生孤儿行） |
+
 **Technical**
 - **独立数据层（共享内容 + 每生独立复习态，v1.17.x 重构）**：`knowledge_cards`（id, chapter_id, sub_concept, front, back, source_chunk_id, created_at）——**无 user_id，是共享内容**（每章一组，发布时生成一次）；`knowledge_reviews`（id, card_id, user_id, learn_count, interval_days, next_review_at, status CHECK(new/learning/reviewing/mastered), last_review_at, created_at, UNIQUE(card_id,user_id)）——**每学生独立复习状态**，学生首次打开该章卡组时**懒建**（默认 new）。已废弃 v1.17.0 的「knowledge_cards 带 user_id」旧形（表空可安全重建）。
+- **卡片去重（v2.6.8，CR-2026-0922-DEDUP，KNOW-007）**：`scripts/merge_duplicate_cards.py --plan <plan.json> [--apply]`——按计划改写保留卡 `front/back`、把重复卡的 `knowledge_reviews` 迁移到保留卡（同生两行合一：`learn_count` 取大、`status` 取更进阶、`last_review_at` 取晚、`next_review_at` 取早）、删除重复卡；默认 **dry-run**，`--apply` 前自动 `wal_checkpoint(FULL)` + 备份生产库，并产出含「被删卡全文 + 复习行全文 + 保留卡新旧正文」的回滚报告到 `backups/<日期>-cards/`。**判重流程不再用相似度阈值**：旧 `rebuild_cards.py --dedupe-db`（词元 Jaccard≥0.85 且数字集合相同）会漏「同模板异主体」、且从不跨章比较；现流程 = 候选召回（sub_concept + front 词元/字二元组）→ LLM **分组**（允许一簇拆多组，避免把四家工具合成一张）→ **对抗式复核**（换「找实质差异」立场再审，主体/数字/答案指涉不同即否）→ 信息整合（保留各卡独有事实、禁新增事实）→ 忠实度校验（新增事实/矛盾/漏信息）。复习态合并与 `_review` 懒建兼容：合并后同生仍是一卡一行，`UNIQUE(card_id,user_id)` 不冲突。
 - **状态机复用 `review_sched`**（architecture §5.4）：记住了 → `learn_count++`、`interval_days = next_interval(True, cur)`（1→3→7 封顶）、状态上移（new→learning→reviewing→mastered）、`next_review_at` 按间隔顺延；没记住 → `learn_count++`、`interval_days=1`、状态降回 learning、`next_review_at` 次日重排。同卡片跨会话复习。**先翻转看答案再判 remember，不在 open 期强行判定**。
 - **AI 抽取（v2.5.1 整改，CR-2026-0919-CARDS）**：`backend/ai/knowledge.py` `generate_knowledge_cards(chapter_ids)` + `prompts.py` `KNOWLEDGE_SYSTEM`。**历史缺陷**：旧实现用 `quizzer._retrieve_chunks` 抽 ~18 个切片、每片截断 300 字、总长再砍到 6000 字 → 长资料（W1S2 有 96 片）只能被模型看到约 1/5，卡片必然「只覆盖大框架、遗漏细碎考点」，用户实报「无法支撑做题」。**整改后**：`_chapter_text()` 按资料分层投喂**全章每个切片**（每片 ≤600 字、每份资料保底 1200 字、总预算 `CONTENT_BUDGET=20000`），配合 KNOW-004 的提示词硬性要求 + `MIN_CARDS=40`，并过滤重复/空正面。**批量重做历史章节**走 `scripts/rebuild_cards.py`（逐片组独立调模型，片组按教案小节切分、每片组上限 16 张，按 front 归一化精确继承复习态）。LLM 真返空返空列表、端点提示「生成失败请重试」。
 - **路由（去掉「学生手动生成」主路径）**：`POST /api/knowledge/generate`（保留为**懒加载兜底**：卡片缺失时教师/系统可触发，学生一般不必点）、`GET /api/knowledge/:chapter`（卡组+该生复习态，学生首次打开自动懒建 review 行）、`POST /api/knowledge/:card/review`（body `{remembered: true|false}` → 更新该生 learn_count/interval/status/next_review）、`GET /api/knowledge/overview`（各章该生掌握进度：已掌握/学习中/未学/今日待复习）。学生本人，越权 403；蓝图 `knowledge_bp` 注册进 app.py。
@@ -1187,3 +1190,42 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 前端三件套同步：`app.py version 2.6.7` / `sw.js CACHE v52` / `index.html ?v=2.6.7`。
 
 **共同诚实清单（v2.6.6 / v2.6.7）**：两次均为**纯前端**改动（`css/style.css` + `js/student.js` 局部），未改后端接口、未改数据、未新增依赖；`make lint test smoke` 全绿（v2.6.7 覆盖率 77.14%，冒烟 `version 2.6.7`）；**未 bump 除前端三件套外的任何版本**。本次回写仅补文档，**不产生 CHANGELOG 条目、不 bump `app.py` version**（与 `a4a64a5` v2.6.1 回写先例一致）。
+
+### 12.38 实现状态回写（v2.6.8，2026-09-22，知识卡片重复知识点合并）
+
+- **本次迭代 REQ**：`KNOW-007`（卡片库不得存在重复知识点）——定义见 §3.4.2（Functional + Technical 两处）。变更请求号 `CR-2026-0922-DEDUP`。
+- **状态：已实现。** 触发原因：用户实报「你 review 一下所有的知识卡片，重复的知识点合并一下」。
+
+**根因（三条，均经只读诊断确认）**
+
+| # | 根因 | 证据 | 修法 |
+|---|---|---|---|
+| 1 | **旧判据只比「问句词元」且数字必须相同** | `rebuild_cards.py --dedupe-db` = 词元 Jaccard≥0.85 且 `digits` 集合相同 | 判据作废，改为「主体 + 答案」双看：LLM 分组 + 对抗式复核（详见 §3.4.2 Technical） |
+| 2 | **从不跨章比较** | `dedupe_db()` 内层循环 `if a["chapter_id"] != b["chapter_id"]: continue`；Token / 幻觉 / 流式输出 / 微调 / RAG / CoT / Vibe Coding 在第 1、2 周各有一张 | 候选召回与分组不再按章切分；跨章重复只留**最早出现**的那张，正文取并集 |
+| 3 | **多次增量补卡未回头重跑去重** | `--fill-orphans` / `--fill-gaps` 后同章仍有 5 组满足旧判据（≥0.85 数字相同）却未被合并；最极端「幻觉」一组 9 张 | 每次补卡后应重跑去重；本次一次性清干净并复测 |
+
+**施工中发现（非用户报障）**
+
+1. **「同模板异主体」是最危险的误合并源**：LLM 单轮裁定把 `GitHub Copilot / Cline-Roo Code / Continue.dev / Tabnine`（四家工具、同一问句模板）判成「同一工具同信息，保留最完整卡」→ 会把四张卡合成一张。修法：① 输出格式从「一簇一个保留卡」改为**一簇可拆多组**；② 追加**对抗式复核**（换「主动找实质差异」的立场再审），主体/数字/答案指涉不同即否。该轮共否掉 59 组。
+2. **保留卡可能信息更少**：按「复习进度优先 → 最早章 → 信息最全」选定保留卡后，「大模型为什么此时才兴起」留下的是只答「硬件进步」的卡，而列全 4 个原因的卡被删；AGI、Vibe Coding 同病。修法：给**所有**确认组跑一遍「信息整合」（要求保留每张原卡独有事实、禁新增），再跑**忠实度校验**（`fabricated` / `conflict` / `missing`），138 组中仅 1 组告警（「共 5 项」实际列 4 项）并已人工修正。
+3. **源卡自身缺陷会被忠实继承**：整合卡照抄了「共 5 项：」（只有 4 项）与「（以及第四个工具）」。修法：人工修正为不写数量断言 / 补全 `searchFAQ`（依据同章另一张卡的四工具清单）。
+4. **数字守卫式校验会误报**：「4 个技术原因」整合后出现 `1. 2. 3.` 列表序号，被数字集合守卫判为「新数字」。修法：守卫按「原卡数字并集的超集」判定 + 复核提示词里明确「序号不算新增事实」。
+
+**产出（本地库，不入 git；`.gitignore` 已含 `instance/`）**
+
+| 章节 | 卡片（合并前 → 后） | 涉及合并组 |
+|---|---|---|
+| 第1周·第1节 大模型是什么 | 437 → **398**（-39） | 34 |
+| 第1周·第2节 AI 产品地图 | 625 → **587**（-38） | 32 |
+| 第2周·第1节 AIPM vs 传统 PM | 733 → **678**（-55） | 41 |
+| 第2周·第2节 真实落地案例 | 589 → **552**（-37） | 31 |
+| **合计** | **2384 → 2215**（删 169 张） | **138**（同章 131 / 跨章 7） |
+
+- **落库方式**：`scripts/merge_duplicate_cards.py --plan backups/2026-09-22-cards/plan-*.json --apply`（默认 dry-run；`--apply` 自动 `wal_checkpoint(FULL)` + 备份生产库）。备份 `backups/2026-09-22-cards/aistudy.sqlite3.pre-dedup-20260922-181425.bak`；回滚报告 `dedup-report-20260922T101425Z.json`（含 169 张被删卡全文、169 行复习行全文、138 张保留卡新旧正文）。
+- **数据一致性实测**：卡片 2384 → 2215；`knowledge_reviews` 2390 → 2221（169 行并入保留卡）；**孤儿复习行 0**；空正文卡 0；`status` 分布 learning 66→60 / reviewing 7→6 / mastered 3 / new 2314→2152（合一只取更进阶的一份，无进度丢失）。
+- **复测（对合并后库重跑原判据）**：章内「Jaccard≥0.85 且数字相同」重复组 **5 → 0**、跨章 9 → 1；章内 ≥0.70 由 33 → 13、≥0.60 由 105 → 37。残留 14 组逐组人工确认**全部是不同主体**（通义千问 Max/Flash/Coder、SWE-bench Verified/Pro、Redis/MySQL、Copilot/Autopilot、下限/上限、Command A Reasoning/Vision/Translate…），属「正确地没合并」。
+- **实测证据**：`make lint test smoke` 全绿；`scripts/merge_duplicate_cards.py` py_compile 通过；生产库真实落库前后均 `curl /health` 正常。
+- **版本一致性**：`backend/app.py version == 2.6.8` == `CHANGELOG.md` 最新条目；**前端文件零改动**，`sw.js` CACHE 保持 `v52`、`index.html` 保持 `?v=2.6.7`（遵循 v2.5.1「纯后端 + 脚本改动不 bump 前端」先例）。
+- **范围边界（未越界）**：未改任何后端接口/业务逻辑；未改前端；未新增运行时依赖（去重脚本只用标准库 + `urllib`）；未改 `audit/`、未删任何非重复卡、未动 `source_chunk_id` 绑定（绑定随保留卡保留）。
+- **诚实清单（未做 / 仍需人工）**：① 残留的 ≥0.60 近重复 37 组**未合并**（判据认为不是同一考点，如需更强合并需人工定裁）；② 卡片正文整合由 LLM 产出，虽经「忠实度校验 + 逐组人工复核可疑项」双重把关，**建议 Ray 抽看 10~20 张被改写正文**（报告 JSON 里 `old_back`/`new_back` 可直接对比）；③ 未处理「同知识点但跨章节表述不一致」之外的教研问题（如题库超纲 4~5 题，见 §12.28）。
+
