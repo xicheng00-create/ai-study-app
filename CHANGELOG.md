@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.8.0] - 2026-09-22
+
+### 新增
+- **资料解析支持 HTML / HTM**（`parser.SUPPORTED`）：课件里存在 HTML 导出的演示稿
+  （第 15 章「VibeCoding到AICoding-PPT…html」、第 16 章「DeepSeek-Harness.html」、
+  第 14 章 ChemAI 设计文档与 PPT/slides），此前这类文件上传/入库直接判「不支持的类型」。
+  提取只要可见文本，`script/style/svg/noscript` 整段丢，块级标签转行，`&nbsp;` 等空白归一成普通空格
+  （保证 tutor 的 keyword 检索能命中）。
+- **材料文件发现独立成模块** `scripts/courseware_files.py`（inject / OCR 共用）：支持
+  子目录**递归深度 ≤2**、**程序资源包整棵跳过**（含 `node_modules` / `package.json` / 文件数 > 40
+  ——实测第 15 章 `课件-双击index.html打开/直播课PPT/` 785 文件含 node_modules，整棵跳过）、
+  **字节完全相同的重复副本只入库一份**（优先保留不带 `(1)` 后缀的原名那份）。
+
+### 修复
+- **`ocr_materials.warm_cache` 仍扫 `课件/W*/材料/`** → 课件目录 2026-09-22 改名 `第N章` 后
+  静默 `scanned: 0`（OCR 预热全线失效，图片型课件不会生成 OCR 缓存）。现同时认 `第N章` / `WxSy`，
+  keys 支持 `W3S1` / `第5章` / `5` 三种写法，并改用共用发现模块（含子目录）。
+- **`inject_curriculum.py --rechunk` 会全库重算切片**（换掉 `chunks.id`）→ 既有章节
+  （含已发布）的 `knowledge_cards.source_chunk_id` 全部悬空。现限定「本次注入的章节」，
+  无注入参数时才退化为全库。
+- **材料入库只走原生解析**：图片型 PDF/PPTX 的原生文本极少 → tutor 检索切片看不到课件原内容。
+  现 `insert_material` 改走 `ocr_materials.best_text()`（按原生字数判阈值，缓存落 `材料/_ocr/`）。
+
+### 内容
+- 补 **第 5–16 章**（`W3S1`–`W8S2`）章节定义：标题取自各章 `课件.md` 首行，目标/概念标签/里程碑
+  取自教案「本章学习目标」「知识点讲解」「本章产出」，视频课取自《小白AI课程16章学习路径.md》。
+  注入默认 `status='draft'`（教师端待发布，学生不可见）。
+
+### 说明
+- **前端无改动**：`sw.js` 的 `V`/`CACHE` 与 `index.html` 的 `?v=` 保持 2.7.4，不无谓换 URL。
+
 ## [2.7.5] - 2026-09-22
 
 ### 变更（卡片价值门槛升级为「常态约束」+ 补齐离线生成路径旁路）

@@ -17,6 +17,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from ai import parser  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import courseware_files  # noqa: E402  材料文件发现（递归 + 资源包守卫）
+
 OCR_BIN = Path("/tmp/ocrbin3")
 # 原生文本低于此字数视为「图片型」，需要 OCR 补齐
 NATIVE_MIN_CHARS = 4000
@@ -126,21 +129,33 @@ def best_text(path: Path, allow_ocr: bool = True, quiet: bool = False) -> str:
     return (native.strip() + "\n\n" + ocr).strip()
 
 
-def warm_cache(course_dir: Path, quiet: bool = False, keys: list[str] | None = None) -> dict:
-    """预热：扫描 课件/W*/材料/ 下所有图片型素材，生成 OCR 缓存。
+def _matches(key: str, sdir_name: str) -> bool:
+    """keys 支持三种写法：`W3S1`（周·节）、`第5章`、`5`。"""
+    k = key.strip().upper()
+    if k == sdir_name.upper():
+        return True
+    if k.startswith("第") and k.endswith("章") and k == sdir_name:
+        return True
+    if k.isdigit():  # 章号
+        return sdir_name == f"第{k}章"
+    return False
 
-    keys 形如 ["W2S1","W2S2"]，只处理这些 session 目录；None = 全量。
+
+def warm_cache(course_dir: Path, quiet: bool = False, keys: list[str] | None = None) -> dict:
+    """预热：扫描 课件/第N章/材料/ 下所有图片型素材，生成 OCR 缓存。
+
+    2026-09-22：课件目录 `WxSy` → `第N章`（本次修复此处仍扫 `W*` 导致
+    `scanned: 0` 的静默失效）；材料发现改用 courseware_files（支持子目录）。
+    keys 支持 `W3S1` / `第5章` / `5`；None = 全量。
     """
     stats = {"scanned": 0, "ocr": 0, "skipped": 0, "chars": 0}
-    wanted = {k.upper() for k in keys} if keys else None
-    for sdir in sorted(p for p in course_dir.iterdir() if p.is_dir() and p.name.startswith("W")):
-        if wanted is not None and sdir.name.upper() not in wanted:
+    for sdir in sorted(p for p in course_dir.iterdir() if p.is_dir() and not p.name.startswith(".")):
+        if not (sdir.name.startswith("W") or (sdir.name.startswith("第") and sdir.name.endswith("章"))):
             continue
-        mdir = sdir / "材料"
-        if not mdir.is_dir():
+        if keys and not any(_matches(k, sdir.name) for k in keys):
             continue
-        for f in sorted(mdir.iterdir()):
-            if not f.is_file() or f.suffix.lower().lstrip(".") not in ("pdf", "pptx"):
+        for f in courseware_files.iter_material_files(sdir / "材料"):
+            if f.suffix.lower().lstrip(".") not in ("pdf", "pptx"):
                 continue
             stats["scanned"] += 1
             native = native_text(f)
@@ -157,11 +172,17 @@ def warm_cache(course_dir: Path, quiet: bool = False, keys: list[str] | None = N
 
 
 if __name__ == "__main__":
-    course = Path("/Users/xicheng/WorkBuddy/AI学习小组app/课件")
+    import argparse
+
+    ap = argparse.ArgumentParser(description="图片型 PDF/PPTX → OCR 文本缓存")
+    ap.add_argument("keys", nargs="*", help="章标识（W3S1 / 第5章 / 5），空 = 全量")
+    ap.add_argument("--course", default="/Users/xicheng/WorkBuddy/AI学习小组app/课件")
+    a = ap.parse_args()
+    course = Path(a.course)
     if shutil.which("swiftc") is None:
         print("缺少 swiftc（需 Xcode Command Line Tools）")
         raise SystemExit(1)
-    result = warm_cache(course)
+    result = warm_cache(course, keys=a.keys or None)
     print("\n=== OCR 预热完成 ===")
     for k, v in result.items():
         print(f"  {k}: {v}")

@@ -1,14 +1,18 @@
-"""资料解析：PDF/PPTX/DOCX/MD/TXT → 纯文本 → 分块（RAG 降维替代）。
+"""资料解析：PDF/PPTX/DOCX/MD/TXT/HTML → 纯文本 → 分块（RAG 降维替代）。
 
 不引入向量嵌入；文本分块写 SQLite chunks，供 keyword 检索。
 """
+import contextlib
 import io
+import re
+from html.parser import HTMLParser
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 80
 
-# 支持的文件类型 → 解析函数名
-SUPPORTED = {"pdf", "pptx", "docx", "md", "txt", "markdown"}
+# 支持的文件类型 → 解析函数名（html/htm 2026-09-22 起支持：课件里存在
+# HTML 导出的演示稿，如 第15章「VibeCoding到AICoding-PPT…html」、第16章「DeepSeek-Harness.html」）
+SUPPORTED = {"pdf", "pptx", "docx", "md", "txt", "markdown", "html", "htm"}
 
 
 def extract_text(filename: str, blob: bytes) -> str:
@@ -22,7 +26,10 @@ def extract_text(filename: str, blob: bytes) -> str:
         return _extract_pptx(blob)
     if ext == "docx":
         return _extract_docx(blob)
+    if ext in ("html", "htm"):
+        return _extract_html(blob)
     raise ValueError(f"不支持的文件类型: {ext}")
+
 
 
 def _decode(blob: bytes) -> str:
@@ -64,6 +71,65 @@ def _extract_docx(blob: bytes) -> str:
     doc = Document(io.BytesIO(blob))
     parts = [p.text for p in doc.paragraphs if p.text.strip()]
     return "\n".join(parts)
+
+
+# HTML 解析：只要可见文本。脚本/样式/矢量图整段丢，块级标签当换行
+_SKIP_TAGS = {"script", "style", "noscript", "svg", "iframe", "template", "canvas"}
+_BLOCK_TAGS = {
+    "p", "div", "br", "li", "ul", "ol", "tr", "td", "th", "table", "h1", "h2", "h3",
+    "h4", "h5", "h6", "section", "article", "header", "footer", "blockquote", "pre",
+    "figure", "figcaption", "main", "nav", "aside", "hr", "title",
+}
+
+
+class _HtmlText(HTMLParser):
+    """把 HTML 转成「块级标签分隔的纯文本」（convert_charrefs 已解实体）。"""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in _SKIP_TAGS:
+            self._skip += 1
+        elif tag in _BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_startendtag(self, tag, attrs):
+        if tag in _BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in _SKIP_TAGS:
+            self._skip = max(0, self._skip - 1)
+        elif tag in _BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_data(self, data):
+        if not self._skip:
+            # \xa0（&nbsp;）等 Unicode 空白归一成普通空格，保证 keyword 检索能命中
+            text = re.sub(r"\s+", " ", data.replace("\xa0", " ")).strip()
+            if text:
+                self.parts.append(text + " ")
+
+
+def _extract_html(blob: bytes) -> str:
+    """HTML 演示稿/文档 → 纯文本（slide 文本可被 keyword 检索命中）。"""
+    p = _HtmlText()
+    with contextlib.suppress(Exception):  # 容错：畸形 HTML 不阻断入库
+        p.feed(_decode(blob))
+        p.close()
+    lines, blank = [], False
+    for raw in "".join(p.parts).splitlines():
+        line = raw.strip()
+        if line:
+            lines.append(line)
+            blank = False
+        elif not blank:
+            lines.append("")
+            blank = True
+    return "\n".join(lines).strip()
 
 
 def chunk_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
