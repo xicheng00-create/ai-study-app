@@ -1275,4 +1275,6 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
   - 前端：`student.js::viewPath()` 去周分组 → 「第 N 章 · 章标题」+「预计 X 天学完 · 共 N 张卡」，标题栏「N 章 · 预计 X 天学完」；测评标题 4 处改「测评 · 第 N 章 · 章标题」（同时去掉与之重复的副标题章节名）；`teacher.js` 课程管理 / 视频课改章号，建改表单的两个输入框合并为「章号」。
 - **验证**：`make lint test smoke` 全绿；新增 `tests/test_curriculum.py::test_curriculum_speaks_chapter_no_only`（断言响应无 `weeks`、会话无 `week_no/session_no`、章号升序、章号入参落库正确、旧入参兼容 W3S2 = 第 6 章）。
 - **教训（防再犯）**：**口径类需求必须先做全站口径盘点**——「数据结构字段 + 用户可见文案 + 硬编码字符串」三路 grep 齐查，否则会出现「改完章节表，另一张表还在讲周/节」的半覆盖交付。已同步写入 runbook `ai-study-app-production` 的 Pitfalls。
+- **v2.7.2 微调（同日）**：测评标签统一为「测评 · 第 N 章 · 章标题」（带空格），与章节名写法一致——此前同一屏会出现「测评 · 第2章 · AI 产品地图」与「覆盖：第 2 章 · AI 产品地图」两种格式。
+- **数据文案同步（同日，非代码）**：清掉**用户可见数据**里的课程周/节口径 6 行（`materials.original_name` 4 行「W2S1 课件（教案）.md」→「第 3 章 课件（教案）.md」，映射与该资料实际挂载的章 `order_no` 逐行核对一致；`sessions.milestone` 1 行「本周产出」→「本章产出」；`video_resources.description` 1 行「本节」→「本章」）。改前 `VACUUM INTO` 备份至 `backups/2026-09-22-week-text/`。**剩余**：`knowledge_cards` 正文里仍有 62 处提到「本周 / 本节 / W1S2 / W2S1」等（属**课程原始 8 周课件的叙述**，其中「留到 W7」「W3 起」等指向**从未建章的周次**，机械替换会指向不存在的章号）——**待产品确认后再定**（选项：LLM 逐卡改写成章号口径 / 保留原文 / 只在浏览态折叠显示）。
 

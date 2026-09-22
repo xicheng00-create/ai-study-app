@@ -751,7 +751,7 @@ const Student = {
     const taken = quizzes.filter(q => q.taken);
     const rows = taken.map(q => {
       const s = q.session;
-      const title = s ? `测评 · 第${s.chapter_no}章 · ${s.title}` : (q.title || '测评');
+      const title = s ? `测评 · 第 ${s.chapter_no} 章 · ${s.title}` : (q.title || '测评');
       const label = s ? `覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}` : '未关联';
       return `<div class="row" onclick="Student.selectWrongConsult('${q.id}')"><div>${esc(title)}</div><div class="muted" style="font-size:12px">${esc(label)}</div></div>`;
     }).join('');
@@ -883,7 +883,7 @@ const Student = {
       const badge = q.taken ? `<span class="badge master">已完成 ${q.score}</span>` : `<span class="badge prog">待完成</span>`;
       const ver = q.version > 1 ? `<span class="badge ver">v${q.version}</span> ` : '';
       const s = q.session;
-      const title = s ? `测评 · 第${s.chapter_no}章 · ${s.title}` : (q.title || '测评');
+      const title = s ? `测评 · 第 ${s.chapter_no} 章 · ${s.title}` : (q.title || '测评');
       return `<div class="qcard" onclick="Student.openQuiz('${q.id}')"><div class="ic">${ic('edit')}</div>
         <div class="meta"><div class="t">${ver}${esc(title)}</div><div class="s">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div></div>
         <div style="text-align:right">${badge}</div></div>`;
@@ -916,7 +916,7 @@ const Student = {
       const opts = (item.options || []).map((o, oi) => `<div class="opt" id="opt_${item.id}_${oi}" onclick="Student.pick('${item.id}',${oi})"><span class="dot"></span>${esc(o)}</div>`).join('');
       return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}<b class="pts">${item.points} 分</b></span></div>${opts}</div>`;
     }).join('');
-    const ttl = (q.session ? `测评 · 第${q.session.chapter_no}章 · ${q.session.title}` : (q.title || '测评'));
+    const ttl = (q.session ? `测评 · 第 ${q.session.chapter_no} 章 · ${q.session.title}` : (q.title || '测评'));
     return appbar('测评', esc(ttl)) +
     `<div class="content"><div class="card sm mb-12"><div class="muted">覆盖章节：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(c => `<span class="pill" style="margin-right:6px">${esc(c)}</span>`).join('')}</div></div>
       ${qs}<button class="btn" onclick="Student.submit()">提交并批改</button>
@@ -1261,7 +1261,7 @@ const Student = {
         Object.keys(quizErr).forEach(function (qid) {
           const q = quizMap[qid] || {};
           const sess = q.session;
-          const label = sess ? `测评 · 第${sess.chapter_no}章 · ${sess.title}` : (q.title || '测评');
+          const label = sess ? `测评 · 第 ${sess.chapter_no} 章 · ${sess.title}` : (q.title || '测评');
           const gkey = `${w.chapter_id}:${qid}`;
           const gOpen = !!this.weakGroupOpen[gkey];
           const errs = quizErr[qid].map(function (e) { return fmtWrongCard({ content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept }); }).join('');

@@ -185,7 +185,7 @@ def publish_quiz(quiz_id):
     from services.notify import active_student_ids, notify_users
 
     sess = _quiz_session(con, _parse_ids(row["chapter_ids"]))
-    body = (f"测评 · 第{sess['chapter_no']}章 · {sess['title']}"
+    body = (f"测评 · 第 {sess['chapter_no']} 章 · {sess['title']}"
             if sess else (row["title"] or "新测评"))
     notify_users(
         con, active_student_ids(con), "quiz_published",
