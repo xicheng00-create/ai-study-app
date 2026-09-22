@@ -9,6 +9,7 @@ from data import models
 from data.db import get_db
 
 from ai import agents
+from ai.cardtext import normalize_label
 from ai.prompts import KNOWLEDGE_SYSTEM
 
 # 送模型的课件原文预算（字符）
@@ -60,8 +61,9 @@ def generate_knowledge_cards(chapter_ids: list[str]) -> list[dict]:
         back = str(card.get("back") or "").strip()
         if front and back and front not in seen:
             seen.add(front)
+            # 分组标签统一过归一（口径见 ai/cardtext.py）：杜绝「MCP 协议 / MCP协议」式分裂
             out.append({"front": front, "back": back,
-                        "sub_concept": str(card.get("sub_concept") or "").strip()[:40]})
+                        "sub_concept": normalize_label(card.get("sub_concept"))})
     return out
 
 

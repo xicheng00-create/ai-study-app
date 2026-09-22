@@ -27,6 +27,9 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+from ai.cardtext import normalize_label  # noqa: E402  分组标签归一（唯一口径）
+
 BASE = Path("/Users/xicheng/WorkBuddy/AI学习小组app")
 DB = BASE / "instance" / "aistudy.sqlite3"
 OUTDIR = BASE / "backups" / "cards-rebuild"
@@ -291,7 +294,7 @@ def gen_for_piece(job: tuple[dict, str, str]) -> tuple[dict, list[dict], str | N
                                            tags=tags, n=n, relevance_rule=rule))
         out = []
         for c in cards[:PER_PIECE_CAP]:
-            c["sub_concept"] = str(c.get("sub_concept") or "").strip()[:40] or fallback_sub
+            c["sub_concept"] = normalize_label(c.get("sub_concept")) or fallback_sub
             out.append(c)
         return piece, out, None
     except Exception as e:  # noqa: BLE001
@@ -334,7 +337,7 @@ def dedupe(cards: list[dict]) -> list[dict]:
             continue
         seen.add(key)
         kept.append({"front": front, "back": back, "_toks": toks,
-                     "sub_concept": str(c.get("sub_concept") or "").strip()[:40],
+                     "sub_concept": normalize_label(c.get("sub_concept")),
                      "source_chunk_id": c.get("source_chunk_id")})
     for c in kept:
         c.pop("_toks", None)
@@ -537,7 +540,7 @@ def fill_gaps(con, report: Path) -> dict:
             con.execute(
                 "INSERT INTO knowledge_cards (id, chapter_id, sub_concept, front, back, source_chunk_id, created_at)"
                 " VALUES (?,?,?,?,?,?,datetime('now'))",
-                (new_id, cid, str(c.get("sub_concept") or "考点补漏")[:40], front, back, None))
+                (new_id, cid, normalize_label(c.get("sub_concept") or "考点补漏"), front, back, None))
             new_ids.append(new_id)
             existing.add(norm_front(front))
             added += 1
@@ -669,7 +672,7 @@ def gen_for_orphan(job: tuple) -> tuple:
                                             tags=tags, n=n, relevance_rule=rule))
         out = []
         for c in cards[:ORPHAN_CAP]:
-            c["sub_concept"] = str(c.get("sub_concept") or "").strip()[:40] or fallback_sub
+            c["sub_concept"] = normalize_label(c.get("sub_concept")) or fallback_sub
             out.append(c)
         return row, out, None
     except Exception as e:  # noqa: BLE001

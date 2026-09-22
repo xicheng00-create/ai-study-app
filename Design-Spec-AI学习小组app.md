@@ -1347,3 +1347,20 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
   1. **目录/字段改名后的「跟随改动」清单必须全仓 grep 旧名确认 0 命中**：本次改名的只改了 `inject_curriculum.py`，`ocr_materials.warm_cache` 仍扫 `课件/W*` → **静默**返回 `scanned: 0`（不报错、不崩、只是永不生效）。**改名类重构的验收标准 = 旧名全仓命中 0，而不是「主路径跑通了」。**
   2. **「子目录」是隐形漏损源**：发现逻辑若是「非递归」或「只判直接子项」，会有静默漏料（本项目第 14 章全部资料在子目录里 = 零入库；第 15 章的 npm 包目录若递归又会吃进 785 个资源文件）。**递归 + 资源包守卫必须成对出现，且两向都要有测试**（该收的收进来、该跳的跳过去）。
   3. **重复副本（`(1)`、`(1) (2)`）按字节哈希去重，且保留「原名那份」**：入库顺序若按文件名字典序，`xxx (1).pdf` 会排在 `xxx.pdf` 之前 → 去重会留下带后缀的副本，教师端看起来像「文件丢了」。
+
+### 12.45 实现状态回写（v2.8.1，2026-09-22，分组标签唯一写法：sub_concept 归一）
+
+- **本次迭代 REQ**：`KNOW-011`（新增：知识卡片分组标签 `sub_concept` 在同一章节内不得存在「仅空白差异」的多种写法）。变更请求号 `CR-2026-0922-SUBCONCEPT-NORMALIZE`。
+- **问题（全库实测）**：`knowledge_cards.sub_concept` 由大模型自由生成，同一知识点被写成「MCP 协议」与「MCP协议」→ 教师端分组头（`/api/teacher/knowledge/<chapter_id>` 按 `sub_concept` 分组）出现同义重复组；学生端卡片副标题与翻转正面（`student.js` 渲染 `c.sub_concept`）出现两种写法。共 **47 个同义组 / 666 张卡**（已发布章 356 张 + draft 章 310 张）。
+- **改动清单（4 处 + 12 测试）**：
+  1. 新建 `backend/ai/cardtext.py`：`normalize_label()`（**唯一实现**，口径与覆盖路径写在该文件文档字符串）+ `group_key()`（统计同义组用）。
+  2. `backend/ai/knowledge.py`：在线生成路径 `generate_knowledge_cards` 入库前过归一。
+  3. `scripts/rebuild_cards.py`：离线三条插入路径（正片 / 补卡 / 孤儿补卡）入库前过归一。
+  4. 新建 `scripts/normalize_subconcepts.py`（存量收敛：默认 dry-run，`--apply` 先做 sqlite 快照备份再写库，幂等）+ `tests/test_cardtext.py`（12 例）。
+- **口径条款（对后续一律适用）**：
+  1. **触发点**：任何写入 `knowledge_cards.sub_concept` 的路径，必须先过 `normalize_label()`（在线 `ai/knowledge.py`；离线 `scripts/rebuild_cards.py` 全部插入路径）。新增生成路径未接归一 = 口径旁路。
+  2. **规则**：去首尾空白 → 内部连续空白折叠为单个半角空格 → **中日韩字符与拉丁字母/数字之间补一个半角空格**（含 `×` 两侧）；**不删除已有空格**（`W6/W8`、`MCP Server 模块` 必须原样）。函数必须幂等。
+  3. **覆盖边界**：`card_topics.topic`（学生端分组头）**不在本口径内** —— 它由 `scripts/group_cards.py` 每章一次性生成、章内天然同构无分裂；纳入只会无收益地改写线上 413 个学生可见主题名（实测）。将来若发现 topic 分裂，再把该列并入 `normalize_subconcepts.TARGETS`。
+  4. **违规处置**：出现第二套写法逻辑即按「口径旁路」缺陷处理（与 §12.44 条款 2「发现入口只许一个」同源）；`scripts/normalize_subconcepts.py` 可随时收敛库内残留并打印归一前后组数，复查标准 = **残留同义组 0**。
+- **验证**：`make lint test smoke` 全绿（覆盖率 77.92%，+12 例）；存量收敛 666 行后复查残留同义组 **0**；教师端第 2 章 161 组 0 重复组；学生端 401 张卡标签 0 混写残留；本地 5003 与公网 health 均 2.8.1。
+- **教训**：**「模型自由输出」+「按它分组展示」= 必然分裂** —— 凡由生成模型产生、又被当作分组/关联键的文本，都必须在入库时归一，不能指望模型自洽（本例同一批卡片里同一知识点出现两种写法）。
