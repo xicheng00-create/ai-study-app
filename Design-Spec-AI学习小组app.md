@@ -635,7 +635,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 > - **练习计入掌握度 M（任务书定义 A，推翻旧 F3）**：`compute_mastery()` 额外聚合该章自主练习 `practice_questions`（answered_at 非空），与测评同一条加权公式（w=0.5^间隔周数、按章聚合、earned=score、possible=points），并计入「已掌握≥2 次」作答次数；仅当该章既无测评 attempt 也无练习作答时才返回 m=None（✅）。练习错题进薄弱点/巩固练习（PROG-005/006）保留。
 > - **移除难度标注（全 App）**：`practice_sessions.difficulty` 字段保留但前端不再展示 hard/难度；清理 student.js 练习入口/卡片/生成/批改页全部难度文案与 hard badge（✅）。
 > - **班级功能（REQ-CLASS-001~006）**：新建 `class_bp`（`/api/class/leaderboard`）返回 6 类排行榜；周报 tab 改为「班级」（学生）/「班级活动」（教师），`viewReport` 整体替换为 `viewClass()`/`viewClassActivity()`（✅）。`Hermestest` 绝不出现。
-> - **班级活动「测评分数」下拉标题规范（v1.13.6，REQ-CLASS-004 强化）**：leaderboard 返回的 `quiz_list` 补 `label`（通过 `chapter_ids` 反查已发布 session → 「测评 · 第X周 第Y节」），前端 `quizChips` 改用 `q.label || q.title`——避免已发布但未改标题的测评在班级活动下拉显示难看的默认值「草稿 · X 章」（✅）。
+> - **班级活动「测评分数」下拉标题规范（v1.13.6，REQ-CLASS-004 强化）**：leaderboard 返回的 `quiz_list` 补 `label`（通过 `chapter_ids` 反查已发布 session → 「测评 · 第 N 章 · 章标题」），前端 `quizChips` 改用 `q.label || q.title`——避免已发布但未改标题的测评在班级活动下拉显示难看的默认值「草稿 · X 章」（✅）。**v2.7.1 起**：该 label 由 `api/class_bp.py::_quiz_session_label()` 单点产出章号口径（不再出现「第X周 第Y节」，见 §12.41）；`api/quizzes.py::_quiz_session()` 同样只回 `chapter_no`，前端测评标题不再自己拼周/节。
 > - **AI 建议改每日（RPT-003）**：新增 `daily_advice` 表 + `GET /api/progress/advice` + 每日生成脚本 `backend/scripts/daily_advice_gen.py` + launchd plist（✅）。
 > - **周报迁移（RPT-001/002）**：本周概况/成绩分析迁移至进度页（`GET /api/progress/weekly-stats`），进度页结构为「四态 → AI 建议 → 本周概况/成绩 → 各章节 → 薄弱点 → 巩固闭环」（✅）。
 > - **对话输入框固定**：`.composer` 改 `position:fixed;bottom:78px` 钉在 tabbar 之上，`visualViewport` 脚本写 `--kb` 补偿键盘高度（✅）。
@@ -1264,4 +1264,15 @@ frontend/ index.html · manifest.webmanifest · sw.js · js/{api,auth,learn,quiz
 - **门禁**：`make lint test smoke` 全绿（含新增 `tests/test_card_grouping.py` 4 条）。**版本一致性**：`backend/app.py version == 2.7.0` == CHANGELOG 头；前端三件套同步 bump（`sw.js CACHE v52→v53`、`?v=2.6.7→2.7.0`）。
 - **LLM 用量**：分组两轮（含首轮废弃运行）逐次记账 `~/.hermes/app-usage/aistudy.jsonl`，`feature` 前缀 `kc-topic*`（taxonomy / assign / split / split-assign / merge）。
 - **诚实清单（未做 / 仍需人工）**：① 主题名由 LLM 生成，**未逐组人工核对全部 87 组**（已抽样看章 4 与各章首尾组）；已记录一处**语义相邻**：章 3 同时存在「AIPM角色与能力转型」与「AIPM角色与思维转变」两个近义组名（组内卡片不重复，仅命名口径相近），如需可下一轮合并；② 分组为**派生数据**，卡片增删后需重跑 `scripts/group_cards.py --apply`（未接入自动任务，卡片变更后 `topic` 可能指向已删卡 → `LEFT JOIN` 自然丢弃，不会报错）；③ 学习天数按「每天 30 张新卡」静态折算，未计入复习负担（间隔复习会占用每日额度）。
+
+### 12.41 实现状态回写（v2.7.1，2026-09-22，修「学习路径页仍在提周/节」）
+
+- **问题（用户实报「全局都改了？？？」+ iPhone 截图）**：v2.7.0 的 KNOW-009 只解耦了 `chapters`（章节名 / 知识卡片 / 测评下拉标签），**「学习路径」页（学生「路径」tab）不在其中**——它读 `/api/curriculum`，而该接口按 `sessions` 表的 `week_no/session_no` 分组返回 `weeks→sessions`，页面副标题还写着「8 周 · 周/节进度」。同类残留还有：学生测评标题 4 处（前端用 `s.week_no/s.session_no` 自己拼串）、教师端课程管理列表、视频课列表、教师端建/改表单（周次 + 节次两个输入框）、发布通知文案（「第X周 第Y节 · 标题」）。**根因：全站存在两套序号体系**（`chapters.order_no` 与 `sessions.(week_no, session_no)`），v2.7.0 只统一了前者。
+- **处理（合为一套章号）**：
+  - 换算单点：`data/models.py::chapter_no(week, session)` / `week_session(n)`（章号 = `(week-1)*2 + session_no`），`api/curriculum.py`、`api/quizzes.py` 共用，**禁止各处重写公式**。
+  - 对外口径：`GET /api/curriculum` → `{chapters: […], daily_cards}`（章号升序扁平列表，每章含 `card_count` / `days`）；`GET /api/curriculum/videos` → `chapter_no`（未绑定为 `null`）；`quizzes._quiz_session()` → `{chapter_no, title}`。**库表列不动**（`sessions` / `video_resources` 的周/节是发布状态机与视频绑定键，不做破坏性迁移）。
+  - 写入兼容：`POST/PUT /api/curriculum/sessions|videos` 优先读 `chapter_no`，缺省回落 `week_no/session_no`（旧脚本、旧测试零改动；视频 `chapter_no: null` = 显式解绑）。
+  - 前端：`student.js::viewPath()` 去周分组 → 「第 N 章 · 章标题」+「预计 X 天学完 · 共 N 张卡」，标题栏「N 章 · 预计 X 天学完」；测评标题 4 处改「测评 · 第 N 章 · 章标题」（同时去掉与之重复的副标题章节名）；`teacher.js` 课程管理 / 视频课改章号，建改表单的两个输入框合并为「章号」。
+- **验证**：`make lint test smoke` 全绿；新增 `tests/test_curriculum.py::test_curriculum_speaks_chapter_no_only`（断言响应无 `weeks`、会话无 `week_no/session_no`、章号升序、章号入参落库正确、旧入参兼容 W3S2 = 第 6 章）。
+- **教训（防再犯）**：**口径类需求必须先做全站口径盘点**——「数据结构字段 + 用户可见文案 + 硬编码字符串」三路 grep 齐查，否则会出现「改完章节表，另一张表还在讲周/节」的半覆盖交付。已同步写入 runbook `ai-study-app-production` 的 Pitfalls。
 

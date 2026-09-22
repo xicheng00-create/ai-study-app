@@ -4,9 +4,11 @@
 视频/路径为共享资源，读操作仅 @jwt_required（不经 @user_scope）。
 """
 import json
+import math
 
 from ai import knowledge
 from auth.jwt_utils import jwt_required, role_required
+from config import PLAN_CARDS_PER_DAY
 from data import models
 from data.db import get_db
 from flask import Blueprint, g, request
@@ -14,6 +16,18 @@ from middleware.errors import e_input, e_not_found, ok
 from middleware.input_validation import check_len, require_fields
 
 curriculum_bp = Blueprint("curriculum_bp", __name__, url_prefix="/api/curriculum")
+
+
+# 章号 ⇄ 周/节 换算复用 data.models 的唯一定义（KNOW-009，v2.7.1）：勿在本模块重写公式
+_chapter_no = models.chapter_no
+_week_session = models.week_session
+
+
+def _pick_ws(data, week_no, session_no):
+    """会话/视频定位入参解析：优先 chapter_no（新口径），兼容 week_no+session_no（旧入参）。"""
+    if data.get("chapter_no") not in (None, ""):
+        return _week_session(_int_field(data, "chapter_no", 1))
+    return week_no, session_no
 
 
 def _parse_list(value):
@@ -43,10 +57,10 @@ def _int_field(data, key, default=0):
 
 
 def _session_row(row):
+    """会话概览：对外只给 chapter_no（章号），week_no/session_no 不再外显（KNOW-009）。"""
     return {
         "id": row["id"],
-        "week_no": row["week_no"],
-        "session_no": row["session_no"],
+        "chapter_no": _chapter_no(row["week_no"], row["session_no"]),
         "title": row["title"],
         "goal": row["goal"],
         "chapter_ids": _json_list(row["chapter_ids"]),
@@ -58,14 +72,14 @@ def _session_row(row):
 
 
 def _video_row(row):
+    # 视频按「章号」对外：未绑定周次的视频 chapter_no 为 None（前端显示「未绑定章节」）
     return {
         "id": row["id"],
         "title": row["title"],
         "url": row["url"],
         "platform": row["platform"],
         "description": row["description"],
-        "week_no": row["week_no"],
-        "session_no": row["session_no"],
+        "chapter_no": _chapter_no(row["week_no"], row["session_no"]) if row["week_no"] else None,
         "concept_tags": _json_list(row["concept_tags"]),
         "order_no": row["order_no"],
         "status": row["status"],
@@ -98,17 +112,27 @@ def _sync_content_status(con, session, new_status):
 
 
 def _session_detail(con, row):
-    """session 概览：关联章节 + 资料 + 视频列表。"""
+    """会话概览：关联章节 + 资料 + 视频列表。
+
+    v2.7.1（KNOW-009）：章节带 `card_count`，会话汇总 `card_count`/`days`（= ceil(卡数/每日张数)），
+    供前端显示「预计 X 天学完」——学习节奏只由卡片量决定，不再提「周/节」。
+    """
     detail = _session_row(row)
     chapter_ids = detail["chapter_ids"]
     chapters, materials, videos = [], [], []
     if chapter_ids:
         ph = ",".join("?" * len(chapter_ids))
         ch_rows = con.execute(
-            f"SELECT id, folder, name, order_no FROM chapters WHERE id IN ({ph}) ORDER BY order_no, name",
+            f"SELECT c.id, c.folder, c.name, c.order_no,"
+            f" (SELECT COUNT(*) FROM knowledge_cards kc WHERE kc.chapter_id = c.id) AS card_count"
+            f" FROM chapters c WHERE c.id IN ({ph}) ORDER BY c.order_no, c.name",
             (*chapter_ids,),
         ).fetchall()
-        chapters = [{"id": r["id"], "name": r["name"], "folder": r["folder"]} for r in ch_rows]
+        chapters = [
+            {"id": r["id"], "name": r["name"], "folder": r["folder"],
+             "card_count": r["card_count"] or 0}
+            for r in ch_rows
+        ]
         mat_rows = con.execute(
             f"SELECT id, filename, original_name, file_type FROM materials"
             f" WHERE chapter_id IN ({ph}) AND is_deleted=0 ORDER BY created_at",
@@ -121,6 +145,8 @@ def _session_detail(con, row):
         (row["week_no"], row["session_no"]),
     ).fetchall()
     videos = [_video_row(r) for r in v_rows]
+    detail["card_count"] = sum(c["card_count"] for c in chapters)
+    detail["days"] = math.ceil(detail["card_count"] / PLAN_CARDS_PER_DAY) if detail["card_count"] else 0
     detail["chapters"] = chapters
     detail["materials"] = materials
     detail["videos"] = videos
@@ -130,7 +156,7 @@ def _session_detail(con, row):
 @curriculum_bp.route("", methods=["GET"])
 @jwt_required
 def overview():
-    """学习路径总览：weeks→sessions。
+    """学习路径总览：**章号升序的扁平章节列表**（v2.7.1 起不再按「第X周」分组）。
 
     学生仅返回 status='published'；教师返回全部（含 draft，供课程管理）。
     """
@@ -143,11 +169,9 @@ def overview():
         rows = con.execute(
             "SELECT * FROM sessions WHERE status='published' ORDER BY week_no, session_no, order_no"
         ).fetchall()
-    weeks = {}
-    for r in rows:
-        detail = _session_detail(con, r)
-        weeks.setdefault(r["week_no"], []).append(detail)
-    return ok({"weeks": [{"week_no": w, "sessions": weeks[w]} for w in sorted(weeks)]})
+    chapters = [_session_detail(con, r) for r in rows]
+    chapters.sort(key=lambda s: s["chapter_no"])
+    return ok({"chapters": chapters, "daily_cards": PLAN_CARDS_PER_DAY})
 
 
 @curriculum_bp.route("/sessions", methods=["POST"])
@@ -159,8 +183,10 @@ def create_session():
     bad = require_fields(data, ("title",))
     if bad:
         return bad
-    week_no = _int_field(data, "week_no")
-    session_no = _int_field(data, "session_no")
+    # v2.7.1（KNOW-009）：优先 chapter_no（章号），兼容旧 week_no/session_no 入参
+    week_no, session_no = _pick_ws(
+        data, _int_field(data, "week_no"), _int_field(data, "session_no")
+    )
     title = data["title"].strip()
     goal = (data.get("goal") or "").strip()
     milestone = (data.get("milestone") or "").strip()
@@ -196,8 +222,12 @@ def update_session(session_id):
     if row is None:
         return e_not_found("Session 不存在")
     data = request.get_json(silent=True) or {}
-    week_no = _int_field(data, "week_no", row["week_no"])
-    session_no = _int_field(data, "session_no", row["session_no"])
+    # v2.7.1（KNOW-009）：优先 chapter_no，兼容旧 week_no/session_no（未传则沿用原值）
+    week_no, session_no = _pick_ws(
+        data,
+        _int_field(data, "week_no", row["week_no"]),
+        _int_field(data, "session_no", row["session_no"]),
+    )
     title = (data.get("title") or row["title"]).strip()
     goal = (data.get("goal") if data.get("goal") is not None else row["goal"]).strip()
     milestone = (data.get("milestone") if data.get("milestone") is not None else row["milestone"] or "").strip()
@@ -257,7 +287,8 @@ def publish_session(session_id):
 
     notify_users(
         con, active_student_ids(con), "path_published",
-        "老师发布了新学习路径", f"第{row['week_no']}周 第{row['session_no']}节 · {row['title']}",
+        "老师发布了新学习路径",
+        f"第{_chapter_no(row['week_no'], row['session_no'])}章 · {row['title']}",
         image="", ref_kind="session", ref_id=session_id,
     )
     return ok({"id": session_id, "status": "published"})
@@ -313,10 +344,16 @@ def create_video():
         err = check_len(field, val)
         if err:
             return err
-    week_no = data.get("week_no")
-    session_no = data.get("session_no")
-    week_no = int(week_no) if week_no not in (None, "") else None
-    session_no = int(session_no) if session_no not in (None, "") else None
+    # v2.7.1（KNOW-009）：支持按章号绑定（chapter_no 空值 = 未绑定章节）；兼容旧 week_no/session_no
+    if data.get("chapter_no") not in (None, ""):
+        week_no, session_no = _week_session(_int_field(data, "chapter_no", 1))
+    elif "chapter_no" in data:
+        week_no, session_no = None, None
+    else:
+        week_no = data.get("week_no")
+        session_no = data.get("session_no")
+        week_no = int(week_no) if week_no not in (None, "") else None
+        session_no = int(session_no) if session_no not in (None, "") else None
     order_no = _int_field(data, "order_no")
 
     con = get_db()
@@ -359,10 +396,16 @@ def update_video(video_id):
         err = check_len(field, val)
         if err:
             return err
-    week_no = data.get("week_no", row["week_no"])
-    session_no = data.get("session_no", row["session_no"])
-    week_no = int(week_no) if week_no not in (None, "") else None
-    session_no = int(session_no) if session_no not in (None, "") else None
+    # v2.7.1（KNOW-009）：支持按章号改绑（chapter_no 空值 = 解绑）；兼容旧 week_no/session_no
+    if data.get("chapter_no") not in (None, ""):
+        week_no, session_no = _week_session(_int_field(data, "chapter_no", 1))
+    elif "chapter_no" in data:
+        week_no, session_no = None, None
+    else:
+        week_no = data.get("week_no", row["week_no"])
+        session_no = data.get("session_no", row["session_no"])
+        week_no = int(week_no) if week_no not in (None, "") else None
+        session_no = int(session_no) if session_no not in (None, "") else None
     order_no = _int_field(data, "order_no", row["order_no"])
     con.execute(
         "UPDATE video_resources SET title=?, url=?, platform=?, description=?, week_no=?,"

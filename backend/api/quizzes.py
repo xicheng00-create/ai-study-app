@@ -35,7 +35,10 @@ def _parse_ids(raw: str) -> list[str]:
     except (json.JSONDecodeError, TypeError):
         return []
 def _quiz_session(con, chapter_ids: list[str]):
-    """返回首个关联章节命中的已发布周/节。"""
+    """返回首个关联章节命中的已发布学习路径节点（**章号口径**，KNOW-009）。
+
+    对外只给 `chapter_no`（= models.chapter_no）：前端一律显示「第 N 章」，不再出现「第X周 第Y节」。
+    """
     rows = con.execute(
         "SELECT week_no, session_no, title, chapter_ids FROM sessions"
         " WHERE status='published' ORDER BY week_no, session_no, order_no"
@@ -43,7 +46,7 @@ def _quiz_session(con, chapter_ids: list[str]):
     wanted = set(chapter_ids)
     for row in rows:
         if wanted.intersection(_parse_ids(row["chapter_ids"])):
-            return {"week_no": row["week_no"], "session_no": row["session_no"],
+            return {"chapter_no": models.chapter_no(row["week_no"], row["session_no"]),
                     "title": row["title"]}
     return None
 def _wrong_dict(row) -> dict:
@@ -182,7 +185,7 @@ def publish_quiz(quiz_id):
     from services.notify import active_student_ids, notify_users
 
     sess = _quiz_session(con, _parse_ids(row["chapter_ids"]))
-    body = (f"测评 · 第{sess['week_no']}周 第{sess['session_no']}节"
+    body = (f"测评 · 第{sess['chapter_no']}章 · {sess['title']}"
             if sess else (row["title"] or "新测评"))
     notify_users(
         con, active_student_ids(con), "quiz_published",

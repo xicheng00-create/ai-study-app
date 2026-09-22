@@ -104,7 +104,7 @@ def _quiz_session_label(con, chapter_ids):
     if not chids:
         return None
     rows = con.execute(
-        "SELECT week_no, session_no, title, chapter_ids FROM sessions"
+        "SELECT title, chapter_ids FROM sessions"
         " WHERE status='published' ORDER BY week_no, session_no, order_no"
     ).fetchall()
     for row in rows:

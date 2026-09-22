@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.7.1] - 2026-09-22
+
+### 修复
+- **学习路径页仍然显示「第X周 · 第Y节」（KNOW-009 只覆盖了一半；用户实报「全局都改了？？？」）**：v2.7.0 只解耦了 `chapters`（章节名/知识卡片），而「学习路径」页走的是**另一套序号体系**——`sessions` 表自带 `week_no/session_no`，页面副标题还硬编码「8 周 · 周/节进度」；测评标题（4 处）、教师端课程管理、视频课、发布通知也各自拼「第X周 第Y节」。本版把两套序号**合并成一套章号**：
+  - 章号 ⇄ 周/节 换算**单点**在 `data.models.chapter_no()/week_session()`（章号 = `(week-1)*2 + session_no`，与 `chapters.order_no` 同口径，与种子脚本口径一致）；`sessions` / `video_resources` 库内仍按周/节存储（发布状态机与视频绑定依赖它），但**一律不再对外暴露**。
+  - `GET /api/curriculum` 由 `{weeks:[{week_no, sessions:[…]}]}` 改为 **`{chapters:[…], daily_cards}` 章号升序扁平列表**，每章带 `card_count` / `days`（与 `GET /api/chapters` 同口径）；`GET /api/curriculum/videos` 的 `week_no/session_no` 改为 `chapter_no`（未绑定为 `null`）。
+  - 写入接口（建/改章节、建/改视频课）**新入参 `chapter_no`**；旧 `week_no/session_no` 保留兼容（旧脚本与既有测试不受影响）。
+  - 前端：学习路径页去掉「第 N 周」分组头 → 「**第 N 章** · 章标题」+「预计 X 天学完 · 共 N 张卡」，标题栏改「N 章 · 预计 X 天学完」；测评标题 4 处、教师端课程管理/视频课/发布通知统一「第 N 章 · 章标题」；教师端建/改表单的「周次 + 节次」两个输入框**合并为一个「章号」**。
+  - 前端与后端**已无任何面向用户输出的「第X周 / 第Y节」**（剩余命中仅为注释、内部 SQL 与 `ai/video_link.py` 召回逻辑）。
+- **门禁**：`make lint test smoke` 全绿（新增 `tests/test_curriculum.py::test_curriculum_speaks_chapter_no_only`，并修正旧的 `weeks` 断言）。**版本一致性**：`backend/app.py version == 2.7.1` == CHANGELOG 头；前端三件套同步 bump（`sw.js CACHE v53→v54`、`index.html ?v=2.7.0→2.7.1`）。
+- **诚实清单（未做 / 仍需人工）**：① `sessions.week_no` / `session_no` **列仍保留在库中**（未做破坏性迁移——它是 `video_resources` 绑定键与发布状态机的一部分），只是不再外显；② 「周」字仍出现在**进度页「本周概况」**与复习衰减说明（指的是自然周/复习间隔，不是课程周，故未改）；③ 旧 `week_no/session_no` 入参未加弃用告警，仅静默兼容。
+
 ## [2.7.0] - 2026-09-22
 
 ### 新增

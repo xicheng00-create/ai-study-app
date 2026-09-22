@@ -45,13 +45,13 @@ def test_student_overview_only_published(client, teacher_headers):
     h = {"Authorization": f"Bearer {alice}"}
     # 未发布：学生总览为空
     resp = client.get("/api/curriculum", headers=h)
-    assert resp.get_json()["data"]["weeks"] == []
+    assert resp.get_json()["data"]["chapters"] == []
     # 发布后可见
     client.post(f"/api/curriculum/sessions/{sid}/publish", headers=teacher_headers)
     resp = client.get("/api/curriculum", headers=h)
-    weeks = resp.get_json()["data"]["weeks"]
-    assert len(weeks) == 1
-    assert weeks[0]["sessions"][0]["id"] == sid
+    chapters = resp.get_json()["data"]["chapters"]
+    assert len(chapters) == 1
+    assert chapters[0]["id"] == sid
 
 
 def test_publish_syncs_content_status(client, teacher_headers):
@@ -93,3 +93,45 @@ def test_video_crud_and_visibility(client, teacher_headers):
     # 教师可改/删
     assert client.put(f"/api/curriculum/videos/{vid}", json={"title": "改"}, headers=teacher_headers).status_code == 200
     assert client.delete(f"/api/curriculum/videos/{vid}", headers=teacher_headers).status_code == 200
+
+
+def test_curriculum_speaks_chapter_no_only(client, teacher_headers):
+    """KNOW-009（v2.7.1）：学习路径/视频课对外**只有章号**，不再暴露 week_no/session_no。
+
+    章号 ⇄ 周/节 换算是 `data.models.chapter_no/week_session` 的唯一定义。
+    """
+    c3 = _chapter(client, teacher_headers, name="第 3 章 · AIPM vs 传统 PM")
+    c4 = _chapter(client, teacher_headers, name="第 4 章 · 真实落地案例")
+    # 新入参：章号。第 3 章 → 库内 W2S1，第 4 章 → W2S2
+    s3 = client.post("/api/curriculum/sessions", json={
+        "chapter_no": 3, "title": "AIPM vs 传统 PM", "chapter_ids": [c3],
+    }, headers=teacher_headers).get_json()["data"]["id"]
+    s4 = client.post("/api/curriculum/sessions", json={
+        "chapter_no": 4, "title": "真实落地案例", "chapter_ids": [c4],
+    }, headers=teacher_headers).get_json()["data"]["id"]
+
+    data = client.get("/api/curriculum", headers=teacher_headers).get_json()["data"]
+    assert "weeks" not in data                                  # 旧「第X周」分组口径已下线
+    assert {c["chapter_no"]: c["id"] for c in data["chapters"]} == {3: s3, 4: s4}
+    first = data["chapters"][0]
+    assert "week_no" not in first and "session_no" not in first  # 周/节不再外显
+    assert first["card_count"] == 0 and first["days"] == 0       # 无卡片 → 0 天
+
+    # 视频按章号绑定（第 4 章 → W2S2），列表同样只回章号
+    vid = client.post("/api/curriculum/videos", json={
+        "title": "案例精讲", "url": "https://example.com/v", "chapter_no": 4,
+    }, headers=teacher_headers).get_json()["data"]["id"]
+    vids = client.get("/api/curriculum/videos", headers=teacher_headers).get_json()["data"]["videos"]
+    row = [v for v in vids if v["id"] == vid][0]
+    assert row["chapter_no"] == 4 and "week_no" not in row
+
+    # 旧入参（week_no/session_no）仍兼容：W3S2 = 第 6 章
+    legacy = client.post("/api/curriculum/sessions", json={
+        "week_no": 3, "session_no": 2, "title": "旧口径入参", "chapter_ids": [],
+    }, headers=teacher_headers)
+    assert legacy.status_code == 200
+    legacy_id = legacy.get_json()["data"]["id"]
+    chs = client.get("/api/curriculum", headers=teacher_headers).get_json()["data"]["chapters"]
+    assert [c["chapter_no"] for c in chs if c["id"] == legacy_id] == [6]
+    assert client.delete(f"/api/curriculum/sessions/{legacy_id}",
+                         headers=teacher_headers).status_code == 200

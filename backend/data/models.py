@@ -15,6 +15,23 @@ def new_id() -> str:
     return str(uuid.uuid4())
 
 
+# 章号 ⇄ 周/节 换算（KNOW-009，v2.7.1）：**全后端唯一出处**，勿在别处重写公式。
+# 学习路径节点（sessions）库内仍按 week_no/session_no 存储（video_resources 绑定与
+# 发布状态机依赖它），但对外一律只暴露「章号」；章号与 chapters.order_no 同口径。
+def chapter_no(week_no, session_no) -> int:
+    """周/节 → 全局章号：章号 = (week-1)*2 + session_no。"""
+    try:
+        return (int(week_no) - 1) * 2 + int(session_no)
+    except (TypeError, ValueError):
+        return 0
+
+
+def week_session(chapter_no_value) -> tuple:
+    """全局章号 → (week_no, session_no)：章 N → W{(N-1)//2+1}S{(N-1)%2+1}。"""
+    n = max(1, int(chapter_no_value or 1))
+    return (n - 1) // 2 + 1, (n - 1) % 2 + 1
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id            TEXT PRIMARY KEY,

@@ -751,8 +751,8 @@ const Student = {
     const taken = quizzes.filter(q => q.taken);
     const rows = taken.map(q => {
       const s = q.session;
-      const title = s ? `测评 · 第${s.week_no}周 第${s.session_no}节` : (q.title || '测评');
-      const label = s ? `${s.title} · 覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}` : '未关联';
+      const title = s ? `测评 · 第${s.chapter_no}章 · ${s.title}` : (q.title || '测评');
+      const label = s ? `覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}` : '未关联';
       return `<div class="row" onclick="Student.selectWrongConsult('${q.id}')"><div>${esc(title)}</div><div class="muted" style="font-size:12px">${esc(label)}</div></div>`;
     }).join('');
     openSheet(`<div class="row" style="font-weight:700;cursor:default">${ic('lightbulb')}咨询错题</div>${rows || '<div class="row muted" style="cursor:default">暂无已作答测评</div>'}<div class="row cancel" onclick="closeSheet()">取消</div>`);
@@ -832,20 +832,21 @@ const Student = {
     try { await API.download(id, filename); } catch (e) { toast(e.message); }
   },
 
-  /* ===== 学习路径（周→节手风琴）===== */
+  /* ===== 学习路径（章 → 节点手风琴；v2.7.1 起不再按「第X周」分组）===== */
   async viewPath() {
-    let weeks = [];
-    try { weeks = (await API.get("/api/curriculum")).weeks || []; } catch (e) { weeks = []; }
-    this.curriculum = weeks;
-    const body = weeks.length ? weeks.map(w => {
-      const ss = (w.sessions || []).map(s => {
-        const chaps = (s.chapters || []).map(c => `<span class="pill">${esc(c.name)}</span>`).join('') || '';
-        const mats = (s.materials || []).map(m => `<div class="mat">${ic('file')} ${esc(m.original_name || m.filename)} <span class="dl" onclick="Student.downloadMat('${m.id}','${esc(m.original_name || m.filename)}')">${ic('download','indigo')}下载</span></div>`).join('') || '<div class="muted" style="font-size:12.5px">暂无资料</div>';
-        const vids = (s.videos || []).map(v => `<a class="video-chip" href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">▶ ${esc(v.title)}${v.platform ? ` · ${esc(v.platform)}` : ''}</a>`).join('') || '<div class="muted" style="font-size:12.5px">暂无视频</div>';
-        const tags = (s.concept_tags || []).map(t => `<span class="badge ver">${esc(t)}</span>`).join('') || '';
-        return `<details class="acc">
-          <summary><div class="acc-t"><b>第${w.week_no}周 · 第${s.session_no}节</b><span>${esc(s.title)}</span></div></summary>
+    let chapters = [];
+    try { chapters = (await API.get("/api/curriculum")).chapters || []; } catch (e) { chapters = []; }
+    this.curriculum = chapters;
+    const totalDays = chapters.reduce((sum, c) => sum + (c.days || 0), 0);
+    const body = chapters.length ? chapters.map(s => {
+      const chaps = (s.chapters || []).map(c => `<span class="pill">${esc(c.name)}</span>`).join('') || '';
+      const mats = (s.materials || []).map(m => `<div class="mat">${ic('file')} ${esc(m.original_name || m.filename)} <span class="dl" onclick="Student.downloadMat('${m.id}','${esc(m.original_name || m.filename)}')">${ic('download','indigo')}下载</span></div>`).join('') || '<div class="muted" style="font-size:12.5px">暂无资料</div>';
+      const vids = (s.videos || []).map(v => `<a class="video-chip" href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">▶ ${esc(v.title)}${v.platform ? ` · ${esc(v.platform)}` : ''}</a>`).join('') || '<div class="muted" style="font-size:12.5px">暂无视频</div>';
+      const tags = (s.concept_tags || []).map(t => `<span class="badge ver">${esc(t)}</span>`).join('') || '';
+      return `<details class="acc">
+          <summary><div class="acc-t"><b>第 ${s.chapter_no} 章</b><span>${esc(s.title)}</span></div></summary>
           <div class="acc-body">
+            <div class="muted mb-8">${ic('book','coral')}预计 ${s.days || 0} 天学完 · 共 ${s.card_count || 0} 张卡</div>
             ${s.goal ? `<div class="muted mb-8">${ic('target','coral')}${esc(s.goal)}</div>` : ''}
             ${tags ? `<div class="pill-wrap mb-8">${tags}</div>` : ''}
             ${chaps ? `<div class="pill-wrap mb-8">${chaps}</div>` : ''}
@@ -854,19 +855,16 @@ const Student = {
             <button class="btn sm mt-12" onclick="Student.askSession('${s.id}')">${ic('chat')}去提问</button>
           </div>
         </details>`;
-      }).join('');
-      return `<div class="week-title">第 ${w.week_no} 周</div>${ss}`;
     }).join('') : `<div class="note"><div class="big">${ic('book')}</div>老师尚未发布学习路径</div>`;
-    return appbar('学习路径', '8 周 · 周/节进度') + `<div class="content">${body}</div>` + tabbar();
+    return appbar('学习路径', `${chapters.length} 章 · 预计 ${totalDays} 天学完`) + `<div class="content">${body}</div>` + tabbar();
   },
 
   askSession(sessionId) {
-    const weeks = this.curriculum || [];
-    let s = null;
-    for (const w of weeks) for (const x of (w.sessions || [])) if (x.id === sessionId) { s = x; break; }
+    const chapters = this.curriculum || [];
+    const s = chapters.find(x => x.id === sessionId) || null;
     const chapter_ids = (s && s.chapter_ids) || [];
     this.askCtx = { chapter_ids, concept_tags: (s && s.concept_tags) || [] };
-    // 选中相关课题：把资料范围（学习页多选集）切到本节章节，对话页 scope-bar 才显示「就是这一节」
+    // 选中相关课题：把资料范围（学习页多选集）切到该章章节，对话页 scope-bar 才显示「就是这一章」
     if (chapter_ids.length) { this.selChapters = chapter_ids.slice(); this.saveSelChapters(); }
     App.activeChapter = chapter_ids[0] || null;
     this.relatedVideos = [];
@@ -874,7 +872,7 @@ const Student = {
     this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false;
     this.learnChat = true;
     if (App.state.hash === "learn") render(); else go("learn");
-    toast(`已进入「${(s && s.title) || '本节'}」提问 · 资料范围已选中该节`);
+    toast(`已进入「${(s && s.title) || '该章'}」提问 · 资料范围已选中该章`);
   },
 
   /* ===== 测评 ===== */
@@ -885,9 +883,9 @@ const Student = {
       const badge = q.taken ? `<span class="badge master">已完成 ${q.score}</span>` : `<span class="badge prog">待完成</span>`;
       const ver = q.version > 1 ? `<span class="badge ver">v${q.version}</span> ` : '';
       const s = q.session;
-      const title = s ? `测评 · 第${s.week_no}周 第${s.session_no}节` : (q.title || '测评');
+      const title = s ? `测评 · 第${s.chapter_no}章 · ${s.title}` : (q.title || '测评');
       return `<div class="qcard" onclick="Student.openQuiz('${q.id}')"><div class="ic">${ic('edit')}</div>
-        <div class="meta"><div class="t">${ver}${esc(title)}</div><div class="s">${s ? esc(s.title) + ' · ' : ''}覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div></div>
+        <div class="meta"><div class="t">${ver}${esc(title)}</div><div class="s">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')}</div></div>
         <div style="text-align:right">${badge}</div></div>`;
     }).join('') || '<div class="muted">老师尚未发布测评</div>';
     const practiceEntry = `<div class="qcard" style="border-color:var(--coral)" onclick="Student.enterPractice()"><div class="ic">${ic('target')}</div>
@@ -918,7 +916,7 @@ const Student = {
       const opts = (item.options || []).map((o, oi) => `<div class="opt" id="opt_${item.id}_${oi}" onclick="Student.pick('${item.id}',${oi})"><span class="dot"></span>${esc(o)}</div>`).join('');
       return `<div class="q"><div class="qt"><span class="n">${i + 1}</span><span>${esc(item.content)}<b class="pts">${item.points} 分</b></span></div>${opts}</div>`;
     }).join('');
-    const ttl = (q.session ? `测评 · 第${q.session.week_no}周 第${q.session.session_no}节` : (q.title || '测评'));
+    const ttl = (q.session ? `测评 · 第${q.session.chapter_no}章 · ${q.session.title}` : (q.title || '测评'));
     return appbar('测评', esc(ttl)) +
     `<div class="content"><div class="card sm mb-12"><div class="muted">覆盖章节：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(c => `<span class="pill" style="margin-right:6px">${esc(c)}</span>`).join('')}</div></div>
       ${qs}<button class="btn" onclick="Student.submit()">提交并批改</button>
@@ -1263,7 +1261,7 @@ const Student = {
         Object.keys(quizErr).forEach(function (qid) {
           const q = quizMap[qid] || {};
           const sess = q.session;
-          const label = sess ? `测评 · 第${sess.week_no}周 第${sess.session_no}节` : (q.title || '测评');
+          const label = sess ? `测评 · 第${sess.chapter_no}章 · ${sess.title}` : (q.title || '测评');
           const gkey = `${w.chapter_id}:${qid}`;
           const gOpen = !!this.weakGroupOpen[gkey];
           const errs = quizErr[qid].map(function (e) { return fmtWrongCard({ content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept }); }).join('');

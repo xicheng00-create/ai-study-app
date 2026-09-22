@@ -12,7 +12,7 @@ const Teacher = {
   async downloadMat(id, filename) {
     try { await API.download(id, filename); } catch (e) { toast(e.message); }
   },
-  sessions: [],     // 课程管理缓存（周→节）
+  sessions: [],     // 课程管理缓存（按章号顺序的学习路径章节）
   videos: [],
   kcardChapterId: null,  // 知识卡片核查：当前章
   kcardOpen: {},         // 知识卡片核查：已展开的主题（key = 分组下标）
@@ -158,20 +158,19 @@ const Teacher = {
 
   /* ===== 课程管理（Session / 视频课 CRUD + 发布状态机）===== */
   async viewCurriculum() {
-    let weeks = [];
-    try { weeks = (await API.get("/api/curriculum")).weeks || []; } catch (e) {}
+    let chapters = [];
+    try { chapters = (await API.get("/api/curriculum")).chapters || []; } catch (e) {}
     try { this.videos = (await API.get("/api/curriculum/videos")).videos || []; } catch (e) { this.videos = []; }
     let ksum = {};
     try { ((await API.get("/api/teacher/knowledge")).chapters || []).forEach(c => { ksum[c.id] = c; }); } catch (e) {}
-    this.sessions = [];
-    weeks.forEach(w => (w.sessions || []).forEach(s => this.sessions.push(s)));
+    this.sessions = chapters;
 
-    const sessHtml = weeks.length ? weeks.map(w => {
-      const ss = (w.sessions || []).map(s => {
-        const badge = s.status === 'published' ? '<span class="badge master">已发布</span>' : '<span class="badge na">草稿</span>';
-        const vids = (s.videos || []).map(v => `<div class="mat">▶ ${esc(v.title)}${v.platform ? ` · ${esc(v.platform)}` : ''}</div>`).join('') || '<div class="muted" style="font-size:12px">暂无视频</div>';
-        return `<div class="adm-card" style="flex-direction:column;align-items:stretch">
-          <div style="display:flex;align-items:center;gap:10px"><div style="font-weight:700;flex:1">第${w.week_no}周 · 第${s.session_no}节 ${esc(s.title)}</div>${badge}</div>
+    const sessHtml = chapters.length ? chapters.map(s => {
+      const badge = s.status === 'published' ? '<span class="badge master">已发布</span>' : '<span class="badge na">草稿</span>';
+      const vids = (s.videos || []).map(v => `<div class="mat">▶ ${esc(v.title)}${v.platform ? ` · ${esc(v.platform)}` : ''}</div>`).join('') || '<div class="muted" style="font-size:12px">暂无视频</div>';
+      return `<div class="adm-card" style="flex-direction:column;align-items:stretch">
+          <div style="display:flex;align-items:center;gap:10px"><div style="font-weight:700;flex:1">第 ${s.chapter_no} 章 · ${esc(s.title)}</div>${badge}</div>
+          <div class="muted" style="font-size:12px;margin:4px 0 0">${s.card_count || 0} 张卡 · 预计 ${s.days || 0} 天学完</div>
           ${s.goal ? `<div class="muted" style="font-size:12px;margin:4px 0">${ic('target','coral')}${esc(s.goal)}</div>` : ''}
           <div class="muted" style="font-size:12px;margin-bottom:4px">关联章节：${(s.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、') || '无'}</div>
           ${(s.chapter_ids || []).some(cid => ksum[cid]) ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 6px">${(s.chapter_ids || []).filter(cid => ksum[cid]).map(cid => `<span class="mini-btn" onclick="Teacher.openKcards('${cid}')">${ic('quiz')} ${esc(App.chapterName(cid))} · ${ksum[cid].cards} 张卡</span>`).join('')}</div>` : ''}
@@ -184,18 +183,16 @@ const Teacher = {
             <button class="mini-btn danger" onclick="Teacher.delSession('${s.id}')">删除</button>
           </div>
         </div>`;
-      }).join('');
-      return `<div class="week-title">第 ${w.week_no} 周</div>${ss}`;
-    }).join('') : '<div class="muted">暂无 Session，先新建</div>';
+    }).join('') : '<div class="muted">暂无学习路径章节，先新建</div>';
 
     const vidsHtml = this.videos.map(v => `<div class="adm-card">
-      <div class="meta"><div class="nm">▶ ${esc(v.title)}</div><div class="st">${v.week_no != null ? '第' + v.week_no + '周' : '整周'}${v.session_no != null ? ' · 第' + v.session_no + '节' : ''} · ${esc(v.platform || '外链')} · ${v.status === 'published' ? '已发布' : '草稿'}</div></div>
+      <div class="meta"><div class="nm">▶ ${esc(v.title)}</div><div class="st">${v.chapter_no != null ? '第 ' + v.chapter_no + ' 章' : '未绑定章节'} · ${esc(v.platform || '外链')} · ${v.status === 'published' ? '已发布' : '草稿'}</div></div>
       <button class="mini-btn" onclick="Teacher.editVideoForm('${v.id}')">编辑</button>
       <button class="mini-btn danger" onclick="Teacher.delVideo('${v.id}')">删</button>
     </div>`).join('') || '<div class="muted">暂无视频课</div>';
 
     return appbar('课程管理', '学习路径 · 发布后学生可见') + `<div class="content">
-      <button class="btn teacher" style="margin-bottom:8px" onclick="Teacher.newSessionForm()">＋ 新建 Session</button>
+      <button class="btn teacher" style="margin-bottom:8px" onclick="Teacher.newSessionForm()">＋ 新建章节</button>
       <button class="btn sec" style="margin-bottom:14px" onclick="Teacher.newVideoForm()">＋ 新建视频课</button>
       <div class="sec-head">学习路径</div>${sessHtml}
       <div class="sec-head">视频课</div>${vidsHtml}
@@ -256,10 +253,9 @@ const Teacher = {
 
   newSessionForm() {
     this.curSel = {};
-    openSheet(`<div class="row" style="font-weight:700;cursor:default">新建 Session（草稿）</div>
+    openSheet(`<div class="row" style="font-weight:700;cursor:default">新建章节（草稿）</div>
       <div class="row" style="text-align:left;border:none;background:transparent;cursor:default">
-        <input class="mini-input" id="sWeek" placeholder="周次（如 1）"/>
-        <input class="mini-input" id="sNo" placeholder="节次（如 1）"/>
+        <input class="mini-input" id="sChap" placeholder="章号（如 5）"/>
         <input class="mini-input" id="sTitle" placeholder="标题"/>
         <input class="mini-input" id="sGoal" placeholder="目标（可选）"/>
         <input class="mini-input" id="sTags" placeholder="概念标签，逗号分隔（可选）"/>
@@ -273,14 +269,13 @@ const Teacher = {
     const chapter_ids = Object.keys(this.curSel || {}).filter(k => this.curSel[k]);
     try {
       await API.post("/api/curriculum/sessions", {
-        week_no: parseInt(document.getElementById("sWeek").value) || 0,
-        session_no: parseInt(document.getElementById("sNo").value) || 0,
+        chapter_no: parseInt(document.getElementById("sChap").value) || 0,
         title: document.getElementById("sTitle").value,
         goal: document.getElementById("sGoal").value,
         chapter_ids,
         concept_tags: this._splitTags(document.getElementById("sTags").value),
       });
-      closeSheet(); toast("已创建 Session（草稿）"); render();
+      closeSheet(); toast("已创建章节（草稿）"); render();
     } catch (e) { toast(e.message); }
   },
   editSessionForm(id) {
@@ -288,10 +283,9 @@ const Teacher = {
     if (!s) return;
     this.curSel = {};
     (s.chapter_ids || []).forEach(cid => { this.curSel[cid] = true; });
-    openSheet(`<div class="row" style="font-weight:700;cursor:default">编辑 Session</div>
+    openSheet(`<div class="row" style="font-weight:700;cursor:default">编辑章节</div>
       <div class="row" style="text-align:left;border:none;background:transparent;cursor:default">
-        <input class="mini-input" id="sWeek" placeholder="周次" value="${s.week_no}"/>
-        <input class="mini-input" id="sNo" placeholder="节次" value="${s.session_no}"/>
+        <input class="mini-input" id="sChap" placeholder="章号" value="${s.chapter_no}"/>
         <input class="mini-input" id="sTitle" placeholder="标题" value="${esc(s.title)}"/>
         <input class="mini-input" id="sGoal" placeholder="目标" value="${esc(s.goal || '')}"/>
         <input class="mini-input" id="sTags" placeholder="概念标签，逗号分隔" value="${esc((s.concept_tags || []).join(','))}"/>
@@ -305,8 +299,7 @@ const Teacher = {
     const chapter_ids = Object.keys(this.curSel || {}).filter(k => this.curSel[k]);
     try {
       await API.put(`/api/curriculum/sessions/${id}`, {
-        week_no: parseInt(document.getElementById("sWeek").value) || 0,
-        session_no: parseInt(document.getElementById("sNo").value) || 0,
+        chapter_no: parseInt(document.getElementById("sChap").value) || 0,
         title: document.getElementById("sTitle").value,
         goal: document.getElementById("sGoal").value,
         chapter_ids,
@@ -316,8 +309,8 @@ const Teacher = {
     } catch (e) { toast(e.message); }
   },
   async delSession(id) {
-    if (!confirm("删除该 Session？其下视频一并删除，章节/资料保留。")) return;
-    try { await API.del(`/api/curriculum/sessions/${id}`); toast("已删除 Session"); render(); }
+    if (!confirm("删除该章节？其下视频一并删除，章节/资料保留。")) return;
+    try { await API.del(`/api/curriculum/sessions/${id}`); toast("已删除章节"); render(); }
     catch (e) { toast(e.message); }
   },
   async publishSession(id) {
@@ -335,23 +328,20 @@ const Teacher = {
         <input class="mini-input" id="vTitle" placeholder="标题"/>
         <input class="mini-input" id="vUrl" placeholder="视频 URL"/>
         <input class="mini-input" id="vPlatform" placeholder="平台（bilibili / ima…，可选）"/>
-        <input class="mini-input" id="vWeek" placeholder="周次（可选，整周留空）"/>
-        <input class="mini-input" id="vNo" placeholder="节次（可选）"/>
+        <input class="mini-input" id="vChap" placeholder="章号（可选，留空 = 未绑定章节）"/>
         <input class="mini-input" id="vTags" placeholder="概念标签，逗号分隔（可选）"/>
       </div>
       <div class="row" onclick="Teacher.createVideo()">创建</div>
       <div class="row cancel" onclick="closeSheet()">取消</div>`);
   },
   async createVideo() {
-    const week = document.getElementById("vWeek").value;
-    const no = document.getElementById("vNo").value;
+    const chap = document.getElementById("vChap").value;
     try {
       await API.post("/api/curriculum/videos", {
         title: document.getElementById("vTitle").value,
         url: document.getElementById("vUrl").value,
         platform: document.getElementById("vPlatform").value,
-        week_no: week === "" ? null : (parseInt(week) || 0),
-        session_no: no === "" ? null : (parseInt(no) || 0),
+        chapter_no: chap === "" ? null : (parseInt(chap) || 0),
         concept_tags: this._splitTags(document.getElementById("vTags").value),
       });
       closeSheet(); toast("已创建视频课"); render();
@@ -365,23 +355,20 @@ const Teacher = {
         <input class="mini-input" id="vTitle" placeholder="标题" value="${esc(v.title)}"/>
         <input class="mini-input" id="vUrl" placeholder="URL" value="${esc(v.url)}"/>
         <input class="mini-input" id="vPlatform" placeholder="平台" value="${esc(v.platform || '')}"/>
-        <input class="mini-input" id="vWeek" placeholder="周次" value="${v.week_no == null ? '' : v.week_no}"/>
-        <input class="mini-input" id="vNo" placeholder="节次" value="${v.session_no == null ? '' : v.session_no}"/>
+        <input class="mini-input" id="vChap" placeholder="章号（留空 = 未绑定章节）" value="${v.chapter_no == null ? '' : v.chapter_no}"/>
         <input class="mini-input" id="vTags" placeholder="概念标签" value="${esc((v.concept_tags || []).join(','))}"/>
       </div>
       <div class="row" onclick="Teacher.doEditVideo('${id}')">保存</div>
       <div class="row cancel" onclick="closeSheet()">取消</div>`);
   },
   async doEditVideo(id) {
-    const week = document.getElementById("vWeek").value;
-    const no = document.getElementById("vNo").value;
+    const chap = document.getElementById("vChap").value;
     try {
       await API.put(`/api/curriculum/videos/${id}`, {
         title: document.getElementById("vTitle").value,
         url: document.getElementById("vUrl").value,
         platform: document.getElementById("vPlatform").value,
-        week_no: week === "" ? null : (parseInt(week) || 0),
-        session_no: no === "" ? null : (parseInt(no) || 0),
+        chapter_no: chap === "" ? null : (parseInt(chap) || 0),
         concept_tags: this._splitTags(document.getElementById("vTags").value),
       });
       closeSheet(); toast("已保存"); render();
@@ -405,9 +392,9 @@ const Teacher = {
       <div style="display:flex;gap:8px"><button class="btn teacher sm" style="flex:1" onclick="Teacher.preview('${q.id}')">${ic('eye')}预览</button><button class="btn teacher sm" style="flex:1" onclick="Teacher.publish('${q.id}')">确认发布</button><button class="mini-btn danger" onclick="Teacher.dropQuiz('${q.id}')">放弃</button></div></div>`).join('');
     const published = quizzes.filter(q => q.status === "published").map(q => {
       const s = q.session;
-      const title = s ? `测评 · 第${s.week_no}周 第${s.session_no}节` : (q.title || '测评');
+      const title = s ? `测评 · 第${s.chapter_no}章 · ${s.title}` : (q.title || '测评');
       return `<div class="card sm" style="display:flex;justify-content:space-between;align-items:center">
-      <div><div style="font-weight:700">${q.version > 1 ? `<span class="badge ver">v${q.version}</span> ` : ''}${esc(title)}</div><div class="muted">${s ? esc(s.title) + ' · ' : ''}覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')} · ${q.total_points} 分</div></div>
+      <div><div style="font-weight:700">${q.version > 1 ? `<span class="badge ver">v${q.version}</span> ` : ''}${esc(title)}</div><div class="muted">覆盖：${(q.chapter_ids || []).map(App.chapterName.bind(App)).map(esc).join('、')} · ${q.total_points} 分</div></div>
       <div style="display:flex;gap:6px"><span class="mini-btn teacher" onclick="Teacher.preview('${q.id}')">${ic('eye')}预览</span><span class="mini-btn teacher" onclick="Teacher.openStudentErrors('${q.id}')">${ic('eye')}学生错题</span><span class="mini-btn teacher" onclick="Teacher.revise('${q.id}')">重出</span></div></div>`;
     }).join('');
     const cfg = this.quizConfig || {};
