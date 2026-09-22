@@ -154,6 +154,26 @@ def test_generate_cards_prompt_demands_fine_grained_coverage(client, teacher_hea
         assert kw in seen['system'], f'价值门槛必须点名禁产：{kw}'
 
 
+def test_generate_cards_normalizes_sub_concept(client, teacher_headers, monkeypatch):
+    """分组标签必须在生成路径就地归一（口径：CR-2026-0922-SUBCONCEPT-NORMALIZE）。
+
+    背景（v2.8.1）：模型在**同一次生成**里会把同一知识点写成「MCP 协议」与「MCP协议」，
+    前端按 sub_concept 分组时显示成两个重复组。归一必须钉在生成路径上，
+    不能靠事后人工清洗（否则每生成一批就又长出来）。
+    """
+    from ai import agents
+    cid = _chapter(client, teacher_headers)
+    _seed_materials(client, cid, n_materials=1, n_chunks=3)
+    monkeypatch.setattr(agents, 'knowledge_generate', lambda system: [
+        {'front': 'MCP 是什么', 'back': '模型上下文协议', 'sub_concept': 'MCP协议'},
+        {'front': 'MCP 怎么接', 'back': '本地/远程/桥接', 'sub_concept': 'MCP 协议'},
+        {'front': 'IA 与 SA 的关系', 'back': '两种信息架构视角', 'sub_concept': 'IA×SA×文档'}])
+    with client.application.app_context():
+        cards = knowledge.generate_knowledge_cards([cid])
+    subs = [c['sub_concept'] for c in cards]
+    assert subs == ['MCP 协议', 'MCP 协议', 'IA × SA × 文档'], subs
+
+
 def test_rebuild_script_prompt_shares_value_bar():
     """离线批量脚本的提示词必须与在线路径同一价值门槛（v2.7.5 补的真旁路）。
 
