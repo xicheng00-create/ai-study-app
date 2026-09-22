@@ -130,6 +130,12 @@ def create_draft():
         spec=data.get("spec", ""),
         config=config,
     )
+    # 题源=知识卡片（v2.7.4）：卡片不足即不出题，绝不用卡片外内容凑数
+    if not raw_qs:
+        return e_input("所选章节暂无可出题的卡片：请先生成/补充该章知识卡片后重试")
+    need = sum(int(config.get(t) or 0) for t in quizzer.POINTS)
+    if len(raw_qs) < need:
+        return e_input(f"卡片内容不足以支撑所选题量（生成 {len(raw_qs)} 题 / 需要 {need} 题）：请减少题量或补充卡片")
     quiz_id = models.new_id()
     now = models.utcnow()
     con.execute(
@@ -212,6 +218,12 @@ def revision_quiz(quiz_id):
     config = quizzer.validate_config(_parse_ids(old["config_json"])) or quizzer.default_config()
     total_points = quizzer.config_total(config)
     raw_qs = quizzer.generate_questions(chapter_ids, config=config)
+    # 题源=知识卡片（v2.7.4）：重出同样只吃卡片，不足即报错，不用卡片外内容凑数
+    if not raw_qs:
+        return e_input("所选章节暂无可出题的卡片：请先生成/补充该章知识卡片后重试")
+    need = sum(int(config.get(t) or 0) for t in quizzer.POINTS)
+    if len(raw_qs) < need:
+        return e_input(f"卡片内容不足以支撑所选题量（生成 {len(raw_qs)} 题 / 需要 {need} 题）：请减少题量或补充卡片")
     new_id = models.new_id()
     now = models.utcnow()
     con.execute(

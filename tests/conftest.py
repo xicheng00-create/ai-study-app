@@ -25,6 +25,49 @@ def _isolate_usage_log(tmp_path, monkeypatch):
     monkeypatch.setenv("LLM_USAGE_LOG", str(tmp_path / "app-usage" / "aistudy.jsonl"))
 
 
+@pytest.fixture(autouse=True)
+def _stub_quizzer_source(monkeypatch):
+    """出题链路打桩（v2.7.4：题源=知识卡片，无卡片或模型不出题则返回空）。
+
+    v2.7.4 起出题不再有「通用模板兜底」，测评/练习的 API 测试若不造卡、不提供模型输出，
+    draft/practice 只会返回「无卡片/生成失败」。此处统一打桩：任意章节都取得到卡片，
+    模型按题型产出足量且同调用内唯一的题目；需要特定行为的测试可自行再覆盖。
+    """
+    from ai import agents, quizzer
+
+    def fake_cards(chapter_ids, per_sub=3, max_cards=50):
+        return [{"id": f"card-{cid}-{i}", "chapter_id": cid, "sub_concept": f"子概念{i}",
+                 "front": f"{cid} 的知识点 {i} 是什么", "back": f"{cid} 的知识点 {i} 的解析"}
+                for cid in chapter_ids for i in range(30)]
+
+    counter = {"n": 0}
+
+    def fake_generate(system):
+        counter["n"] += 1
+        base = counter["n"]
+        out = []
+        for qtype in ("choice", "bool"):
+            for i in range(30):
+                out.append({
+                    "type": qtype,
+                    "content": f"第{base}批-{qtype}-题{i}",
+                    "options": ["正确", "错误"] if qtype == "bool" else ["A", "B", "C", "D"],
+                    "answer": "0",
+                    "reason": "",
+                    "sub_concept": f"子概念{i}",
+                })
+        return out
+
+    # 保留真实取卡函数：验取卡本身的用例（tests/test_quizzer.py）需要它真跑
+    if not hasattr(quizzer, "_real_retrieve_cards"):
+        quizzer._real_retrieve_cards = quizzer._retrieve_cards
+    monkeypatch.setattr(quizzer, "_retrieve_cards", fake_cards)
+    # 保留真实包装器：验用量账的用例（tests/test_usage_log.py）需要它真跑一遍
+    if not hasattr(agents, "_real_quizzer_generate"):
+        agents._real_quizzer_generate = agents.quizzer_generate
+    monkeypatch.setattr(agents, "quizzer_generate", fake_generate)
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     # 测试专用临时库 + 禁用 LLM（走兜底，确定性）

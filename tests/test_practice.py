@@ -37,8 +37,7 @@ def _mock_quizzer(monkeypatch, first_result, second_result=None):
         return second_result
 
     monkeypatch.setattr(agents, "quizzer_generate", fake_generate)
-    # 单元测试无 app context：绕过 RAG 检索（与出题链路本身无关）
-    monkeypatch.setattr(quizzer.rag, "retrieve", lambda *a, **k: [])
+    # 题源（知识卡片）由 conftest 的 _stub_quizzer_source 统一提供（v2.7.4 起不再走资料 RAG）
     return calls
 
 

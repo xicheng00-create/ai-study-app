@@ -195,7 +195,10 @@ def generate_review():
     for cid in weak_ids:
         # 有练习错题子概念时，聚焦该知识点出题，巩固更精准
         qs = quizzer.generate_questions([cid], sub_concepts=focus.get(cid, ""))
-        raw = qs[0] if qs else quizzer.fallback_questions([cid])[0]
+        if not qs:
+            # 该章无可出题的卡片：跳过（v2.7.4 起不再用通用模板题顶替卡片题源）
+            continue
+        raw = qs[0]
         q = quizzer.norm_question(raw, cid)
         payload = json.dumps({
             "content": q["content"], "type": q["type"],

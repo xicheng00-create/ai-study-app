@@ -83,6 +83,8 @@ def test_each_wrapper_feature_tag(tmp_path, monkeypatch):
     log_path = tmp_path / "aistudy.jsonl"
     monkeypatch.setenv("LLM_USAGE_LOG", str(log_path))
 
+    # 本用例验的是用量账包装器：还原真实 quizzer_generate（conftest 默认打了桩）
+    monkeypatch.setattr(agents, "quizzer_generate", agents._real_quizzer_generate)
     _mock_success(monkeypatch, {
         "choices": [{"message": {"content": "{\"questions\": []}"}}], "usage": _usage(),
     })

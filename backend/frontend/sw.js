@@ -6,10 +6,12 @@
 /* v53：v2.7.0 章节与「周/节」解耦（第 N 章 + 预计 X 天学完）+ 浏览卡片两级钻取（章 → 主题组 → 卡片） */
 /* v54：v2.7.1 全站清「周/节」残留——学习路径页改章号扁平列表（第 N 章 · 预计 X 天学完）+
    测评标签/课程管理/视频课一并改章号（第 N 章 · 章标题） */
-/* v55：v2.7.2 测评标签格式统一为「第 N 章」（带空格），与章节名写法一致 */
-const CACHE = "aistudy-shell-v56";
+/* v56：v2.7.3 章号口径下沉到数据与源文档 */
+/* v57：v2.7.4 清理死记硬背低价值卡片（做题范围同步）+ 出题题源改为知识卡片 +
+   修复 v2.7.2 起 V 常量未随版本升级导致预缓存旧 bundle 的缺陷 */
+const CACHE = "aistudy-shell-v57";
 /* 预缓存 URL 必须与 index.html 里的 ?v= 同版（CF 对 .js/.css 强制 4h 浏览器缓存，换 URL 才能穿透） */
-const V = "2.7.2";
+const V = "2.7.4";
 const ASSETS = ["/", `/css/style.css?v=${V}`, `/js/api.js?v=${V}`, `/js/app.js?v=${V}`, `/js/student.js?v=${V}`, `/js/teacher.js?v=${V}`, "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

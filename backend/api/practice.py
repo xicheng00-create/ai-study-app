@@ -184,6 +184,9 @@ def generate_practice():
     result = create_practice_session(con, g.user_id, chapter_ids,
                                      data.get("count", 5), data.get("sub_concepts", ""))
     if not result:
+        # v2.7.4：题源=知识卡片。无卡时给准确提示，不用模板/资料凑题。
+        if not quizzer.has_cards(chapter_ids):
+            return e_input("所选章节暂无知识卡片，无法出题：请先在「资料库」生成该章知识卡片")
         return e_input("练习生成失败，请稍后重试")
     return ok(result)
 

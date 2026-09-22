@@ -8,10 +8,11 @@
 """
 import hashlib
 import json
-import math
 import re
 
-from ai import agents, rag
+from data.db import get_db
+
+from ai import agents
 from ai.prompts import QUIZZER_SYSTEM
 
 # 题型满分（QUIZ-005，选择/是非 5；essay=10 仅保留以兼容库里旧题数据，不再出 essay）
@@ -25,6 +26,11 @@ PRESETS = {
 
 _TYPE_LABEL = {"choice": "选择题", "bool": "是非题", "essay": "问答题"}
 
+
+# 出题上限：单次自主练习最多 10 道（正常 5 道）
+MAX_PRACTICE_QUESTIONS = 10
+
+MAX_SOURCE_CARDS = 50          # 出题送入模型的知识卡片上限（题源=卡片，v2.7.4）
 
 def default_config() -> dict:
     return dict(PRESETS["20c"])
@@ -60,294 +66,6 @@ def _spec_text(config: dict) -> str:
     return "共 " + " + ".join(parts) + "（各 5 分，合计 100 分）"
 
 
-# 兜底模板池：choice/bool 各 20 条（题干全局唯一），按 idx 轮转避免重复；已取消 essay
-_TEMPLATES = {
-    "choice": [
-        {
-            "content": "巩固练习/间隔复习的主要作用是？",
-            "options": ["一次性测评", "间隔复习强化记忆", "替代课堂", "无需复习"],
-            "answer": "1",
-            "reason": "间隔复习能显著提升长期记忆",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "苏格拉底式引导的核心原则是？",
-            "options": ["直接给答案", "用追问引导学习者自己推导", "跳过提问直接讲结论", "只讲不练"],
-            "answer": "1",
-            "reason": "苏格拉底式引导强调追问而非直接给答案",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "遇到不会的知识点，更推荐的做法是？",
-            "options": ["直接跳过", "先自主尝试再求助，并记录错题", "照抄答案", "不复盘继续往下学"],
-            "answer": "1",
-            "reason": "主动尝试加错题记录更利于巩固",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "把短期记忆转化为长期记忆，最有效的方法是？",
-            "options": ["考前临时抱佛脚", "间隔重复与主动回忆", "一次性长时间背诵", "只看不做题"],
-            "answer": "1",
-            "reason": "间隔重复和主动回忆是巩固长期记忆的核心",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "下列哪种学习行为最能促进深度理解？",
-            "options": ["机械抄写多遍", "用自己的话复述并举例", "只看重点划线", "跳过例题"],
-            "answer": "1",
-            "reason": "复述和举例能激活深加工，促进理解",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "做错题后，最有助于进步的做法是？",
-            "options": ["当作没发生", "分析错因并订正复盘", "只改答案不思考", "避免再做同类题"],
-            "answer": "1",
-            "reason": "分析错因并复盘是查漏补缺的关键",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "主动回忆（合上书回忆）相比反复重读，优势在于？",
-            "options": ["更省时间", "更能检验是否真正掌握", "更轻松", "无需动脑"],
-            "answer": "1",
-            "reason": "主动回忆能暴露记忆盲区，强化提取练习",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "分散练习（间隔练习）相比集中突击，优势在于？",
-            "options": ["更利于长期记忆保持", "见效更快", "更省时间", "更适合考前"],
-            "answer": "0",
-            "reason": "分散练习的间隔效应更利于长期保持",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "把新知识与已有知识建立联系，这种做法称为？",
-            "options": ["机械记忆", "精细加工", "死记硬背", "瞬时记忆"],
-            "answer": "1",
-            "reason": "与旧知识建立联系属于精细加工策略",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "费曼学习法的核心是？",
-            "options": ["大量刷题", "用简单的话把知识讲清楚", "反复抄写", "只看视频"],
-            "answer": "1",
-            "reason": "费曼学习法强调用自己的话讲清概念",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "制定学习目标时，最符合 SMART 原则的是？",
-            "options": ["每天学一点", "本周内掌握第三章并能做对练习", "以后再说", "尽量多学"],
-            "answer": "1",
-            "reason": "具体、可衡量、有时限的目标更符合 SMART",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "番茄工作法的核心是？",
-            "options": ["连续工作数小时", "短时专注加定时休息", "多任务并行", "通宵赶工"],
-            "answer": "1",
-            "reason": "番茄工作法通过短时专注和定时休息保持效率",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "遇到难题长时间卡住时，更合理的做法是？",
-            "options": ["死磕到底", "暂时放下，之后带着新思路再来", "直接放弃", "照抄答案了事"],
-            "answer": "1",
-            "reason": "适时暂停并换思路有助于突破卡点",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "做笔记时，更高效的做法是？",
-            "options": ["逐字照抄", "用自己的话提炼要点", "只抄标题", "完全不做"],
-            "answer": "1",
-            "reason": "用自己的话提炼能促进理解和记忆",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "定期自测（自我测验）的主要好处是？",
-            "options": ["浪费时间", "检验掌握情况并发现盲区", "增加焦虑", "替代学习"],
-            "answer": "1",
-            "reason": "自测能检验掌握度并暴露知识盲区",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "学习时保持专注，更有效的做法是？",
-            "options": ["同时刷手机", "移除干扰并设定专注时段", "边学边闲聊", "频繁切换任务"],
-            "answer": "1",
-            "reason": "移除干扰并专注能提升学习效率",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "多感官（看+听+写）参与学习的优势是？",
-            "options": ["更热闹", "多通道编码加深记忆", "更费时间", "只适合儿童"],
-            "answer": "1",
-            "reason": "多感官通道编码能加深记忆痕迹",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "学习后及时睡眠对记忆的作用是？",
-            "options": ["促进记忆巩固", "导致遗忘", "没有影响", "浪费时间"],
-            "answer": "0",
-            "reason": "睡眠期间的记忆巩固有助于长期保持",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "把大任务拆解为小步骤的好处是？",
-            "options": ["降低行动门槛、减少拖延", "让任务更复杂", "没有好处", "浪费时间"],
-            "answer": "0",
-            "reason": "拆解大任务能降低启动难度并减少拖延",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "学习过程中遇到分心，更有效的应对是？",
-            "options": ["任由分心", "记录分心点并回到任务", "干脆休息整天", "责备自己"],
-            "answer": "1",
-            "reason": "记录分心点并回归任务比自责更有效",
-            "sub_concept": "学习方法",
-        },
-    ],
-    "bool": [
-        {
-            "content": "间隔复习的间隔会随答对而逐渐拉长（1→3→7）。",
-            "answer": "正确",
-            "reason": "答对顺延间隔、答错重置为 1",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "苏格拉底式引导鼓励直接告诉学生最终答案。",
-            "answer": "错误",
-            "reason": "应以追问引导学生自己推导",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "定期回顾与练习有助于把短期记忆转化为长期记忆。",
-            "answer": "正确",
-            "reason": "间隔复习是巩固长期记忆的有效手段",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "学习新知识时，越早开始第一次复习越有利于巩固记忆。",
-            "answer": "正确",
-            "reason": "及时复习能抓住遗忘曲线前期的巩固窗口",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "遇到不会的题目，照抄答案是有效的学习方法。",
-            "answer": "错误",
-            "reason": "照抄答案缺乏主动思考，不利于掌握",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "集中突击比分散练习更有利于长期记忆保持。",
-            "answer": "错误",
-            "reason": "分散练习的间隔效应更利于长期保持",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "主动回忆比反复重读更能检验是否真正掌握。",
-            "answer": "正确",
-            "reason": "主动回忆是检验掌握度的有效提取练习",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "把新知识与已有知识联系起来，有助于理解和记忆。",
-            "answer": "正确",
-            "reason": "精细加工能加深理解与记忆",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "错题整理与复盘对查漏补缺没有帮助。",
-            "answer": "错误",
-            "reason": "错题复盘是查漏补缺的关键手段",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "充足的睡眠对记忆巩固没有影响。",
-            "answer": "错误",
-            "reason": "睡眠期间的记忆巩固对长期保持很重要",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "制定具体可衡量的学习目标比模糊目标更有效。",
-            "answer": "正确",
-            "reason": "具体可衡量的目标更易执行和检验",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "学习中适当休息、避免长时间连续学习，有助于保持效率。",
-            "answer": "正确",
-            "reason": "适当休息能恢复注意力，维持学习效率",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "只被动听讲、从不提问，是最佳的学习方式。",
-            "answer": "错误",
-            "reason": "主动提问和参与能促进理解",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "多感官参与（看、听、写）能加深记忆。",
-            "answer": "正确",
-            "reason": "多通道编码能加深记忆痕迹",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "把大任务拆解成小步骤有助于减少拖延。",
-            "answer": "正确",
-            "reason": "拆解任务能降低启动门槛、减少拖延",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "自我测验（自测）有助于发现知识盲区。",
-            "answer": "正确",
-            "reason": "自测能暴露记忆盲区并检验掌握度",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "学习环境越嘈杂，越有利于专注学习。",
-            "answer": "错误",
-            "reason": "嘈杂环境会分散注意力，不利于专注",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "及时向老师或同伴请教，是解决疑难的有效途径。",
-            "answer": "正确",
-            "reason": "及时求助能避免长时间卡壳、加速理解",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "费曼学习法强调用简单的话把知识讲清楚。",
-            "answer": "正确",
-            "reason": "费曼学习法核心是讲清楚概念",
-            "sub_concept": "学习方法",
-        },
-        {
-            "content": "重复做同一道已掌握的题，比挑战新题更能提升能力。",
-            "answer": "错误",
-            "reason": "挑战新题更能拓展能力边界",
-            "sub_concept": "学习方法",
-        },
-    ],
-}
-
-
-def _template_item(qtype: str, item: dict) -> dict:
-    base = {"type": qtype, "options": item.get("options", [])}
-    base.update(item)
-    return base
-
-
-def _next_template(qtype: str, seen: set, tpl_idx: dict) -> dict:
-    """模板兜底：轮转取一条 content 未出现过的题；池内不足时轮转，绝不并列重复。"""
-    pool = _TEMPLATES[qtype]
-    start = tpl_idx.get(qtype, 0)
-    for offset in range(len(pool)):
-        item = pool[(start + offset) % len(pool)]
-        tpl_idx[qtype] = (start + offset + 1) % len(pool)
-        if item["content"] not in seen:
-            return _template_item(qtype, item)
-    tpl_idx[qtype] = (start + 1) % len(pool)
-    return _template_item(qtype, pool[start % len(pool)])
-
-
 def _dedup(qs: list[dict]) -> list[dict]:
     """按 content 去重，保留首次出现的题（出题不重复）。"""
     seen = set()
@@ -364,12 +82,10 @@ def _dedup(qs: list[dict]) -> list[dict]:
 def _enforce_config(qs: list[dict], config: dict) -> list[dict]:
     """按 config 裁剪题目数量，保证组合恰好 100 分且题干不重复。
 
-    不足部分先由 generate_questions 向 DeepSeek 补发补足；仍不足才用模板兜底
-    （模板按 idx 轮转并跳过已出现的 content，避免同一道题重复）。
+    不足部分由 generate_questions 向模型补发补足；仍不足就到此为止（不再用模板兜底）。
     """
     out = []
     seen: set[str] = set()
-    tpl_idx: dict = {}
     for t in POINTS:
         n = int(config.get(t) or 0)
         pool = [q for q in qs if q.get("type") == t]
@@ -381,7 +97,8 @@ def _enforce_config(qs: list[dict], config: dict) -> list[dict]:
                 item = pool[pi]
                 pi += 1
             else:
-                item = _next_template(t, seen, tpl_idx)
+                # 题库不足即止：不再用通用模板凑数（模板题不来自知识卡片，违反「题源=卡片」铁律）
+                break
             seen.add(item.get("content", ""))
             out.append(item)
     return out
@@ -398,45 +115,49 @@ def _missing(qs: list[dict], config: dict) -> dict:
     return missing
 
 
-def _retrieve_chunks(chapter_ids: list[str], query: str) -> list[dict]:
-    """按材料分层、按位置均匀抽样，避免长资料被排序靠前的材料挤掉。"""
-    chunks: list[dict] = []
-    seen: set[str] = set()
+def _retrieve_cards(chapter_ids: list[str], per_sub: int = 3,
+                    max_cards: int = MAX_SOURCE_CARDS) -> list[dict]:
+    """取章节知识卡片作为**唯一题源**（v2.7.4 教研定调）。
+
+    与旧 `_retrieve_chunks`（资料切片 RAG）的区别：资料原文不再入题，
+    杜绝「不基于卡片、直接从资料出题」。按 sub_concept 轮转取卡，避免热门知识点挤掉其他。
+    """
+    con = get_db()
+    rows: list[dict] = []
     for cid in chapter_ids:
-        got = rag.retrieve(query, cid, top_k=1000)
-        if not got and query:
-            got = rag.retrieve("", cid, top_k=1000)
-        groups: dict[str, list[dict]] = {}
-        for chunk in got:
-            groups.setdefault(chunk.get("material_id", ""), []).append(chunk)
-        per_material = max(1, math.ceil(18 / max(len(groups), 1)))
-        for material_chunks in groups.values():
-            ordered = sorted(material_chunks, key=lambda c: c.get("chunk_idx", 0))
-            count = min(per_material, len(ordered))
-            indices = {round(i * (len(ordered) - 1) / max(count - 1, 1))
-                       for i in range(count)}
-            for idx in sorted(indices):
-                chunk = ordered[idx]
-                if chunk["chunk_id"] not in seen:
-                    seen.add(chunk["chunk_id"])
-                    chunks.append(chunk)
-    return chunks
+        rows.extend(dict(r) for r in con.execute(
+            "SELECT id, chapter_id, sub_concept, front, back FROM knowledge_cards"
+            " WHERE chapter_id=? ORDER BY sub_concept, created_at", (cid,)).fetchall())
+    if not rows:
+        return []
+    groups: dict[str, list[dict]] = {}
+    for r in rows:
+        groups.setdefault((r.get("sub_concept") or "").strip() or "未归类", []).append(r)
+    out: list[dict] = []
+    for round_no in range(max(1, per_sub)):
+        for key in sorted(groups):
+            bucket = groups[key]
+            if round_no < len(bucket) and len(out) < max_cards:
+                out.append(bucket[round_no])
+        if len(out) >= max_cards:
+            break
+    return out[:max_cards]
 
 
-def _chunk_text(chunks: list[dict]) -> str:
-    if not chunks:
-        return "（无相关片段）"
-    return "\n".join(f"- {c['text'][:300]}" for c in chunks)
+def _cards_text(cards: list[dict]) -> str:
+    """卡片正文拼成题源文本（含 sub_concept，便于模型按知识点分布出题）。"""
+    if not cards:
+        return "（该范围暂无知识卡片，不得出题）"
+    return "\n".join(
+        f"- [{c.get('sub_concept') or '未归类'}] 问：{(c.get('front') or '')[:120]}"
+        f" / 答：{(c.get('back') or '')[:220]}"
+        for c in cards
+    )
 
 
-def fallback_questions(chapter_ids: list[str], config: dict | None = None) -> list[dict]:
-    """无 API/失败时的模板题（保证覆盖所选章节与 100 分组合）。"""
-    cfg = config or default_config()
-    return _enforce_config([], cfg)
-
-
-# 自主练习：最多 5 道 choice/bool，基于章节资料，不再凑 100 分
-MAX_PRACTICE_QUESTIONS = 10
+def has_cards(chapter_ids: list[str]) -> bool:
+    """该范围是否存在知识卡片（无卡则不得出题）。"""
+    return bool(_retrieve_cards(chapter_ids, per_sub=1, max_cards=1))
 
 
 def _content_hash(content: str) -> str:
@@ -511,21 +232,21 @@ def _avoid_block(exclude_contents: list[str]) -> str:
     )
 
 
-def _practice_system(chapter_ids: list[str], sub_concepts: str, chunk_txt: str,
+def _practice_system(chapter_ids: list[str], sub_concepts: str, cards_txt: str,
                      exclude_contents: list[str] | None = None,
                      exclude_sub_concepts: set | None = None, count: int = 5) -> str:
-    spec = (f"出 {count} 道题，每题来自一个【不同】的子概念（知识点）——从资料里挑 {count} 个不同的知识点各出一题；"
+    spec = (f"出 {count} 道题，每题来自一个【不同】的子概念（知识点）——从知识卡片里挑 {count} 个不同的知识点各出一题；"
             f"只允许选择题（choice）和是非题（bool），难度 hard")
     excl = ""
     if exclude_sub_concepts:
         excl = ("\n\n【必须遵守 · 跨会话知识点不重复】以下子概念该学生【已练过】，本次【禁止】再出这些子概念。"
-                "请从资料中其它子概念里，尽量挑【不同】且【不在清单内】的子概念出题，凑满 " + str(count)
+                "请从卡片中其它子概念里，尽量挑【不同】且【不在清单内】的子概念出题，凑满 " + str(count)
                 + " 道：\n- " + "\n- ".join(sorted(exclude_sub_concepts)))
     return QUIZZER_SYSTEM.format(
         chapter_ids=",".join(chapter_ids),
         sub_concepts=sub_concepts or "不限",
         spec=spec,
-        retrieved_chunks=chunk_txt[:6000],
+        source_cards=cards_txt[:14000],
         difficulty="hard",
     ) + _avoid_block(exclude_contents or []) + excl
 
@@ -533,21 +254,24 @@ def _practice_system(chapter_ids: list[str], sub_concepts: str, chunk_txt: str,
 def generate_practice_questions(chapter_ids: list[str], sub_concepts: str = "",
                                 exclude_contents: list[str] | None = None,
                                 exclude_sub_concepts: set | None = None, count: int = 5) -> list[dict]:
-    """自主练习出题（difficulty=hard，最多 5 道 choice/bool，基于章节资料，同学生跨会话不重复）。
+    """自主练习出题（difficulty=hard，最多 5 道 choice/bool，**题源=知识卡片**，同学生跨会话不重复）。
 
-    LLM 真返空时返回空列表，由调用方提示「生成失败，请重试」——不再硬塞 20 道通用模板。
+    v2.7.4 起不再检索资料切片：卡片是该范围内唯一可考内容。
+    无卡片或模型出不出题时返回空列表，由调用方提示，不再硬塞通用模板。
     """
     try:
-        count = max(5, min(int(count or 5), 10))
+        count = max(5, min(int(count or 5), MAX_PRACTICE_QUESTIONS))
     except (TypeError, ValueError):
         count = 5
-    query = (sub_concepts or "").strip()
-    chunk_txt = _chunk_text(_retrieve_chunks(chapter_ids, query))
+    cards = _retrieve_cards(chapter_ids)
+    if not cards:
+        return []  # 无卡片＝无可考内容：不调模型、不出题
+    cards_txt = _cards_text(cards)
     exclude_contents = exclude_contents or []
     exclude_hashes = {_content_hash(c) for c in exclude_contents}
 
     exclude_sub_concepts = exclude_sub_concepts or set()
-    system = _practice_system(chapter_ids, sub_concepts, chunk_txt, exclude_contents, exclude_sub_concepts, count)
+    system = _practice_system(chapter_ids, sub_concepts, cards_txt, exclude_contents, exclude_sub_concepts, count)
     qs = [_norm_practice(q) for q in (agents.quizzer_generate(system) or [])]
     if not qs:
         return []
@@ -557,7 +281,7 @@ def generate_practice_questions(chapter_ids: list[str], sub_concepts: str = "",
     for _ in range(2):
         if len(cap) >= count:
             break
-        retry = _practice_system(chapter_ids, sub_concepts, chunk_txt, exclude_contents,
+        retry = _practice_system(chapter_ids, sub_concepts, cards_txt, exclude_contents,
                                  exclude_sub_concepts, count)
         extra = [_norm_practice(q) for q in (agents.quizzer_generate(retry) or [])]
         cap = _cap_to_max(cap + extra, exclude_hashes=exclude_hashes,
@@ -567,24 +291,30 @@ def generate_practice_questions(chapter_ids: list[str], sub_concepts: str = "",
 
 def generate_questions(chapter_ids: list[str], sub_concepts: str = "", spec: str = "",
                        config: dict | None = None, difficulty: str = "normal") -> list[dict]:
+    """测评出题：题源=知识卡片（v2.7.4 起不再检索资料切片）。
+
+    该范围无卡片、或模型据卡片出不出题时一律返回 []（由调用方给出明确提示），
+    不再用通用模板兜底——模板题不来自卡片，违反「题源=卡片」铁律。
+    """
     cfg = config or default_config()
     spec_text = spec or _spec_text(cfg)
-    # 出题前 RAG 检索章节资料正文，注入提示词（题目基于资料难度出题，根因①）
-    query = (sub_concepts or "").strip()
-    chunk_txt = _chunk_text(_retrieve_chunks(chapter_ids, query))
+    cards = _retrieve_cards(chapter_ids)
+    if not cards:
+        return []  # 无卡片＝无可考内容：不调模型、不出题
+    cards_txt = _cards_text(cards)
 
     system = QUIZZER_SYSTEM.format(
         chapter_ids=",".join(chapter_ids),
         sub_concepts=sub_concepts or "不限",
         spec=spec_text,
-        retrieved_chunks=chunk_txt[:6000],
+        source_cards=cards_txt[:14000],
         difficulty=difficulty,
     )
     qs = agents.quizzer_generate(system)
     if not qs:
-        return fallback_questions(chapter_ids, cfg)
+        return []
 
-    # 生成数不足：向 DeepSeek 补发一次补足缺口题型（根因②，不再用同一模板硬塞）
+    # 生成数不足：向 DeepSeek 补发一次补足缺口题型（仍限定卡片题源）
     missing = _missing(qs, cfg)
     if missing:
         fill_spec = "、".join(f"{n} 道{_TYPE_LABEL[t]}" for t, n in missing.items())
@@ -592,7 +322,7 @@ def generate_questions(chapter_ids: list[str], sub_concepts: str = "", spec: str
             chapter_ids=",".join(chapter_ids),
             sub_concepts=sub_concepts or "不限",
             spec=fill_spec,
-            retrieved_chunks=chunk_txt[:6000],
+            source_cards=cards_txt[:14000],
             difficulty=difficulty,
         )
         extra = agents.quizzer_generate(fill_system)
