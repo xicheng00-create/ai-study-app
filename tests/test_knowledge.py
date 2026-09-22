@@ -144,5 +144,34 @@ def test_generate_cards_prompt_demands_fine_grained_coverage(client, teacher_hea
         cards = knowledge.generate_knowledge_cards([cid])
     assert [c['front'] for c in cards] == ['考点一'], '重复与空正面都要被过滤'
     assert '一个考点一张卡片' in seen['system']
-    assert '至少 40 张' in seen['system']
+    assert '目标 ≥40 张' in seen['system'], '张数下限（v2.7.5 起为「目标」，非硬指标）'
     assert '资料0.md' in seen['system']
+    # v2.7.5：价值门槛必须对每一次生成一律适用，且张数让位于价值门槛（KNOW-010⑤⑥）
+    assert '对每一次生成一律适用' in seen['system']
+    assert '张数下限让位于价值门槛' in seen['system']
+    for kw in ('课程元信息', '纯数值记忆', '课件代码实现细节', '纯清单罗列',
+               '学习路径', '课程定位'):
+        assert kw in seen['system'], f'价值门槛必须点名禁产：{kw}'
+
+
+def test_rebuild_script_prompt_shares_value_bar():
+    """离线批量脚本的提示词必须与在线路径同一价值门槛（v2.7.5 补的真旁路）。
+
+    背景：v2.7.4 只改了 `prompts.KNOWLEDGE_SYSTEM`，而 `scripts/rebuild_cards.py`
+    的 `SYSTEM_TMPL` 仍写「拆成**应试级**知识卡片」+「凡是能出选择题的细节
+    （数字、专有名词、模块名、顺序、比例、阈值、年份、倍数）都必须单独成卡」——
+    该脚本是「批量重做章节 / --fill-orphans 补无卡切片」的入口，未来章节做重建
+    或补卡时会照旧批量产低价值卡。本用例把这份契约钉死：两条生成路径必须同门槛。
+    """
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    src = (root / 'scripts' / 'rebuild_cards.py').read_text(encoding='utf-8')
+    marker = 'SYSTEM_TMPL = """'
+    head = src.index(marker) + len(marker)
+    tpl = src[head:src.index('"""', head)]
+    assert '理解型' in tpl, '离线路径必须是「理解型」口径'
+    for kw in ('课程元信息', '纯数值记忆', '课件代码实现细节', '纯清单罗列'):
+        assert kw in tpl, f'离线生成路径也必须禁产：{kw}'
+    assert '学习路径' in tpl and '课程定位' in tpl, '离线路径同样要禁课程定位/学习路径'
+    for banned in ('应试级', '必须单独成卡'):
+        assert banned not in tpl, f'离线路径不得残留旧口径：{banned}'
