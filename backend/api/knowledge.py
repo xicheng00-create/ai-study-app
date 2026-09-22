@@ -13,8 +13,19 @@ knowledge_bp = Blueprint("knowledge_bp", __name__, url_prefix="/api/knowledge")
 
 
 def _card(row):
-    return {k: row[k] for k in ("id", "chapter_id", "sub_concept", "front", "back",
+    # 先转 dict：sqlite3.Row 没有 .get()，而 topic 只在带 card_topics 的查询里存在
+    src = dict(row)
+    d = {k: src[k] for k in ("id", "chapter_id", "sub_concept", "front", "back",
         "learn_count", "interval_days", "next_review_at", "status", "last_review_at")}
+    # 主题分组标签（KNOW-008，v2.7.0）：仅用于浏览归类；未归类时为空串，前端回退单组
+    d["topic"] = src.get("topic", "")
+    return d
+
+
+# 卡片查询统一带主题（card_topics 可能为空表 → LEFT JOIN 后 topic 为 NULL，COALESCE 兜 0 行）
+_CARD_COLS = ("kc.id,kc.chapter_id,kc.sub_concept,kc.front,kc.back,kr.learn_count,kr.interval_days,"
+              "kr.next_review_at,kr.status,kr.last_review_at,COALESCE(ct.topic,'') AS topic")
+_CARD_FROM = "knowledge_cards kc JOIN knowledge_reviews kr ON kr.card_id=kc.id LEFT JOIN card_topics ct ON ct.card_id=kc.id"
 
 
 def _published(con, chapter_id):
@@ -94,7 +105,7 @@ def cards(chapter_id):
     shared = con.execute("SELECT id FROM knowledge_cards WHERE chapter_id=?", (chapter_id,)).fetchall()
     for card in shared: _review(con, card["id"])
     con.commit()
-    rows = con.execute("SELECT kc.id,kc.chapter_id,kc.sub_concept,kc.front,kc.back,kr.learn_count,kr.interval_days,kr.next_review_at,kr.status,kr.last_review_at FROM knowledge_cards kc JOIN knowledge_reviews kr ON kr.card_id=kc.id WHERE kc.chapter_id=? AND kr.user_id=? ORDER BY CASE kr.status WHEN 'new' THEN 0 WHEN 'learning' THEN 1 WHEN 'reviewing' THEN 2 ELSE 3 END,kr.next_review_at", (chapter_id, g.user_id)).fetchall()
+    rows = con.execute(f"SELECT {_CARD_COLS} FROM {_CARD_FROM} WHERE kc.chapter_id=? AND kr.user_id=? ORDER BY CASE kr.status WHEN 'new' THEN 0 WHEN 'learning' THEN 1 WHEN 'reviewing' THEN 2 ELSE 3 END,kr.next_review_at", (chapter_id, g.user_id)).fetchall()
     return ok({"chapter_id": chapter_id, "cards": [_card(r) for r in rows], "deck_max": SESSION_DECK_MAX})
 
 
@@ -113,5 +124,5 @@ def review(card_id):
     con.execute("UPDATE knowledge_reviews SET learn_count=learn_count+1,interval_days=?,status=?,next_review_at=?,last_review_at=? WHERE id=?", (interval, status, next_review_at_iso(interval), now, row["id"])); con.commit()
     # 打卡判定触发点：复习提交成功后服务端惰性评估（CHECKIN-004）
     checkin.evaluate_and_maybe_complete(con, g.user_id)
-    updated = con.execute("SELECT kc.id,kc.chapter_id,kc.sub_concept,kc.front,kc.back,kr.learn_count,kr.interval_days,kr.next_review_at,kr.status,kr.last_review_at FROM knowledge_cards kc JOIN knowledge_reviews kr ON kr.card_id=kc.id WHERE kr.id=?", (row["id"],)).fetchone()
+    updated = con.execute(f"SELECT {_CARD_COLS} FROM {_CARD_FROM} WHERE kr.id=?", (row["id"],)).fetchone()
     return ok({"card": _card(updated)})

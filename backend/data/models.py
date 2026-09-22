@@ -176,6 +176,16 @@ CREATE TABLE IF NOT EXISTS knowledge_reviews (
 CREATE INDEX IF NOT EXISTS idx_knowledge_chapter ON knowledge_cards(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_knowledge_reviews_user ON knowledge_reviews(user_id);
 
+-- 卡片主题分组（KNOW-008，v2.7.0）：**只用于浏览归类**，不改卡片内容/不参与出卡与复习。
+-- 一章几百张卡平铺不可用 → 由 scripts/group_cards.py 离线归并出 10~16 个主题，落在本表。
+CREATE TABLE IF NOT EXISTS card_topics (
+    card_id    TEXT PRIMARY KEY REFERENCES knowledge_cards(id) ON DELETE CASCADE,
+    chapter_id TEXT NOT NULL,
+    topic      TEXT NOT NULL,
+    ord        INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_card_topics_chapter ON card_topics(chapter_id, ord);
+
 CREATE TABLE IF NOT EXISTS practice_sessions (
     id           TEXT PRIMARY KEY,
     user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -358,6 +368,17 @@ def migrate(con) -> None:
         "UPDATE questions SET points = CASE type WHEN 'essay' THEN 10 ELSE 5 END"
         " WHERE points = 0"
     )
+
+    # 卡片主题分组表（KNOW-008，v2.7.0）：老库补建（空表 → 前端回退单组，不影响可用性）
+    con.executescript("""
+    CREATE TABLE IF NOT EXISTS card_topics (
+        card_id    TEXT PRIMARY KEY REFERENCES knowledge_cards(id) ON DELETE CASCADE,
+        chapter_id TEXT NOT NULL,
+        topic      TEXT NOT NULL,
+        ord        INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_card_topics_chapter ON card_topics(chapter_id, ord);
+    """)
 
     # 存量二元 score(0/1) → 实际得分点（仅首次新增 graded_by 时执行一次）
     if added_graded_by:

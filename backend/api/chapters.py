@@ -1,5 +1,6 @@
 """章节 Blueprint（REQ-MAT-001/004/007）：教师写、全班读。"""
 from auth.jwt_utils import jwt_required, role_required
+from config import PLAN_CARDS_PER_DAY
 from data import models
 from data.db import get_db
 from flask import Blueprint, g, request
@@ -8,8 +9,18 @@ from middleware.input_validation import check_len, require_fields
 
 chapters_bp = Blueprint("chapters_bp", __name__, url_prefix="/api/chapters")
 
+# 章节列表带卡片数（KNOW-009，v2.7.0）：前端据此显示「预计 X 天学完」，不再显示「第X周」。
+# 用相关子查询而非 JOIN GROUP BY，避免没有任何卡片的章节被 JOIN 掉。
+_CHAPTERS_SQL = (
+    "SELECT c.*, (SELECT COUNT(*) FROM knowledge_cards kc WHERE kc.chapter_id = c.id) AS card_count"
+    " FROM chapters c"
+)
+
 
 def _chapter_row(row) -> dict:
+    # card_count 由查询带出；先转 dict 再取值（sqlite3.Row 没有 .get()，缺列时回退 0）
+    cols = dict(row)
+    card_count = cols.get("card_count") or 0
     return {
         "id": row["id"],
         "folder": row["folder"],
@@ -18,6 +29,7 @@ def _chapter_row(row) -> dict:
         "created_by": row["created_by"],
         # 学习页资料库「越新的在越左边」排序键（最新添加排最左）
         "created_at": row["created_at"],
+        "card_count": card_count,
     }
 
 
@@ -27,14 +39,13 @@ def list_chapters():
     """全班共享只读（MAT-004）：学生仅 published，教师全部。按 folder + order_no 排序。"""
     con = get_db()
     if g.role == "teacher":
-        rows = con.execute(
-            "SELECT * FROM chapters ORDER BY folder, order_no, name"
-        ).fetchall()
+        rows = con.execute(_CHAPTERS_SQL + " ORDER BY c.folder, c.order_no, c.name").fetchall()
     else:
         rows = con.execute(
-            "SELECT * FROM chapters WHERE status='published' ORDER BY folder, order_no, name"
+            _CHAPTERS_SQL + " WHERE c.status='published' ORDER BY c.folder, c.order_no, c.name"
         ).fetchall()
-    return ok({"chapters": [_chapter_row(r) for r in rows]})
+    # daily_cards：「预计 X 天学完」的分母，随响应下发（前端不硬编码 30）
+    return ok({"chapters": [_chapter_row(r) for r in rows], "daily_cards": PLAN_CARDS_PER_DAY})
 
 
 @chapters_bp.route("", methods=["POST"])

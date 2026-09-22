@@ -95,13 +95,14 @@ for s in SESSIONS:
     )
     counts["sessions"] += 1
 
-    # 2. Chapter 一对一
-    cname = "第" + str(s["week"]) + "周·第" + str(s["no"]) + "节 · " + s["title"]
+    # 2. Chapter 一对一（v2.7.0：章节名与「周/节」解耦 → 全局「第 N 章」，每周 2 讲）
+    chno = (int(s["week"]) - 1) * 2 + int(s["no"])
+    cname = "第 " + str(chno) + " 章 · " + s["title"]
     cid = new_id()
     cur.execute(
         "INSERT INTO chapters (id, folder, name, order_no, created_by, created_at, status)"
         " VALUES (?,?,?,?, 'seed', ?, 'draft')",
-        (cid, "第" + str(s["week"]) + "周", cname, s["no"], utcnow()),
+        (cid, "", cname, chno, utcnow()),
     )
     cur.execute("UPDATE sessions SET chapter_ids=? WHERE id=?", (json.dumps([cid], ensure_ascii=False), sid))
     counts["chapters"] += 1

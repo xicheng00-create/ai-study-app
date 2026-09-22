@@ -45,7 +45,8 @@ function ic(name, cls) {
 
 const App = {
   state: { token: "", role: null, user: null, hash: "learn" },
-  chapters: [],       // {id, name, folder}
+  chapters: [],       // {id, name, folder, card_count, order_no}
+  dailyCards: 30,     // 「预计 X 天学完」分母（GET /api/chapters 的 daily_cards 下发；前端不硬编码）
   activeChapter: null,
   activeQuiz: null,
   unread: 0,          // 通知未读数（铃铛角标，NOTIF-008）
@@ -54,6 +55,19 @@ const App = {
   chapterName(id) {
     const c = this.chapters.find(x => x.id === id);
     return c ? c.name : (id || "全部资料");
+  },
+
+  // 预计学完天数（KNOW-009，v2.7.0）：章节与「周/节」解耦后，学习节奏只按卡片量换算。
+  // 分母来自服务端 daily_cards（= 每日打卡要求 30 张），学生每天学 30 张 → 一周 210 张。
+  daysFor(cardCount) {
+    const per = this.dailyCards || 30;
+    return Math.max(1, Math.ceil((cardCount || 0) / per));
+  },
+  // 章节副标题：不再显示「第X周」，改为「预计 X 天学完 · 共 N 张卡」
+  chapterSubtitle(c) {
+    if (!c) return "";
+    const n = c.card_count || 0;
+    return `预计 ${this.daysFor(n)} 天学完 · 共 ${n} 张卡`;
   },
 };
 
@@ -143,7 +157,7 @@ function tabbar() {
 function go(h) { App.state.hash = h; if (h === "quiz") App.activeQuiz = null; location.hash = h; render(); }
 
 async function loadChapters() {
-  try { const d = await API.get("/api/chapters"); App.chapters = d.chapters || []; } catch (e) { App.chapters = []; }
+  try { const d = await API.get("/api/chapters"); App.chapters = d.chapters || []; if (d.daily_cards) App.dailyCards = d.daily_cards; } catch (e) { App.chapters = []; }
 }
 
 function viewLogin() {

@@ -43,6 +43,7 @@ const Student = {
   knowledgeIdx: false, knowledgeDeck: false, knowledgeCards: [], knowledgeAllCards: [], knowledgePos: 0,
   kcDeckMax: 0,  // 单次复习卡组上限（服务端 config.SESSION_DECK_MAX 下发；前端不硬编码，缺字段兜底 100）
   knowledgeFlipped: false, knowledgeSwipe: null, knowledgeGroupOpen: {},  // 知识卡片列表页按章分组展开态（cid → bool）
+  knowledgeTopicOpen: {},  // 章内主题组展开态（v2.7.0：键 = cid|主题下标，避免主题名含引号时拼串出错）
   todayDeck: false,   // 今日任务卡组模式（数据源 GET /api/knowledge/today，进度 key aistudy_kc_today_<date>）
   todayExtra: false,  // 超额学习卡组（mode=extra，进度 key 加 _extra 后缀，与任务组隔离）
   libOpen: (function () { try { return localStorage.getItem('aistudy_lib_open') === '1'; } catch (e) { return false; } })(),
@@ -97,7 +98,7 @@ const Student = {
     const rows = chaptersSorted.map(c => {
       const on = sel.indexOf(c.id) >= 0;
       return `<div class="chapter ${on ? 'active' : ''}" onclick="Student.toggleChapterMulti('${c.id}')">
-      <div><div class="nm">${esc(c.name)}</div><div class="mt">${esc(c.folder || '未分组')}</div></div>
+      <div><div class="nm">${esc(c.name)}</div><div class="mt">${esc(App.chapterSubtitle(c))}</div></div>
       <span class="chk${on ? ' on' : ''}">${on ? ic('check') : ''}</span></div>`;
     }).join('');
     const selN = sel.length, totalN = App.chapters.length;   // selN 仅用于行渲染前的选集，不再直接上屏
@@ -387,22 +388,56 @@ const Student = {
     }
     const count = k => cardsAll.filter(c => c.status === k).length;
     const due = cardsAll.filter(c => this.kcDue(c)).length;
+    // 两级钻取（v2.7.0，KNOW-008）：章 → 主题组 → 卡片。
+    // 一章 300~650 张卡平铺成「卡片墙」不可用，改为按服务端 card_topics 下发的 topic 归组；
+    // topic 全为空（老库/未归类）时退化成单组「全部卡片」，任何库态都能正常浏览。
     const gBody = groups.map(g => {
       const gc = g.cards;
       const gcount = k => gc.filter(c => c.status === k).length;
       const gdue = gc.filter(c => this.kcDue(c)).length;
       const open = !!this.knowledgeGroupOpen[g.cid];
+      const tGroups = this.topicGroups(gc);
+      const tBody = open ? tGroups.map((t, ti) => {
+        const to = this.knowledgeTopicOpen[g.cid + '|' + ti] === true;
+        const tcount = k => t.cards.filter(c => c.status === k).length;
+        const tdue = t.cards.filter(c => this.kcDue(c)).length;
+        const mini = c => `<div class="kc-mini ${c.status}" onclick="Student.kcDetail('${c.id}')"><b>${esc(c.front)}</b><small>${esc(c.sub_concept || '知识点')}</small></div>`;
+        return `<div class="kc-topic">
+          <div class="kc-topic-head" onclick="Student.toggleKnowledgeTopic('${g.cid}',${ti})">
+            <div style="flex:1"><b>${esc(t.name)}</b><small>${t.cards.length} 张 · 已掌握 ${tcount('mastered')} · 学习中 ${tcount('learning') + tcount('reviewing')} · 未学 ${tcount('new')}${tdue ? ` · 今日待复习 ${tdue}` : ''}</small></div>
+            <span class="caret">${to ? '▾' : '▸'}</span></div>
+          ${to ? `<div class="kc-grid">${t.cards.map(mini).join('')}</div>` : ''}</div>`;
+      }).join('') : '';
       return `<div class="kc-ch">
         <div class="kc-ch-head" onclick="Student.toggleKnowledgeGroup('${g.cid}')">
-          <div style="flex:1"><b>${esc(g.name)}</b><small>${gc.length} 张 · 已掌握 ${gcount('mastered')} · 学习中 ${gcount('learning') + gcount('reviewing')} · 未学 ${gcount('new')} · 今日待复习 ${gdue}</small></div>
+          <div style="flex:1"><b>${esc(g.name)}</b><small>${gc.length} 张 · 预计 ${App.daysFor(gc.length)} 天学完 · 已掌握 ${gcount('mastered')} · 学习中 ${gcount('learning') + gcount('reviewing')} · 未学 ${gcount('new')} · 今日待复习 ${gdue}</small></div>
           <span class="caret">${open ? '▾' : '▸'}</span></div>
-        ${open ? `<div class="kc-grid">${gc.map(c => `<div class="kc-mini ${c.status}" onclick="Student.kcDetail('${c.id}')"><b>${esc(c.front)}</b><small>${esc(c.sub_concept || '知识点')}</small></div>`).join('')}</div>` : ''}</div>`;
+        ${open ? `<div class="kc-ch-body"><div class="muted" style="font-size:12px;margin:0 0 8px">共 ${tGroups.length} 个主题 · 点主题展开卡片</div>${tBody}</div>` : ''}</div>`;
     }).join('');
+    const multiChapter = groups.length > 1;
     return appbar('知识卡片', `已选 ${sel.length} 章 · 共 ${cardsAll.length} 张`, 'Student.leaveKnowledge()') + `<div class="content">
       <button class="btn" style="width:100%;margin-bottom:14px" onclick="Student.startKnowledgeDeck()">${ic('cards')}开始复习（本次 ${this.kcDeckSize(cardsAll)} 张 · 上限 ${this.kcDeckMax || 100}${due ? ` · 今日待复习 ${due}` : ''}）</button>
-      <div class="kc-summary"><b>总览</b><span>共 ${cardsAll.length} 张 · 已掌握 ${count('mastered')} · 学习中 ${count('learning') + count('reviewing')} · 未学 ${count('new')} · 今日待复习 ${due} · 每次最多 ${this.kcDeckMax || 100} 张，学习记录长期累计</span></div>
+      <div class="kc-summary"><b>总览</b><span>共 ${cardsAll.length} 张 · 预计 ${App.daysFor(cardsAll.length)} 天学完（每天 ${App.dailyCards || 30} 张） · 已掌握 ${count('mastered')} · 学习中 ${count('learning') + count('reviewing')} · 未学 ${count('new')} · 今日待复习 ${due} · 每次最多 ${this.kcDeckMax || 100} 张，学习记录长期累计</span>
+      ${multiChapter ? '<span>跨章合并时按章分组，章内再按主题分组</span>' : ''}</div>
       ${gBody}
     </div>` + tabbar();
+  },
+  // 章内主题归组（v2.7.0）：卡片自带 topic（服务端 card_topics 下发）；缺失时并入「全部卡片」单组。
+  // 组间按卡片数降序（大主题优先看到），组内保持接口原顺序（后端已按复习状态/到期排序）。
+  topicGroups(cards) {
+    const m = new Map();
+    cards.forEach(c => {
+      const k = String(c.topic || '').trim() || '全部卡片';
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(c);
+    });
+    return [...m.entries()].map(([name, list]) => ({ name, cards: list }))
+      .sort((a, b) => b.cards.length - a.cards.length);
+  },
+  toggleKnowledgeTopic(cid, ti) {
+    const k = cid + '|' + ti;
+    this.knowledgeTopicOpen[k] = this.knowledgeTopicOpen[k] !== true;
+    render();
   },
   toggleKnowledgeGroup(cid) { this.knowledgeGroupOpen[cid] = !this.knowledgeGroupOpen[cid]; render(); },
   kcStatusBadge(st) {
@@ -996,7 +1031,7 @@ const Student = {
     this.practiceSessions = sessions;
     const chapters = App.chapters;
     const sel = this.practiceChapters || [];
-    const chapterSel = chapters.map(c => `<div class="chapter ${sel.includes(c.id) ? 'active' : ''}" onclick="Student.togglePracticeChapter('${c.id}')"><div><div class="nm">${esc(c.name)}</div><div class="mt">${esc(c.folder || '未分组')}</div></div></div>`).join('') || '<div class="muted">暂无章节</div>';
+    const chapterSel = chapters.map(c => `<div class="chapter ${sel.includes(c.id) ? 'active' : ''}" onclick="Student.togglePracticeChapter('${c.id}')"><div><div class="nm">${esc(c.name)}</div><div class="mt">${esc(App.chapterSubtitle(c))}</div></div></div>`).join('') || '<div class="muted">暂无章节</div>';
     // 历史条目：左滑露出删除（v2.1.0），完成后/进行中均可删
     const hist = sessions.map(s => {
       const status = s.completed ? `<span class="badge master">已完成 ${s.score}</span>` : `<span class="badge prog">进行中</span>`;

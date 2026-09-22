@@ -36,7 +36,7 @@ const Teacher = {
     try { overview = await API.get("/api/teacher/overview"); } catch (e) {}
 
     const grouped = {};
-    App.chapters.forEach(c => { (grouped[c.folder || '未分组'] = grouped[c.folder || '未分组'] || []).push(c); });
+    App.chapters.forEach(c => { (grouped[c.folder || '课程章节'] = grouped[c.folder || '课程章节'] || []).push(c); });
     const lib = Object.keys(grouped).map(f => `<div class="folder">${esc(f)}</div>` + grouped[f].map(c => {
       const mats = materials.filter(m => m.chapter_id === c.id);
       const matHtml = mats.map(m => `<div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:6px"><span style="flex:1;min-width:0;word-break:break-word">${ic('file')} ${esc(m.original_name)}</span>
@@ -44,7 +44,7 @@ const Teacher = {
         <span class="mini-btn" style="flex-shrink:0" onclick="Teacher.downloadMat('${m.id}','${esc(m.original_name)}')">下载</span>
         <span class="mini-btn danger" style="flex-shrink:0" onclick="Teacher.delMaterial('${m.id}')">删</span></div>`).join('') || '<div class="muted" style="font-size:12px;margin-top:4px">暂无资料</div>';
       return `<div class="adm-card" style="flex-direction:column;align-items:stretch">
-        <div style="display:flex;align-items:flex-start;gap:13px"><div class="av">§</div><div class="meta" style="flex:1;min-width:0"><div class="nm">${esc(c.name)}</div><div class="st">${esc(c.folder || '未分组')} · ${mats.length} 份资料</div></div></div>
+        <div style="display:flex;align-items:flex-start;gap:13px"><div class="av">§</div><div class="meta" style="flex:1;min-width:0"><div class="nm">${esc(c.name)}</div><div class="st">${esc(c.folder || '课程章节')} · ${mats.length} 份资料</div></div></div>
         <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end"><span class="mini-btn teacher" onclick="Teacher.uploadForm('${c.id}')">上传</span>
           <span class="mini-btn" onclick="Teacher.editChapterForm('${c.id}')">编辑</span>
           <span class="mini-btn danger" onclick="Teacher.delChapter('${c.id}')">删除</span></div><div style="margin-top:12px;padding-left:0">${matHtml}</div></div>`;
@@ -224,7 +224,7 @@ const Teacher = {
         return `<div class="adm-card" style="cursor:pointer" onclick="Teacher.openKcards('${c.id}')">
           <div class="av">卡</div>
           <div class="meta" style="flex:1;min-width:0"><div class="nm">${esc(c.name)}</div>
-            <div class="st">${esc(c.folder || '未分组')} · ${c.cards} 张卡片 · ${c.sub_concepts} 个主题 · ${c.chunks} 条切片</div>
+            <div class="st">${esc(c.folder || '课程章节')} · ${c.cards} 张卡片 · ${c.sub_concepts} 个主题 · ${c.chunks} 条切片</div>
             <div class="st">${c.orphan_chunks ? `未覆盖切片 ${c.orphan_chunks} 条` : '全部切片均已覆盖'}</div></div>${badge}</div>`;
       }).join('') || '<div class="muted">暂无章节</div>';
       return appbar('知识卡片核查', '教师专有 · 只读') + `<div class="content">

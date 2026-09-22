@@ -39,6 +39,11 @@ def utcnow(offset_sec=0):
     return (datetime.now(timezone.utc) + timedelta(seconds=offset_sec)).isoformat()
 
 
+def chapter_no(s: dict) -> int:
+    """章节全局序号（v2.7.0 解耦「周/节」展示口径）：每周 2 讲 → W1S1=1、W1S2=2、W2S1=3…"""
+    return (int(s["week"]) - 1) * 2 + int(s["no"])
+
+
 SPECS = {
     "W2S1": {
         "week": 2, "no": 1, "dir": "W2S1",
@@ -185,11 +190,11 @@ def inject_session(cur, key: str, status: str, counts: dict) -> str:
          json.dumps(s["concept_tags"], ensure_ascii=False), s["milestone"], s["no"], status, utcnow()),
     )
     counts["sessions"] += 1
-    cname = f"第{s['week']}周·第{s['no']}节 · {s['title']}"
+    cname = f"第 {chapter_no(s)} 章 · {s['title']}"
     cur.execute(
         "INSERT INTO chapters (id, folder, name, order_no, created_by, created_at, status)"
         " VALUES (?,?,?,?, 'seed', ?, ?)",
-        (cid, f"第{s['week']}周", cname, s["no"], utcnow(), status),
+        (cid, "", cname, chapter_no(s), utcnow(), status),
     )
     counts["chapters"] += 1
     print(f"\n[{key}] {cname}  (session={sid[:8]} chapter={cid[:8]} status={status})")
@@ -216,11 +221,16 @@ def backfill_courseware(cur, counts: dict) -> None:
         "SELECT c.id, c.name, c.status, c.folder, c.order_no FROM chapters c ORDER BY c.folder, c.order_no"
     ).fetchall()
     for cid, name, status, folder, order_no in rows:
+        # v2.7.0：章节名解耦为「第 N 章」（folder 置空），由全局章号反推 W{week}S{session}
+        # （课程每周 2 讲：章 1→W1S1、章 2→W1S2、章 3→W2S1、章 4→W2S2）。
+        # 课件源目录仍按 WxSx 命名，本函数只是把它换算成目录名，不改任何展示口径。
         try:
-            w_s = folder.replace("第", "").replace("周", "")
-            key = f"W{int(w_s)}S{int(order_no)}"
-        except (ValueError, IndexError):
-            print(f"  [skip] 无法解析章节名：{name}")
+            chno = int(order_no)
+            if chno < 1:
+                raise ValueError(order_no)
+            key = f"W{(chno - 1) // 2 + 1}S{(chno - 1) % 2 + 1}"
+        except (ValueError, TypeError):
+            print(f"  [skip] 无法解析章节序号：{name}")
             continue
         lesson = COURSE / key / "课件.md"
         if not lesson.is_file():

@@ -95,7 +95,11 @@ def _weak_names(con, user_id):
 
 
 def _quiz_session_label(con, chapter_ids):
-    """通过章节反查首个命中的已发布周/节 → 「测评 · 第X周 第Y节」；查不到回退 title。"""
+    """通过章节反查首个命中的已发布章节 → 「测评 · 第 N 章 · 章标题」。
+
+    v2.7.0：章节已与「周/节」解耦（KNOW-009），测评标签同样改按**章节序号**表述，
+    不再回显「第X周 第Y节」；章节行不存在时回退 title。
+    """
     chids = _parse_ids(chapter_ids)
     if not chids:
         return None
@@ -104,8 +108,17 @@ def _quiz_session_label(con, chapter_ids):
         " WHERE status='published' ORDER BY week_no, session_no, order_no"
     ).fetchall()
     for row in rows:
-        if set(_parse_ids(row["chapter_ids"])).intersection(chids):
-            return f"测评 · 第{row['week_no']}周 第{row['session_no']}节"
+        hit = set(_parse_ids(row["chapter_ids"])).intersection(chids)
+        if not hit:
+            continue
+        ch = con.execute(
+            "SELECT order_no, name FROM chapters WHERE id=?", (min(hit),)
+        ).fetchone()
+        if ch is not None:
+            # name 形如「第 3 章 · AIPM vs 传统 PM」→ 去重前缀，避免「第 3 章 · 第 3 章」
+            title = ch["name"].split("·")[-1].strip()
+            return f"测评 · 第 {ch['order_no']} 章 · {title}"
+        return f"测评 · {row['title']}"
     return None
 
 

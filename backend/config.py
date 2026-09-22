@@ -10,6 +10,9 @@ TASK_QUESTIONS_REQUIRED = 5
 # 单次「开始复习」卡组上限（KNOW-004）：每次学习最多 100 张（阈值单点，随响应下发）。
 # 学习记录（knowledge_reviews）长期累计、绝不按天清空；本次没复习完的卡次日自动进入下一批。
 SESSION_DECK_MAX = 100
+# 「预计 X 天学完」口径（KNOW-009，v2.7.0）：章节不再挂「周/节」，改按**卡片数 / 每日可学张数**
+# 反推天数。每日可学量与打卡要求同源（30 张/天），保证「进度口径」和「打卡口径」不打架。
+PLAN_CARDS_PER_DAY = TASK_CARDS_REQUIRED
 
 # Web Push（VAPID）：私钥只存 .env，不进 git / 不进 API 响应 / 不写日志
 VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
@@ -41,6 +44,7 @@ class BaseConfig:
     TASK_CARDS_REQUIRED = TASK_CARDS_REQUIRED
     TASK_QUESTIONS_REQUIRED = TASK_QUESTIONS_REQUIRED
     SESSION_DECK_MAX = SESSION_DECK_MAX
+    PLAN_CARDS_PER_DAY = PLAN_CARDS_PER_DAY
     VAPID_PUBLIC_KEY = VAPID_PUBLIC_KEY
     VAPID_PRIVATE_KEY = VAPID_PRIVATE_KEY
     VAPID_SUBJECT = VAPID_SUBJECT
