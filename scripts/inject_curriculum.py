@@ -46,7 +46,7 @@ def chapter_no(s: dict) -> int:
 
 SPECS = {
     "W2S1": {
-        "week": 2, "no": 1, "dir": "W2S1",
+        "week": 2, "no": 1, "dir": "第3章",
         "title": "AIPM vs 传统 PM",
         "goal": (
             "用 3 个以上维度（定位/底层逻辑/价值核心）说清传统 PM 与 AIPM 的差异；"
@@ -77,7 +77,7 @@ SPECS = {
         ],
     },
     "W2S2": {
-        "week": 2, "no": 2, "dir": "W2S2",
+        "week": 2, "no": 2, "dir": "第4章",
         "title": "真实落地案例",
         "goal": (
             "掌握「四问拆读法」（痛点 / AI 解法 / 数据知识来源 / 边界与兜底）拆解任意 AI 落地案例；"
@@ -161,7 +161,13 @@ def insert_material(cur, cid: str, f: Path, order: int, status: str, counts: dic
     mid = new_id()
     display = f.name
     if f.name == "课件.md":
-        display = f"{f.parent.name} 课件（教案）.md"
+        # 课件目录 2026-09-22 起改名 `第N章`（原 WxSy）；展示名统一「第 N 章 …」（带空格，
+        # 与 chapters.name / 测评标签同格式）。
+        d = f.parent.name
+        if d.startswith("第") and d.endswith("章") and d[1:-1].isdigit():
+            display = f"第 {d[1:-1]} 章 课件（教案）.md"
+        else:
+            display = f"{d} 课件（教案）.md"
     cur.execute(
         "INSERT INTO materials (id, chapter_id, filename, original_name, file_type, size_bytes,"
         " uploaded_by, is_deleted, chunk_count, parse_status, created_at, status, source_path)"
@@ -221,14 +227,14 @@ def backfill_courseware(cur, counts: dict) -> None:
         "SELECT c.id, c.name, c.status, c.folder, c.order_no FROM chapters c ORDER BY c.folder, c.order_no"
     ).fetchall()
     for cid, name, status, folder, order_no in rows:
-        # v2.7.0：章节名解耦为「第 N 章」（folder 置空），由全局章号反推 W{week}S{session}
-        # （课程每周 2 讲：章 1→W1S1、章 2→W1S2、章 3→W2S1、章 4→W2S2）。
-        # 课件源目录仍按 WxSx 命名，本函数只是把它换算成目录名，不改任何展示口径。
+        # v2.7.0：章节名解耦为「第 N 章」（folder 置空），由全局章号反推课件目录。
+        # 2026-09-22：课件目录已从 `WxSy` 改名为 `第N章`（章 1→第1章 … 章 16→第16章，同
+        # models.chapter_no 口径），本函数只做「章号 → 目录名」换算，不改任何展示口径。
         try:
             chno = int(order_no)
             if chno < 1:
                 raise ValueError(order_no)
-            key = f"W{(chno - 1) // 2 + 1}S{(chno - 1) % 2 + 1}"
+            key = f"第{chno}章"
         except (ValueError, TypeError):
             print(f"  [skip] 无法解析章节序号：{name}")
             continue
