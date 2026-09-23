@@ -167,6 +167,39 @@ def test_l3_absent_digest(client, teacher_headers):
         assert _count(client, teacher["id"], "absent_digest") == 1
 
 
+def test_excluded_test_account_skipped_without_include(client, teacher_headers):
+    """不带 --include 时命中 EXCLUDED_USERNAMES 的测试号被跳过（收 0 条），真实学生照发。"""
+    alice = make_student(client, teacher_headers, "alice")
+    test_uid = make_student(client, teacher_headers, "hermesstu")
+    mod = _load_script()
+    assert mod.main(["--slot", "L1"]) == 0
+    with client.application.app_context():
+        assert _count(client, alice) == 1
+        assert _count(client, test_uid) == 0
+
+
+def test_include_brings_back_test_account(client, teacher_headers, monkeypatch):
+    """带 --include=hermesstu 时该测试号被纳入本期提醒（mock notify_users 断言收件人）。"""
+    alice = make_student(client, teacher_headers, "alice")
+    test_uid = make_student(client, teacher_headers, "hermesstu")
+    mod = _load_script()
+
+    from services import notify
+
+    calls = []
+
+    def fake_notify(con, uids, *args, **kwargs):
+        calls.append(list(uids))
+        return len(uids)
+
+    monkeypatch.setattr(notify, "notify_users", fake_notify)
+    assert mod.main(["--slot", "L1", "--include", "hermesstu"]) == 0
+
+    recipients = {uid for uids in calls for uid in uids}
+    assert test_uid in recipients, "被 --include 的测试号应进入收件人"
+    assert alice in recipients, "真实学生应照常收到"
+
+
 def test_l3_no_absent_no_digest(client, teacher_headers, monkeypatch):
     """L3 无未达标学生时不发教师名单。"""
     make_student(client, teacher_headers, "alice")

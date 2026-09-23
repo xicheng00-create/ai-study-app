@@ -7,6 +7,10 @@
 订阅行的存在与否本身就代表他点过设置页的「打开提醒」，故这里不按 push_enabled 过滤，
 否则没开推送的学生会连站内提醒都收不到。
 由 launchd `com.aistudy.checkin-reminder` 每天 19/20/21/22/23:00 触发，档位按当前小时推导。
+
+验收开关：`--include <username>`（可重复）可临时把命中 EXCLUDED_USERNAMES 的测试号纳入本期提醒
+（未授权推送的学生只有测试号能代表真实手机，用于验收/演示）；**生产定时任务不要带**，
+交付前须 `grep -n include` 复核 wrapper 与 plist。
 """
 import argparse
 import logging
@@ -48,6 +52,10 @@ def eligible_students(con) -> list:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="每晚阶梯式未达标提醒")
     parser.add_argument("--slot", choices=sorted(("L1", "L2", "L3", "L4", "L5")), default=None)
+    parser.add_argument(
+        "--include", action="append", default=None, metavar="USERNAME",
+        help="临时把命中测试号白名单的 username 纳入本期提醒（可重复；仅验收/演示用，生产不要带）",
+    )
     args = parser.parse_args(argv)
 
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -82,8 +90,12 @@ def main(argv=None) -> int:
     with app.app_context():
         con = get_db()
         rows = eligible_students(con)
+        # 验收开关：--include 里的 username（lower 归一）即使命中测试号白名单也照常参与，
+        # 其余判定（达标即停 / 幂等 / 文案）完全不变，只影响收件人筛选。
+        include = {u.lower() for u in (args.include or [])}
         for r in rows:
-            if r["username"].lower() in EXCLUDED_USERNAMES:
+            uname = r["username"].lower()
+            if uname in EXCLUDED_USERNAMES and uname not in include:
                 continue
             c = checkin.counts_today(con, r["id"])
             if c["cards"] >= TASK_CARDS_REQUIRED and c["questions"] >= TASK_QUESTIONS_REQUIRED:
