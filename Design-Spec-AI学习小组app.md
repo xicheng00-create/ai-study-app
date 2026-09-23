@@ -1,7 +1,7 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.8.1（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
-> 日期：2026-09-22（随代码现状回写）
+> 版本：v2.9.1（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
+> 日期：2026-09-24（随代码现状回写）
 > 状态：设计评审（正文静态章节以**当前生产代码**为准；§12.x 为实现状态回写历史）
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）
 > 方法论：pm-toolkit 架构分层 / 领域建模 / API 契约 / 角色分端 UI 规格 + 架构再审（F1–F10）
@@ -229,14 +229,14 @@
 
 | KNOW-008 | student | P1 | **浏览卡片必须按主题分组（v2.7.0，CR-2026-0922-CARDSGROUP）**：一章 300~650 张卡平铺不可用（用户实报「每个 session 几百张卡片挺多的」）。① 浏览页（「知识卡片」列表）按「**章 → 主题组 → 卡片**」两级钻取：**纵向折叠、点组展开、默认全折叠、无横向滚动**；② 主题组 = 该章卡片的 LLM 归类结果（每组 **5~80 张**，目标 15~80，**禁止**出现吞掉全章一半的巨型组、也禁止 1~4 张的碎片组；碎组并入最贴切的大主题，实在无处可去才落「其他要点」）；③ 归类**只做浏览标签**，**不得**改卡片正文、切片绑定、复习态，也不参与出卡/复习调度（分组失败或未归类时 `topic` 返回空串 → 前端退化为单组「全部卡片」，老库同样可用）；④ 分组结果落库 `card_topics` 并随 `GET /api/knowledge/<chapter_id>` 的卡片字段 `topic` 下发；⑤ 组内统计（张数/已掌握/学习中/未学/今日待复习）与章级一致 |
 | KNOW-009 | student | P1 | **章节与学习时间解耦（v2.7.0，CR-2026-0922-DECHAPTER）**：章节**不得**再按「第X周·第Y节」表述，也不得用周/节暗示学习进度。① 章节展示名一律「**第 N 章 · 章标题**」（N = 全局章序 1..4，`chapters.order_no` 连续重排、`folder` 置空）；② 学习节奏**只由卡片量换算**：每章标「**预计 X 天学完 · 共 N 张卡**」，X = `ceil(卡数 / 每日可学张数)`；③ 每日可学张数**单点在后端**（`config.PLAN_CARDS_PER_DAY`，= 打卡要求 30 张/天，约一周 210 张）并随 `GET /api/chapters` 以 `daily_cards` 下发，前端**禁止硬编码 30**；④ 章节卡数同样由后端下发（`card_count`），前端不得自行维护；⑤ 测评标签等一切回显章节处统一用「第 N 章」，不再出现「第X周 第Y节」 |
-| KNOW-010 | student | P1 | **卡片价值门槛：禁产死记硬背低价值卡（v2.7.4，CR-2026-0922-CARDSCOPE）**：① 禁产四类卡——**课程元信息**（课程定位/学习路径/学习节奏/章节概览/前置衔接/本章产出/里程碑/备课参考/课件来源/视频课对应/知识推荐/参考链接）、**纯数值记忆**（价格/参数/默认值/取值/排名/版本号/日期/百分比）、**课件代码实现细节**（函数名/类名/参数名/返回值类型/用了哪个库/字段默认值/分支写法）、**纯清单罗列**（无解释无判断无方法论）；② 只产**理解型**卡（概念原理/差异辨析/选型判断/误区纠正/场景应用/案例结论/方法论骨架），数字仅在服务于理解点时可保留；③ 存量清理：一次性按 LLM 逐卡判定（四类删除/其余保留），2113 张判删 **439 张**（D2 数值 174 / D4 清单 92 / D3 代码 92 / D1 元信息 81），同步清 `card_topics`/`knowledge_reviews` 关联行与未作答存量练习题，被删卡全文留档 `backups/2026-09-22-lowvalue-cards/deleted-cards.json`；④ 已发布测评的历史作答保留，不追溯改分；⑤ **常态约束（对后续一切章节一律适用，v2.7.5）**：本门槛不是一次性清理，而是**卡片生成的长期规则**——后续任何新章节的**资料上传 / 学习路径发布自动生成**（`knowledge.ensure_chapter_cards` 钩子）、`scripts/rebuild_cards.py` 的批量重建与补卡，均须遵守第①②条，**禁止任何生成路径旁路**（v2.7.4 曾漏改 `rebuild_cards.py` 的 `SYSTEM_TMPL`，仍写「应试级 + 数字/专有名词/顺序/比例/阈值/年份/倍数必须单独成卡」，v2.7.5 已补齐）；⑥ **价值门槛优先于张数下限**：KNOW-004 的「每章 ≥40 张」（`knowledge.MIN_CARDS`）是**目标而非硬指标**，资料本身撑不起时允许少出，**禁止为凑数产低价值卡**；⑦ **入库抽检**：新章节卡片入库后须按四类做比例抽检，发现低价值卡按存量清理流程处置（备份 → 删卡 → 同步 `card_topics` / `knowledge_reviews`） |
+| KNOW-010 | student | P1 | **卡片价值门槛：禁产死记硬背低价值卡（v2.7.4，CR-2026-0922-CARDSCOPE）**：① 禁产四类卡——**课程元信息**（课程定位/学习路径/学习节奏/章节概览/前置衔接/本章产出/里程碑/备课参考/课件来源/视频课对应/知识推荐/参考链接）、**纯数值记忆**（价格/参数/默认值/取值/排名/版本号/日期/百分比）、**课件代码实现细节**（函数名/类名/参数名/返回值类型/用了哪个库/字段默认值/分支写法）、**纯清单罗列**（无解释无判断无方法论）；② 只产**理解型**卡（概念原理/差异辨析/选型判断/误区纠正/场景应用/案例结论/方法论骨架），数字仅在服务于理解点时可保留；③ 存量清理：一次性按 LLM 逐卡判定（四类删除/其余保留），2113 张判删 450 张、**实删 439 张**（另 11 张按偏宽原则保留；D2 数值 174 / D4 清单 92 / D3 代码 92 / D1 元信息 81），同步清 `card_topics`/`knowledge_reviews` 关联行与未作答存量练习题，被删卡全文留档 `backups/2026-09-22-lowvalue-cards/deleted-cards.json`；④ 已发布测评的历史作答保留，不追溯改分；⑤ **常态约束（对后续一切章节一律适用，v2.7.5）**：本门槛不是一次性清理，而是**卡片生成的长期规则**——后续任何新章节的**资料上传 / 学习路径发布自动生成**（`knowledge.ensure_chapter_cards` 钩子）、`scripts/rebuild_cards.py` 的批量重建与补卡，均须遵守第①②条，**禁止任何生成路径旁路**（v2.7.4 曾漏改 `rebuild_cards.py` 的 `SYSTEM_TMPL`，仍写「应试级 + 数字/专有名词/顺序/比例/阈值/年份/倍数必须单独成卡」，v2.7.5 已补齐）；⑥ **价值门槛优先于张数下限**：KNOW-004 的「每章 ≥40 张」（`knowledge.MIN_CARDS`）是**目标而非硬指标**，资料本身撑不起时允许少出，**禁止为凑数产低价值卡**；⑦ **入库抽检**：新章节卡片入库后须按四类做比例抽检，发现低价值卡按存量清理流程处置（备份 → 删卡 → 同步 `card_topics` / `knowledge_reviews`） |
 | KNOW-012 | student | P1 | **复习卡组界面内「问 TUTOR」（v2.9.0，CR-2026-0923-RESUME）**：复习 deck 在「没记住/记住了」操作区之下、暂停退出之上新增「💬 问 TUTOR 这张卡」按钮。点击**先存进度再跳对话页**（复用 `askKcTutor` + `kc_ctx` 自动就当前这张卡提问），否则离开卡组后复习位置丢失。不改 `askKcTutor` 现有行为，不加后端接口 |
 | KNOW-013 | student | P1 | **一键续学（v2.9.0，CR-2026-0923-RESUME）**：① 首页「继续复习」卡**常显两种状态**（有存档 → 「第 X/Y 张」+「继续」；无存档 → 按钮置灰「暂无进行中的复习」），读 localStorage 纯读判定「今日任务 / 知识卡片」两类存档；② 今日任务卡「继续」存在当日存档 → 直接进存档位置；③ 「知识卡片」入口与今日任务卡组的「继续上次复习」**取消二次确认 sheet**，直接续学（「重新开始」仍保留在卡组内）；④ `_kcSave` 增存 `total`（旧记录缺 total 视为 0，向后兼容） |
 
 **Technical**
 - **独立数据层（共享内容 + 每生独立复习态，v1.17.x 重构）**：`knowledge_cards`（id, chapter_id, sub_concept, front, back, source_chunk_id, created_at）——**无 user_id，是共享内容**（每章一组，发布时生成一次）；`knowledge_reviews`（id, card_id, user_id, learn_count, interval_days, next_review_at, status CHECK(new/learning/reviewing/mastered), last_review_at, created_at, UNIQUE(card_id,user_id)）——**每学生独立复习状态**，学生首次打开该章卡组时**懒建**（默认 new）。已废弃 v1.17.0 的「knowledge_cards 带 user_id」旧形（表空可安全重建）。
 - **卡片主题分组（v2.7.0，CR-2026-0922-CARDSGROUP，KNOW-008）**：`scripts/group_cards.py [--chapter N] [--apply]`——LLM 三级处理：① 主题表（资料名 + 高频 `sub_concept` + 抽样 front → 10~16 个主题，要求体量均衡）；② 逐卡归类（每批 25 张，只允许用给定主题）；③ **再平衡**（首轮实测模型会造出「模型选型与对比(280)」式巨型桶 + 一堆 1~4 张碎片组，故加大于 `MAX_TOPIC_CARDS=80` 自动拆 2~4 子主题、小于 `MIN_TOPIC_CARDS=5` 并入大主题两道工序，最多拆 2 轮）。落库 `card_topics`（card_id PK, chapter_id, topic, ord），按章先删后插幂等；默认 dry-run，`--apply` 才写库且**只写 card_topics**。建表复用 `backend/data/models.py` 的 SCHEMA/migrate（单一真相，不重复 DDL）。`topic` 经 `LEFT JOIN card_topics` 随卡片下发，无归类时为空串（前端退化为单组「全部卡片」）。
-- **章节天数口径（v2.7.0，CR-2026-0922-DECHAPTER，KNOW-009）**：`GET /api/chapters` 增加 `daily_cards`（= `config.PLAN_CARDS_PER_DAY`，定义上等于 `TASK_CARDS_REQUIRED`，保证「进度口径」与「打卡口径」同源不打架）与每章 `card_count`（子查询 `COUNT(*) FROM knowledge_cards`）；前端 `App.daysFor()` = `ceil(card_count / daily_cards)`，全库 2113 张 ≈ **71 天**（第 1~4 章 = 13/19/22/18 天）。章节名与「周/节」解耦由 `scripts/rename_chapters.py` 一次性重排（幂等：`第 X 章 · 标题` 取 `·` 末段作标题，`order_no` 按原 `(folder, order_no)` 顺序重排 1..N、`folder` 置空）；种子脚本 `inject_curriculum.py` / `inject_w1.py` 同步改为 `第 N 章 · 标题`（章号 = `(week-1)*2 + session_no`，课件源目录仍按 WxSx 映射，仅不再外显）。
+- **章节天数口径（v2.7.0，CR-2026-0922-DECHAPTER，KNOW-009）**：`GET /api/chapters` 增加 `daily_cards`（= `config.PLAN_CARDS_PER_DAY`，定义上等于 `TASK_CARDS_REQUIRED`，保证「进度口径」与「打卡口径」同源不打架）与每章 `card_count`（子查询 `COUNT(*) FROM knowledge_cards`）；前端 `App.daysFor()` = `ceil(card_count / daily_cards)`；**实测（2026-09-24 生产库）**：学生可见的 4 个已发布章 = 276 / 401 / 597 / 400 张 → **10 / 14 / 20 / 14 天**（合计 1674 张 ≈ 56 天）；全库 16 章共 **5011 张**（其余 12 章 `draft`，学生不可见）。章节名与「周/节」解耦由 `scripts/rename_chapters.py` 一次性重排（幂等：`第 X 章 · 标题` 取 `·` 末段作标题，`order_no` 按原 `(folder, order_no)` 顺序重排 1..N、`folder` 置空）；种子脚本 `inject_curriculum.py` / `inject_w1.py` 同步改为 `第 N 章 · 标题`（章号 = `(week-1)*2 + session_no`，课件源目录仍按 WxSx 映射，仅不再外显）。
 - **卡片去重（v2.6.8，CR-2026-0922-DEDUP，KNOW-007）**：`scripts/merge_duplicate_cards.py --plan <plan.json> [--apply]`——按计划改写保留卡 `front/back`、把重复卡的 `knowledge_reviews` 迁移到保留卡（同生两行合一：`learn_count` 取大、`status` 取更进阶、`last_review_at` 取晚、`next_review_at` 取早）、删除重复卡；默认 **dry-run**，`--apply` 前自动 `wal_checkpoint(FULL)` + 备份生产库，并产出含「被删卡全文 + 复习行全文 + 保留卡新旧正文」的回滚报告到 `backups/<日期>-cards/`。**判重流程不再用相似度阈值**：旧 `rebuild_cards.py --dedupe-db`（词元 Jaccard≥0.85 且数字集合相同）会漏「同模板异主体」、且从不跨章比较；现流程 = 候选召回（sub_concept + front 词元/字二元组）→ LLM **分组**（允许一簇拆多组，避免把四家工具合成一张）→ **对抗式复核**（换「找实质差异」立场再审，主体/数字/答案指涉不同即否）→ 信息整合（保留各卡独有事实、禁新增事实）→ 忠实度校验（新增事实/矛盾/漏信息）。复习态合并与 `_review` 懒建兼容：合并后同生仍是一卡一行，`UNIQUE(card_id,user_id)` 不冲突。
 - **状态机复用 `review_sched`**（architecture §5.4）：记住了 → `learn_count++`、`interval_days = next_interval(True, cur)`（1→3→7 封顶）、状态上移（new→learning→reviewing→mastered）、`next_review_at` 按间隔顺延；没记住 → `learn_count++`、`interval_days=1`、状态降回 learning、`next_review_at` 次日重排。同卡片跨会话复习。**先翻转看答案再判 remember，不在 open 期强行判定**。
 - **卡片价值门槛单点（v2.7.4 建 / v2.7.5 补旁路，KNOW-010）**：价值门槛**只有一处定义、所有生成路径必须共用**——① 在线路径 `backend/ai/prompts.py` 的 `KNOWLEDGE_SYSTEM`（被 `knowledge.generate_knowledge_cards` 使用，`ensure_chapter_cards` 在**资料发布 / 学习路径发布**时调用）；② 离线路径 `scripts/rebuild_cards.py` 的 `SYSTEM_TMPL`（批量重做历史章节 / `--fill-orphans` 补无卡切片）。**两处必须同步**：v2.7.4 只改了 ①，② 仍留「应试级 + 数字/专有名词/顺序/比例/阈值/年份/倍数必须单独成卡」的旧口径（= 未来重建/补卡会照旧产低价值卡），v2.7.5 已补齐并写进本条以防再漏。**新增任何卡片生成入口时，必须一并套用同一四类禁产条款**；`MIN_CARDS=40` 仅作目标值（`knowledge.py`），**张数让位于价值门槛**。
@@ -281,14 +281,14 @@
 **Functional**
 | REQ | 角色 | 优先级 | 说明 |
 |-----|------|--------|------|
-| CLASS-001 | 全部 | P1 | 班级归属：所有 active 学生（除 `Hermestest` 测试账号）同属一个班级，实名展示 |
+| CLASS-001 | 全部 | P1 | 班级归属：所有 active 学生（除测试号 `hermestest` / `hermesstu`，见 `EXCLUDED_USERNAMES`）同属一个班级，实名展示 |
 | CLASS-002 | 全部 | P1 | 累计对话轮次 / 累计练习次数排行 |
 | CLASS-003 | 全部 | P1 | 今日对话轮次 / 今日对话次数 / **今日知识卡片学习张数**排行（今天 UTC+8；后者按 `knowledge_reviews.last_review_at` 每卡一行统计） |
 | CLASS-004 | 全部 | P1 | 每次测评的分数排名历史（未参加标注「未参加」，附「已发布测评列表」） |
 | CLASS-005 | 全部 | P1 | 掌握度排行（平均 M = 已评估章节 compute_mastery().m 的均值，可附「已掌握 X 章」） |
 | CLASS-006 | teacher | P1 | 共性薄弱章节 + 「＋布置巩固测评」入口（跳转出题页） |
 
-**Technical**：`GET /api/class/leaderboard`（student/teacher 均可访问）；student 限定同班集合（即除测试号外的 active 学生）、teacher 无需 `@user_scope` 可看完整排名；`Hermestest` 绝不出现。掌握度排行「平均 M」未评估章节不计入、不当 0。
+**Technical**：`GET /api/class/leaderboard`（student/teacher 均可访问）；student 限定同班集合（即除测试号外的 active 学生）、teacher 无需 `@user_scope` 可看完整排名；测试号（`EXCLUDED_USERNAMES` = `hermestest` / `hermesstu`，比较处统一 `.lower()` 归一）绝不出现。掌握度排行「平均 M」未评估章节不计入、不当 0。
 
 ### 3.8 教师管理后台 — `teacher_bp`（L3，REQ-ADMIN）
 **Functional**
@@ -322,7 +322,7 @@
 - **CHECKIN-008（P0）班级「今日打卡」区块**：班级页**置顶**（先于现有排行榜卡），按「已打卡优先」排列，每人一行：头像 + 名字 + `🔥 N 天` + `x/30 卡 · y/5 题`（达标行绿色高亮、自己标 `me`）；未打卡同学行尾「提醒 TA」按钮（→ NOTIF-006）。 ✅
 - **CHECKIN-009（P0）「未学习」口径修正 + 任务优先发未学习卡**（CR-2026-0919-DECK）：「未学习」= **`learn_count = 0`（从未真正翻过卡）**，**不是**「没有 `knowledge_reviews` 行」——因为学生只要点开某章「知识卡片」浏览一次，`GET /api/knowledge/<chapter_id>` 就会为该章**全量**懒建 review 行（`status='new'`、`learn_count=0`、`next_review_at=now`）。现状把这类「只看过一眼」的卡误判为「已建行 → 不是新卡」，同时又因 `next_review_at=now ≤ today` 被塞进「到期复习」桶 → **学生永远在复习从没学过的卡，课程进度推不动**。修正后今日任务**优先发未学习卡**（按 `chapters.folder, order_no, name, kc.rowid` 课程顺序推进），再补到期复习卡。 ✅
 - **CHECKIN-010（P0）卡组三档兜底，永不返回空**（CR-2026-0919-DECK）：装配优先级 **① 未学习卡 → ② 到期复习卡 → ③ 低掌握度随机补足**。第③档（**CHECKIN-010 核心**）解决用户实报死路——学生把全部卡学成 `mastered` / 未到期时会拿到 **0 张卡**，前端 `toast('今天没有可复习的卡片')` 后直接 return，**学生卡死、无法凑够当日目标张数、连胜断掉且无任何出路**。掌握度序 = `status 档位权重（new<learning<reviewing<mastered）→ learn_count → interval_days` 升序（越小越差）；从**最差的前 `max(3×limit, 20)` 张候选池内随机洗牌**后取 `limit`，同时满足「掌握度低」与「随机」。只要库中有已发布章节的卡片，卡组**绝不空**。 ✅
-- **CHECKIN-011（P0）超额学习（想多学也可以）**（CR-2026-0919-DECK）：学生**可以无限继续学**，不受每日目标张数（v2.6.3 起 30 张）限制。任务行 100% 后按钮由「已完成 / disabled」变为**可点的「再学一组」**；额外卡组**排除今日已复习过的卡**（避免重复劳动刷进度），继续计入 distinct 与掌握度，但**不改变任务进度条的 10/10 语义**（`counts_today` 仍是上限口径，达标判定不受影响；**所有进度显示一律夹取到阈值上限（v2.6.3 起 30/5）**，避免超额学习后出现「19/10 卡」观感）。 ✅
+- **CHECKIN-011（P0）超额学习（想多学也可以）**（CR-2026-0919-DECK）：学生**可以无限继续学**，不受每日目标张数（v2.6.3 起 30 张）限制。任务行 100% 后按钮由「已完成 / disabled」变为**可点的「再学一组」**；额外卡组**排除今日已复习过的卡**（避免重复劳动刷进度），继续计入 distinct 与掌握度，但**不改变任务进度条的阈值上限语义（v2.6.3 起 30/5）**（`counts_today` 仍是上限口径，达标判定不受影响；**所有进度显示一律夹取到阈值上限（v2.6.3 起 30/5）**，避免超额学习后出现「19/10 卡」观感）。 ✅
 - **CHECKIN-012（P1）真空引导**（CR-2026-0919-DECK）：若库中确实**一张已发布卡都没有**（真真空，非三档兜底能救），接口返回明确的 `empty_reason`；前端不再只弹一句 toast 了事，改为**给出可点击的出路**（跳「资料库」勾选章节 → 生成知识卡片）。 ✅
 - **CHECKIN-013（P0）学习范围由学生自定**（CR-2026-0919-SCOPE，v2.6.5）：**每日任务只作统计数字，绝不锁定学生能学什么。** 学生勾选范围（学习 hub →「资料库」下拉多选）同时驱动 ① 对话跨章检索 ② 知识卡片复习 ③ 今日任务卡组 ④ 今日练习出题。接口：`GET /api/knowledge/today?chapter_ids=a,b,c`、`POST /api/checkin/start-practice {chapter_ids:[...]}`；响应新增 `scope:{chapter_ids,scoped,count}`。**显式范围内无卡 → `empty_reason="no_cards_in_scope"`，绝不偷偷回落全部**（否则学生以为限制了范围却拿到全量卡）；未传/空 = 全部已发布章节（老行为不变）。练习续答只复用**范围内**未答完的 session。**UI 空勾选 = 使用全部已发布章节**（与接口未传/空等价，列表页显示「N 篇 · 全部」而非「已选 0」）；勾选口径不得与接口语义分叉。 ✅
 
@@ -340,9 +340,9 @@
   - **`mode="extra"`（CHECKIN-011）**：排除**今日已复习过的卡**（`date(last_review_at, UTC+8) == today`），三档其余逻辑不变；不参与 `short` 语义（额外组不承诺凑满）。
   - **接口**：`GET /api/knowledge/today?mode=task|extra`（缺省 `task`）；`GET /api/checkin/today` 内的 `task.cards` 仍为 `mode="task"` 口径。
   - **前端**（`backend/frontend/js/student.js`）：`taskCardHtml()` 中「复习卡片」行在 `cur >= total` 时按钮**不再 `disabled`**，改为可点的「再学一组」→ `Student.startExtraDeck()`；`startTodayDeck()` 的 `if (!cards.length) { toast('今天没有可复习的卡片'); return; }` 死路改为**按 `empty_reason` 给出可点出路**（跳资料库）；`taskCardHtml`/`startTodayDeck` 共用同一翻卡视图（`knowledgeDeck`），额外组结束后返回 `learn` 视图。
-  - **测验锚点**：`tests/test_checkin.py` 增「三档优先级 / 全 mastered 未到期时仍发满 10 张（低掌握随机）/ 同 seed 结果一致 / `mode=extra` 排除今日已复习 / 真真空返回 `empty_reason`」；现有「10 张算 5 题算」等用例不得回归。
+  - **测验锚点**：`tests/test_checkin.py` 增「三档优先级 / 全 mastered 未到期时仍发满 10 张（低掌握随机）/ 同 seed 结果一致 / `mode=extra` 排除今日已复习 / 真真空返回 `empty_reason`」；现有「30 张算 5 题算」等用例不得回归（阈值取自 `config.TASK_CARDS_REQUIRED`，不写死）。
 
-- 验收点：9 张卡不算 / 10 张算；4 题不算 / 5 题算；同卡当天重复复习只计 1；跨 UTC+8 日界；连胜连续 2 天 +1；空档归零；`state=pending` 存活；幂等只 1 行 + 只 1 条通知。
+- 验收点：29 张卡不算 / 30 张算；4 题不算 / 5 题算；同卡当天重复复习只计 1；跨 UTC+8 日界；连胜连续 2 天 +1；空档归零；`state=pending` 存活；幂等只 1 行 + 只 1 条通知。
 
 ### 3.12 通知与提醒（师生共用，REQ-NOTIF）
 **Functional**
@@ -806,6 +806,7 @@ backend/ app.py(config+蓝图注册+静态托管) · config.py
   api/{attempts,auth,chapters,checkin,class_bp,conversations,curriculum,health,knowledge,materials,notifications,practice,progress,quizzes,reports,teacher}.py
   ai/{advice_gen,agents,cardtext,fallback,grader,knowledge,mastery,parser,prompts,quizzer,rag,reminder_copy,review_sched,tutor,usage_log,video_link}.py
   data/{models,db,seed,checkin,timeutil}.py · middleware/{rate_limit,errors,input_validation}.py
+  services/{notify,push}.py（站内通知落库 + Web Push 通道）
   scripts/{checkin_reminder,daily_advice_gen}.py
 frontend/ index.html · manifest.webmanifest · sw.js · js/{api,app,student,teacher}.js · css/
 scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_binding · backup_icloud.sh · courseware_files · group_cards · inject_curriculum · inject_w1 · merge_duplicate_cards · normalize_subconcepts · ocr.swift · ocr_materials · publish_sessions · rebuild_cards · rename_chapters
