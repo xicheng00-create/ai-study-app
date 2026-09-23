@@ -35,6 +35,20 @@ def test_leaderboard_excludes_hermestest(client, teacher_headers):
     assert all(e["display_name"] != "测试号" for e in d["mastery"])
 
 
+def test_leaderboard_excludes_lowercase_hermestest(client, teacher_headers):
+    """生产库测试号是小写 hermestest，也必须被排除（EXCLUDED_USERNAMES 大小写不敏感）。"""
+    make_student(client, teacher_headers, "alice", display_name="晨晨")
+    make_student(client, teacher_headers, "hermestest", display_name="小写测试号")
+    teacher = login(client, "teacher", "teacher123")
+    h = {"Authorization": f"Bearer {teacher}"}
+    resp = client.get("/api/class/leaderboard", headers=h)
+    assert resp.status_code == 200
+    d = resp.get_json()["data"]
+    names = [s["display_name"] for s in d["students"]]
+    assert "晨晨" in names
+    assert "小写测试号" not in names
+
+
 def test_student_leaderboard_shape(client, teacher_headers):
     """学生可访问同班榜单，me_user_id 与 mastery 榜结构正确。"""
     uid = make_student(client, teacher_headers, "alice", display_name="晨晨")

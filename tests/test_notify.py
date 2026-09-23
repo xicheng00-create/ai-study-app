@@ -27,6 +27,21 @@ def _notifications(client, h):
     return client.get("/api/notifications", headers=h).get_json()["data"]
 
 
+# ---- 测试号排除：大小写不敏感（生产库用小写 hermestest，旧代码漏排除） ----
+
+
+def test_active_student_ids_excludes_lowercase_test_account(client, teacher_headers):
+    real_uid = make_student(client, teacher_headers, "nf_real")
+    make_student(client, teacher_headers, "hermestest")
+    with client.application.app_context():
+        from data.db import get_db
+        from services.notify import active_student_ids
+
+        ids = active_student_ids(get_db())
+    assert real_uid in ids
+    assert len(ids) == 1
+
+
 # ---- 通知落库 / 未读 / 已读 ----
 
 def test_notification_persist_unread_read(client, teacher_headers):

@@ -83,7 +83,7 @@ def main(argv=None) -> int:
         con = get_db()
         rows = eligible_students(con)
         for r in rows:
-            if r["username"] in EXCLUDED_USERNAMES:
+            if r["username"].lower() in EXCLUDED_USERNAMES:
                 continue
             c = checkin.counts_today(con, r["id"])
             if c["cards"] >= TASK_CARDS_REQUIRED and c["questions"] >= TASK_QUESTIONS_REQUIRED:
@@ -103,7 +103,7 @@ def main(argv=None) -> int:
             teachers = con.execute(
                 "SELECT id, username FROM users WHERE role='teacher' AND is_active=1"
             ).fetchall()
-            tids = [t["id"] for t in teachers if t["username"] not in EXCLUDED_USERNAMES]
+            tids = [t["id"] for t in teachers if t["username"].lower() not in EXCLUDED_USERNAMES]
             if tids:
                 names = "、".join(absent[:5]) + ("等" if len(absent) > 5 else "")
                 body = f"今天还有 {len(absent)} 人没达标：{names}。快去催一下～"

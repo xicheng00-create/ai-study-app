@@ -1,6 +1,6 @@
 """班级 Blueprint（REQ-CLASS-001~006）：全班排行榜 6 类 + 今日练习次数 + 今日知识卡片张数（教师）。
 
-归属：所有 active 学生（除 username='Hermestest' 测试账号）同属一个班级，仅展示
+归属：所有 active 学生（除 username='hermestest' 测试账号）同属一个班级，仅展示
 实名（display_name）。排行榜本就是全班展示，student 只限定同班集合（即除测试号
 外的 active 学生），teacher 无需 @user_scope、可看完整排名 + 管理入口（前端跳转）。
 """
@@ -17,8 +17,10 @@ from middleware.errors import e_input, ok
 
 class_bp = Blueprint("class_bp", __name__, url_prefix="/api/class")
 
-# 测试账号绝不出现在班级排行榜（Hermestest 教师测试 + hermesstu 学生测试）
-EXCLUDED_USERNAMES = ("Hermestest", "hermesstu")
+# 测试账号绝不出现在班级排行榜（hermestest 教师测试 + hermesstu 学生测试）。
+# 全小写存储 + 比较处统一 .lower() 归一：生产库里用户名是小写 hermestest，
+# 旧大小写敏感比较会漏排除（2026-09-23 实测）。
+EXCLUDED_USERNAMES = ("hermestest", "hermesstu")
 
 
 def _class_students(con):
@@ -28,7 +30,7 @@ def _class_students(con):
         " WHERE role='student' AND is_active=1"
         " ORDER BY display_name, created_at"
     ).fetchall()
-    return [dict(r) for r in rows if r["username"] not in EXCLUDED_USERNAMES]
+    return [dict(r) for r in rows if r["username"].lower() not in EXCLUDED_USERNAMES]
 
 
 def _student_map(con):

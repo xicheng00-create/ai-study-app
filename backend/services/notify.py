@@ -8,8 +8,9 @@ from data import models, timeutil
 
 from services import push
 
-# 与 class_bp.EXCLUDED_USERNAMES 保持一致（hermestest / hermesstu）
-EXCLUDED_USERNAMES = ("Hermestest", "hermesstu")
+# 与 class_bp.EXCLUDED_USERNAMES 保持一致（hermestest / hermesstu）。
+# 全小写存储 + 比较处统一 .lower() 归一：生产库里用户名是小写 hermestest。
+EXCLUDED_USERNAMES = ("hermestest", "hermesstu")
 
 
 def active_student_ids(con) -> list[str]:
@@ -17,7 +18,7 @@ def active_student_ids(con) -> list[str]:
     rows = con.execute(
         "SELECT id, username FROM users WHERE role='student' AND is_active=1"
     ).fetchall()
-    return [r["id"] for r in rows if r["username"] not in EXCLUDED_USERNAMES]
+    return [r["id"] for r in rows if r["username"].lower() not in EXCLUDED_USERNAMES]
 
 
 def _already_notified(con, user_id, ntype, ref_id) -> bool:

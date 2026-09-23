@@ -286,7 +286,7 @@ def _student_map(con):
         "SELECT id, username, display_name, avatar FROM users"
         " WHERE role='student' AND is_active=1 ORDER BY display_name, created_at"
     ).fetchall()
-    return {r["id"]: r for r in rows if r["username"] not in EXCLUDED_USERNAMES}
+    return {r["id"]: r for r in rows if r["username"].lower() not in EXCLUDED_USERNAMES}
 
 
 def class_today(con, me_uid) -> dict:
