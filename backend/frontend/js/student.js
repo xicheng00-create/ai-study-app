@@ -114,6 +114,7 @@ const Student = {
     // 学生的勾选范围驱动对话检索 / 知识卡片复习 / 今日任务卡组 / 今日练习出题（范围自定，不锁死）
     return `<div class="chat-head">` + appbar('学习', sub) +
     `</div><div class="content">
+      ${this.resumeCardHtml()}
       ${this.taskCardHtml()}
       ${this.remindCardHtml()}
       <button class="home-card" onclick="Student.openChat()">
@@ -153,6 +154,9 @@ const Student = {
     const cards = Math.min(c.progress.cards, need);
     const questions = Math.min(c.progress.questions, needQ);
     const done = !!c.done;
+    // KNOW-013：存在当日任务存档 → 「继续」一键直达存档位置；无存档 → 原 startTodayDeck
+    const resume = this.resumeInfo();
+    const resumeToday = resume && resume.kind === 'today';
     const head = done
       ? `<span class="badge master">✓ 已完成 · 连胜 ${c.streak} 天</span>`
       : `<span class="card-count">${c.streak ? '🔥 ' + c.streak + ' 天' : '今天还没打卡'}</span>`;
@@ -168,7 +172,7 @@ const Student = {
     };
     return `<div class="card sm mb-12 task-card">
       <div class="card-head"><div class="card-title">${ic('target', 'coral')}今日任务</div>${head}</div>
-      ${task('复习卡片', cards, need, 'Student.startTodayDeck()', '已完成', { label: '再学一组', onClick: 'Student.startExtraDeck()' })}
+      ${task('复习卡片', cards, need, resumeToday ? 'Student.resumeTodayDeckDirect()' : 'Student.startTodayDeck()', '已完成', { label: '再学一组', onClick: 'Student.startExtraDeck()' })}
       ${task('刷练习题', questions, needQ, 'Student.continuePractice()', '已完成')}
       <div class="muted task-hint">范围自定：任何章节的学习都计入进度，学哪章由你在「资料库」勾选</div>
     </div>`;
@@ -183,6 +187,60 @@ const Student = {
       <div class="muted">iPhone：Safari → Share → Add to Home Screen，从主屏打开后点下面按钮授权</div>
       <button class="btn" onclick="toggleReminders(true)">立即开启</button></div>`;
   },
+  // 一键续学（KNOW-013）：读 localStorage 纯读，判断「当日任务 / 知识卡片」两类存档
+  resumeInfo() {
+    try {
+      // 今日任务存档优先（base 或 _extra；旧存档缺 total → 返回 0，渲染时只显示「第 X 张」）
+      const today = (App.checkin && App.checkin.today) || new Date().toISOString().slice(0, 10);
+      const base = localStorage.getItem('aistudy_kc_today_' + today);
+      const extra = localStorage.getItem('aistudy_kc_today_' + today + '_extra');
+      const t = base ? JSON.parse(base) : (extra ? JSON.parse(extra) : null);
+      if (t && typeof t.pos === 'number' && t.pos > 0) return { kind: 'today', pos: t.pos, total: t.total || 0 };
+    } catch (e) {}
+    try {
+      // 知识卡片存档：必须匹配当前勾选章节（签名一致才可续学）
+      const saved = JSON.parse(localStorage.getItem('aistudy_kc_progress') || 'null');
+      if (saved && typeof saved.pos === 'number' && saved.pos > 0 && this._kcSavedMatch(saved)) {
+        return { kind: 'cards', pos: saved.pos, total: saved.total || 0 };
+      }
+    } catch (e) {}
+    return null;
+  },
+  // 一键续学入口：today → 直接进今日卡组；cards → 拉卡后直接进知识卡片卡组（均不弹 sheet）
+  async resumeFromHome() {
+    const info = this.resumeInfo();
+    if (!info) return;
+    if (info.kind === 'today') { await this.resumeTodayDeckDirect(); return; }
+    // 知识卡片续学：首页卡集尚未加载，先按当前勾选章节拉卡，再按存档位置进卡组
+    const sel = this.selChapterIds();
+    const cardsAll = [];
+    for (const cid of sel) {
+      let d = null;
+      try { d = await API.get('/api/knowledge/' + cid); } catch (e) { continue; }
+      const cs = (d && d.cards) || [];
+      if (d && d.deck_max) this.kcDeckMax = d.deck_max;
+      const chName = App.chapterName(cid);
+      cs.forEach(c => { c.chName = chName; cardsAll.push(c); });
+    }
+    if (!cardsAll.length) { toast('所选章节还没有可复习的卡片'); return; }
+    this.knowledgeAllCards = cardsAll;
+    this.knowledgeCards = cardsAll;
+    this.knowledgeIdx = false;
+    this.resumeKnowledgeDeck();
+  },
+  // 首页「继续复习」卡：常显两种状态，绝不按条件隐藏（KNOW-013）
+  resumeCardHtml() {
+    const info = this.resumeInfo();
+    if (!info) {
+      return `<div class="card sm mb-12 resume-card"><div class="card-head"><div class="card-title">${ic('cards', 'coral')}继续复习</div></div>
+        <div class="muted">暂无进行中的复习</div>
+        <button class="btn" disabled>继续</button></div>`;
+    }
+    const posTxt = info.total ? `第 ${info.pos + 1} / ${info.total} 张` : `第 ${info.pos + 1} 张`;
+    return `<div class="card sm mb-12 resume-card"><div class="card-head"><div class="card-title">${ic('cards', 'coral')}继续复习</div>
+      <span class="card-count">${esc(posTxt)}</span></div>
+      <button class="btn" onclick="Student.resumeFromHome()">继续</button></div>`;
+  },
   // 学生自定范围（v2.6.5/CHECKIN-013）：勾选集 → 查询串；未勾选 = 不带参（服务端按全部）
   _scopeIds() { try { return this.selChapterIds() || []; } catch (e) { return []; } },
   _scopeQs(tail) {
@@ -192,7 +250,9 @@ const Student = {
     return (tail ? (tail.indexOf('?') === 0 ? tail + '&' : '?' + tail + '&') : '?') + q;
   },
   // 今日任务卡组：数据源 GET /api/knowledge/today，复用现有翻卡/滑动/复习提交
-  async startTodayDeck() {
+  // opts.silent=true 时跳过「继续今日复习？」sheet，直接按存档位置进卡组（一键续学路径）
+  async startTodayDeck(opts) {
+    opts = opts || {};
     let d;
     try { d = await API.get('/api/knowledge/today' + this._scopeQs()); } catch (e) { toast(e.message); return; }
     const cards = (d.cards || []).map(c => { c.chName = c.chapter_name || ''; return c; });
@@ -218,7 +278,7 @@ const Student = {
     this.knowledgeCards = cards;
     this.knowledgeIdx = false;
     const saved = this._kcLoad();
-    if (saved && saved.pos > 0 && saved.pos < cards.length) {
+    if (!opts.silent && saved && saved.pos > 0 && saved.pos < cards.length) {
       openSheet(`<div class="row" style="font-weight:700">继续今日复习？</div>
         <div class="row" style="text-align:left;border:none;background:transparent;cursor:default;font-size:13px;color:var(--text-2)">今日任务复习到第 ${saved.pos} / ${cards.length} 张，可接着往后复习。</div>
         <div class="row" onclick="Student.resumeTodayDeck()">继续复习</div>
@@ -226,7 +286,13 @@ const Student = {
         <div class="row cancel" onclick="closeSheet()">取消</div>`);
       return;
     }
-    this.knowledgePos = 0; this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
+    // 一键续学（silent）或首次进入：直接按存档位置进卡组
+    this.knowledgePos = (opts.silent && saved && saved.pos) ? Math.min(saved.pos, cards.length - 1) : 0;
+    this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
+  },
+  // 一键续学（首页入口）：拿今日卡 → 直接进到存档位置，不弹 sheet
+  async resumeTodayDeckDirect() {
+    await this.startTodayDeck({ silent: true });
   },
   resumeTodayDeck() {
     const saved = this._kcLoad(); closeSheet();
@@ -481,6 +547,14 @@ const Student = {
       (p) => { p.chapter_ids = [c.chapter_id]; p.kc_ctx = { front: c.front, back: c.back, sub_concept: c.sub_concept || '', chapter_id: c.chapter_id }; }
     );
   },
+  // 复习卡组内「问 TUTOR」（KNOW-012）：先存进度再跳对话页，回来位置不丢
+  async askCurrentKcTutor() {
+    const c = this.knowledgeCards[this.knowledgePos];
+    if (!c) { toast('当前没有卡片'); return; }
+    this._kcSave();                 // ⚠️ 关键：离开卡组前先存进度（此刻 todayDeck 未复位，key 正确），否则回来时位置丢失
+    this.todayDeck = false; this.todayExtra = false;   // 复位今日卡组模式，避免退出后误用今日存档 key
+    await this.askKcTutor(c.id);    // 复用既有：跳对话页 + kc_ctx 自动就这张卡提问
+  },
   async generateKnowledge() {
     try { const d = await API.post('/api/knowledge/generate', { chapter_ids: this.selChapterIds() }); this.knowledgeCards = d.cards || []; toast('知识卡片已生成'); render(); } catch (e) { toast(e.message); }
   },
@@ -488,7 +562,12 @@ const Student = {
   _kcKey() {
     const src = (this.knowledgeAllCards && this.knowledgeAllCards.length) ? this.knowledgeAllCards : this.knowledgeCards;
     const ids = [];
-    src.forEach(c => { if (ids.indexOf(c.chapter_id) < 0) ids.push(c.chapter_id); });
+    if (src && src.length) {
+      src.forEach(c => { if (ids.indexOf(c.chapter_id) < 0) ids.push(c.chapter_id); });
+    } else {
+      // 首页续学：卡集尚未加载时，用当前勾选章节推导签名（存档 ids 即选章的去重排序，二者等价）
+      this.selChapterIds().forEach(id => { if (ids.indexOf(id) < 0) ids.push(id); });
+    }
     return ids.slice().sort().join(',');
   },
   _kcTodayKey() {
@@ -496,12 +575,13 @@ const Student = {
     return this.todayExtra ? base + '_extra' : base;
   },
   _kcSave() {
+    const total = this.knowledgeCards.length;
     if (this.todayDeck) {
-      try { localStorage.setItem(this._kcTodayKey(), JSON.stringify({ pos: this.knowledgePos, ts: Date.now() })); } catch (e) {}
+      try { localStorage.setItem(this._kcTodayKey(), JSON.stringify({ pos: this.knowledgePos, total, ts: Date.now() })); } catch (e) {}
       return;
     }
     const key = this._kcKey(); if (!key) return;
-    try { localStorage.setItem('aistudy_kc_progress', JSON.stringify({ ids: key.split(','), pos: this.knowledgePos, ts: Date.now() })); } catch (e) {}
+    try { localStorage.setItem('aistudy_kc_progress', JSON.stringify({ ids: key.split(','), pos: this.knowledgePos, total, ts: Date.now() })); } catch (e) {}
   },
   _kcLoad() {
     if (this.todayDeck) {
@@ -549,11 +629,7 @@ const Student = {
     this.knowledgeCards = this.kcDeckOrder(all);   // 本次卡组（≤ kcDeckMax）
     const saved = this._kcLoad();
     if (saved && this._kcSavedMatch(saved) && saved.pos > 0 && saved.pos < this.knowledgeCards.length) {
-      openSheet(`<div class="row" style="font-weight:700">继续上次复习？</div>
-        <div class="row" style="text-align:left;border:none;background:transparent;cursor:default;font-size:13px;color:var(--text-2)">上次复习到第 ${saved.pos} / ${this.knowledgeCards.length} 张，可接着往后复习。</div>
-        <div class="row" onclick="Student.resumeKnowledgeDeck()">继续复习</div>
-        <div class="row" onclick="Student.resetKnowledgeDeck()">重新开始</div>
-        <div class="row cancel" onclick="closeSheet()">取消</div>`);
+      this.resumeKnowledgeDeck();   // 一键续学：直接进到存档位置，去掉二次确认 sheet（resetKnowledgeDeck 仍可在卡组内重开）
       return;
     }
     this.knowledgePos = 0; this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
@@ -587,6 +663,7 @@ const Student = {
       </div></div>
     <div class="kc-hint">拖动卡片：右滑 = 记住了 · 左滑 = 没记住</div>
     <div class="kc-actions"><button class="btn ghost" onclick="Student.reviewKnowledge(false)">${ic('cross')}没记住</button><button class="btn" onclick="Student.reviewKnowledge(true)">记住了${ic('check')}</button></div>
+    <button class="btn ghost" onclick="Student.askCurrentKcTutor()">💬 问 TUTOR 这张卡</button>
     <button class="btn ghost kc-quit" onclick="Student.pauseKnowledge()">${ic('back')}暂停退出（保存进度）</button></div>` + tabbar();
   },
   // ===== 卡片手势动画：翻转切 class（3D 过渡）、拖拽跟手、超阈值甩出/回弹、换卡入场 =====

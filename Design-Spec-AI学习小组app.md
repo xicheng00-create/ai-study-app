@@ -230,6 +230,8 @@
 | KNOW-008 | student | P1 | **浏览卡片必须按主题分组（v2.7.0，CR-2026-0922-CARDSGROUP）**：一章 300~650 张卡平铺不可用（用户实报「每个 session 几百张卡片挺多的」）。① 浏览页（「知识卡片」列表）按「**章 → 主题组 → 卡片**」两级钻取：**纵向折叠、点组展开、默认全折叠、无横向滚动**；② 主题组 = 该章卡片的 LLM 归类结果（每组 **5~80 张**，目标 15~80，**禁止**出现吞掉全章一半的巨型组、也禁止 1~4 张的碎片组；碎组并入最贴切的大主题，实在无处可去才落「其他要点」）；③ 归类**只做浏览标签**，**不得**改卡片正文、切片绑定、复习态，也不参与出卡/复习调度（分组失败或未归类时 `topic` 返回空串 → 前端退化为单组「全部卡片」，老库同样可用）；④ 分组结果落库 `card_topics` 并随 `GET /api/knowledge/<chapter_id>` 的卡片字段 `topic` 下发；⑤ 组内统计（张数/已掌握/学习中/未学/今日待复习）与章级一致 |
 | KNOW-009 | student | P1 | **章节与学习时间解耦（v2.7.0，CR-2026-0922-DECHAPTER）**：章节**不得**再按「第X周·第Y节」表述，也不得用周/节暗示学习进度。① 章节展示名一律「**第 N 章 · 章标题**」（N = 全局章序 1..4，`chapters.order_no` 连续重排、`folder` 置空）；② 学习节奏**只由卡片量换算**：每章标「**预计 X 天学完 · 共 N 张卡**」，X = `ceil(卡数 / 每日可学张数)`；③ 每日可学张数**单点在后端**（`config.PLAN_CARDS_PER_DAY`，= 打卡要求 30 张/天，约一周 210 张）并随 `GET /api/chapters` 以 `daily_cards` 下发，前端**禁止硬编码 30**；④ 章节卡数同样由后端下发（`card_count`），前端不得自行维护；⑤ 测评标签等一切回显章节处统一用「第 N 章」，不再出现「第X周 第Y节」 |
 | KNOW-010 | student | P1 | **卡片价值门槛：禁产死记硬背低价值卡（v2.7.4，CR-2026-0922-CARDSCOPE）**：① 禁产四类卡——**课程元信息**（课程定位/学习路径/学习节奏/章节概览/前置衔接/本章产出/里程碑/备课参考/课件来源/视频课对应/知识推荐/参考链接）、**纯数值记忆**（价格/参数/默认值/取值/排名/版本号/日期/百分比）、**课件代码实现细节**（函数名/类名/参数名/返回值类型/用了哪个库/字段默认值/分支写法）、**纯清单罗列**（无解释无判断无方法论）；② 只产**理解型**卡（概念原理/差异辨析/选型判断/误区纠正/场景应用/案例结论/方法论骨架），数字仅在服务于理解点时可保留；③ 存量清理：一次性按 LLM 逐卡判定（四类删除/其余保留），2113 张判删 **439 张**（D2 数值 174 / D4 清单 92 / D3 代码 92 / D1 元信息 81），同步清 `card_topics`/`knowledge_reviews` 关联行与未作答存量练习题，被删卡全文留档 `backups/2026-09-22-lowvalue-cards/deleted-cards.json`；④ 已发布测评的历史作答保留，不追溯改分；⑤ **常态约束（对后续一切章节一律适用，v2.7.5）**：本门槛不是一次性清理，而是**卡片生成的长期规则**——后续任何新章节的**资料上传 / 学习路径发布自动生成**（`knowledge.ensure_chapter_cards` 钩子）、`scripts/rebuild_cards.py` 的批量重建与补卡，均须遵守第①②条，**禁止任何生成路径旁路**（v2.7.4 曾漏改 `rebuild_cards.py` 的 `SYSTEM_TMPL`，仍写「应试级 + 数字/专有名词/顺序/比例/阈值/年份/倍数必须单独成卡」，v2.7.5 已补齐）；⑥ **价值门槛优先于张数下限**：KNOW-004 的「每章 ≥40 张」（`knowledge.MIN_CARDS`）是**目标而非硬指标**，资料本身撑不起时允许少出，**禁止为凑数产低价值卡**；⑦ **入库抽检**：新章节卡片入库后须按四类做比例抽检，发现低价值卡按存量清理流程处置（备份 → 删卡 → 同步 `card_topics` / `knowledge_reviews`） |
+| KNOW-012 | student | P1 | **复习卡组界面内「问 TUTOR」（v2.9.0，CR-2026-0923-RESUME）**：复习 deck 在「没记住/记住了」操作区之下、暂停退出之上新增「💬 问 TUTOR 这张卡」按钮。点击**先存进度再跳对话页**（复用 `askKcTutor` + `kc_ctx` 自动就当前这张卡提问），否则离开卡组后复习位置丢失。不改 `askKcTutor` 现有行为，不加后端接口 |
+| KNOW-013 | student | P1 | **一键续学（v2.9.0，CR-2026-0923-RESUME）**：① 首页「继续复习」卡**常显两种状态**（有存档 → 「第 X/Y 张」+「继续」；无存档 → 按钮置灰「暂无进行中的复习」），读 localStorage 纯读判定「今日任务 / 知识卡片」两类存档；② 今日任务卡「继续」存在当日存档 → 直接进存档位置；③ 「知识卡片」入口与今日任务卡组的「继续上次复习」**取消二次确认 sheet**，直接续学（「重新开始」仍保留在卡组内）；④ `_kcSave` 增存 `total`（旧记录缺 total 视为 0，向后兼容） |
 
 **Technical**
 - **独立数据层（共享内容 + 每生独立复习态，v1.17.x 重构）**：`knowledge_cards`（id, chapter_id, sub_concept, front, back, source_chunk_id, created_at）——**无 user_id，是共享内容**（每章一组，发布时生成一次）；`knowledge_reviews`（id, card_id, user_id, learn_count, interval_days, next_review_at, status CHECK(new/learning/reviewing/mastered), last_review_at, created_at, UNIQUE(card_id,user_id)）——**每学生独立复习状态**，学生首次打开该章卡组时**懒建**（默认 new）。已废弃 v1.17.0 的「knowledge_cards 带 user_id」旧形（表空可安全重建）。
@@ -1393,3 +1395,18 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **实测证据**：`python -m py_compile` 通过；`node --check` 4 个前端 JS 通过；`make lint test smoke` 全绿；新增/更新 `tests/test_checkin_reminder.py`（5 档文案、slot 边界、逐档幂等、同天 5 档各 1 条、达标不发、lapse 前缀、L3 教师名单）、`tests/test_notify.py`（`has_push_sub` / `remind_daily` 口径）、`tests/test_class.py`（checkin-board 权限、nudge 限流）。
 - **版本一致性**：`backend/app.py version == 2.9.0`；`CHANGELOG.md` 新增 `## [2.9.0]`；`sw.js` `CACHE=v58` / `V=2.9.0`；`index.html` 6 处 `?v=2.9.0`。
 - **范围边界（未越界）**：未动 RAG / 出题 / 卡片价值门槛 / 排行榜算法；未新增依赖；未做短信/邮件/微信通道；未做用户自定义提醒时间；未做 iOS 通知大图。
+
+### 12.47 实现状态回写（v2.9.0，2026-09-23，CR-2026-0923-RESUME）
+
+- **本次迭代 REQ**：`KNOW-012`（新增：复习卡组界面内「问 TUTOR 这张卡」）、`KNOW-013`（新增：一键续学——首页入口 + 取消二次确认）。定义见 §3.4.2。
+- **状态：已实现（纯前端，同版本 v2.9.0 独立 commit `feat(cards)`，未再 bump 版本）。** 变更依据为执行方案 `DesignSpec-学生端阶梯提醒-执行方案.md` §7（受保护未跟踪）。
+- **逐条状态**：
+
+| REQ | 状态 | 说明 |
+|---|---|---|
+| KNOW-012 | ✅ | `viewKnowledgeDeck()` 新增「💬 问 TUTOR 这张卡」按钮；`askCurrentKcTutor()` 先 `_kcSave()` 再复用 `askKcTutor(c.id)`，复习位置不丢 |
+| KNOW-013 | ✅ | 首页 `resumeCardHtml()` 常显两态；`resumeInfo()` 纯读两类存档；`resumeFromHome()` / `resumeTodayDeckDirect()` 一键直达；`startTodayDeck({silent})` / `startKnowledgeDeck()` 取消二次确认；`_kcSave()` 增存 `total` |
+
+- **实测证据**：`node --check` 全部前端 JS 通过；`make lint test smoke` 全绿（纯前端改动，后端/测试零改动）。
+- **版本一致性**：沿用第一轮 v2.9.0——`index.html` / `sw.js` 未重复 bump（同版本一起发）。
+- **范围边界（未越界）**：未动 RAG / 出题 / 卡片价值门槛 / 排行榜算法；未新增后端接口；未新增依赖。
