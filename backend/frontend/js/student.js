@@ -177,12 +177,10 @@ const Student = {
       <div class="muted task-hint">范围自定：任何章节的学习都计入进度，学哪章由你在「资料库」勾选</div>
     </div>`;
   },
-  // 学生端常显「提醒」卡（NOTIF-010）：不得按状态隐藏；订阅存在性驱动两种文案
+  // 学生端「提醒」卡（NOTIF-010）：已订阅且提醒开关已开 → 完全不渲染（Ray 2026-09-23：这是催办卡而非状态控件，开启后不要一直挂着）；仅未开启时显示引导
   remindCardHtml() {
     const p = App.prefs || {};
-    if (p.has_push_sub) {
-      return `<div class="card sm mb-12 remind-card"><div class="card-title">✓ 提醒已开启 · 每晚 19:00–23:00 未达标最多提醒 5 次</div></div>`;
-    }
+    if (p.has_push_sub && p.push_enabled) return '';
     return `<div class="card sm mb-12 remind-card"><div class="card-title">🔔 开启提醒，别断连胜</div>
       <div class="muted">iPhone：Safari → Share → Add to Home Screen，从主屏打开后点下面按钮授权</div>
       <button class="btn" onclick="toggleReminders(true)">立即开启</button></div>`;
