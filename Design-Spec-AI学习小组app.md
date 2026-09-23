@@ -1382,6 +1382,7 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **本次迭代 REQ**：`NOTIF-005`（修订：每晚阶梯式萌系提醒）、`NOTIF-009`（新增：教师端 21:00 未达标名单）、`NOTIF-010`（新增：提醒可达性——学生端常显引导 + 教师端可见订阅状态）、`NOTIF-011`（新增：教师手动催办）、提醒总开关口径 `remind_1900 → remind_daily`（执行方案 §1 记为 SET-002，落回 SET-005）。定义见 §3.12 / §3.13。
 - **状态：已实现（代码 + 测试 + 版本三件套）。** 执行方案 `DesignSpec-学生端阶梯提醒-执行方案.md`（仓库根目录，受保护未跟踪）。
 - **根因（Hermes 已实测，勿再推断）**：19:00 脚本准点跑、站内通知落库（sent=3）、Web Push 链路通（手工推 Apple 返回 201），但**三位真实学生手机 0 条推送订阅**（全库唯一订阅属测试号 `hermesstu`），提醒只躺在 App 内通知中心。因此三件事同时做：A 可达性、B 频率（每晚 5 档）、C 语气（萌系递进）。
+  - ⚠️ **订正（2026-09-24 审计，详见 §12.49）**：其中「**Web Push 链路通（手工推 Apple 返回 201）**」的结论**不成立** —— 该结论取自生产代码路径**之外**的手工脚本（payload 已序列化）；实测生产路径自 v2.4.0 起 **100% 失败**（`KeyError: slice(0, 4079, None)`，被 `except` 吞成一条 WARNING）。故「三位学生 0 订阅」**并非**学生收不到推送的唯一原因：**即便授权也收不到**，v2.9.1 已修。
 - **逐条状态**：
 
 | REQ | 状态 | 说明 |
@@ -1415,7 +1416,7 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 ### 12.48 实现状态回写（v2.9.0，2026-09-23，CR-2026-0923-NUDGE）
 
 - **本次迭代 REQ**：`NOTIF-012`（新增：App 内拦截式催学弹窗，零授权兜底）。定义见 §3.12。
-- **状态：已实现（纯前端，同版本 v2.9.0 独立 commit `feat(nag)`，未再 bump 版本）。** 变更依据为任务书 `/tmp/cc-aistudy-ladder3-brief.txt`。原 NOTIF-013（催学出口 `/api/reminder/outbox` + 号码通道）已按 Ray 决定取消，本批未实现。
+- **状态：已实现（纯前端，同版本 v2.9.0 独立 commit `feat(nag)`，未再 bump 版本）。** 变更依据 = 当日任务书（`/tmp` 临时文件，重启即失效，不再作为证据引用）；落地证据见 commit `26935f0`。原 NOTIF-013（催学出口 `/api/reminder/outbox` + 号码通道）已按 Ray 决定取消，本批未实现。
 - **逐条状态**：
 
 | REQ | 状态 | 说明 |
@@ -1426,3 +1427,24 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **实测证据**：`node --check js/app.js js/student.js` 通过；`make lint test smoke` 全绿（纯前端，后端/测试零改动）。
 - **版本一致性**：版本三件套保持 2.9.0 不再改（`index.html` / `sw.js` / `app.py` 均未动）。
 - **范围边界（未越界）**：未新增后端接口；未引入号码通道；未新增依赖；未引入新 CSS 框架（高亮用内联样式）。
+
+### 12.49 实现状态回写（v2.9.1，2026-09-24，NOTIF-002 推送链路修复）
+
+- **本次迭代 REQ**：`NOTIF-002`（Web Push 发送封装）——**缺陷修复**，非新需求。触发来源 = 2026-09-24 每日审计 `audit/AUDIT-2026-09-24.md` GAP-1（P0）。
+- **状态：已实现（代码 + 测试 + 版本三件套）。**
+- **根因（离线复现，勿再推断）**：`backend/services/push.py::_webpush()` 把 **dict 型 payload 原样**传给 `pywebpush.webpush(data=payload)`，而 pywebpush 的 `data` 契约是**已序列化的 str/bytes**：dict 会一路进到 `http_ece.encrypt(content=dict)` → `content[i:i+chunk_size]`（`chunk_size = rs - 17 = 4079`）→ **`KeyError: slice(0, 4079, None)`**，被 `except Exception` 吞成一条 WARNING → **自 `54194e0`（v2.4.0，2026-09-18）起推送 100% 静默失败**。调用链唯一：`notify.py` 构造 dict → `push.send_push()` → `_webpush()`。
+- **实测证据（生产代码路径，仅最后一步 `requests.post` 打桩；真 VAPID 密钥 + 真订阅行 + 真 payload，未向任何设备投递）**：
+  - 修复前：`webpush send error: slice(0, 4079, None)`、**network calls = 0**（请求根本没发出去）。
+  - 修复后：network calls = 1、请求体 = **263 字节 ECE 密文**、`content-encoding: aes128gcm`、带 VAPID `Authorization` 头、不抛异常、`last_ok_at` 写入成功。
+- **修复内容**：
+  1. `_webpush()` 发送前序列化：`payload if isinstance(payload, (str, bytes)) else json.dumps(payload, ensure_ascii=False)`。（注：pywebpush 2.5.0 的 `_prepare_send_data` 对 str 会 `data.encode()`，故 str 形态亦可；仅有 `WebPusher.encode()` 被直接调用时 str 才不可行——顶层 `webpush()` 无此问题。）
+  2. `_webpush()` 返回 `bool`（成功 True / 已吞异常 False）；`send_push()` **仅成功才** `UPDATE push_subscriptions SET last_ok_at` —— 原先**无条件**写入，失败也被记成「最近成功」（生产库现存一行 `last_ok_at` 早于 `created_at` 即此症状）。
+  3. 新增 `tests/test_push.py`（6 例，mock `pywebpush.webpush`，零网络）：其中「传入的 `data` 必须是 str/bytes 且 `json.loads(data) == payload`」= 本事故**回归哨兵**。**已做两向校验**：旧代码（`data=payload`）下该用例 FAIL，修复后 PASS。
+- **实测证据（闸门）**：`./.venv/bin/python -m pytest tests/test_push.py -q --no-cov` → 6 passed；`make lint test smoke` 全绿。
+- **版本一致性**：`backend/app.py version == 2.9.1`；`CHANGELOG.md` 新增 `## [2.9.1] - 2026-09-24`。**前端零改动 → `sw.js` CACHE / `index.html ?v=` 不 bump**（沿用 v2.4.1 / 同版本先例）。
+- **未做的验证（诚实声明）**：**未做真链路投递**（唯一订阅属测试号 `hermesstu`，其 `user_agent` = iPhone Safari = 真实设备；本 cron 于 04:30 HKT 执行，真投会打扰用户）。除最后一步 POST 外的全链路（VAPID 签名 + ECE 加密 + 订阅密钥）已在生产代码路径上跑通；**真机投递待白天由 Ray 触发或配合验收**。
+- **附：同窗口两处未回写补记（审计 GAP-2，2026-09-23 窗口）**：
+  1. `bad0fea`（fix，2026-09-23）：**测试号排除改为大小写归一** —— `EXCLUDED_USERNAMES` 比较处统一 `.lower()`（生产库用户名是小写 `hermestest`，旧代码按其字面比对导致漏排除）；涉及 `backend/api/class_bp.py`、`backend/data/checkin.py`、`backend/scripts/checkin_reminder.py`、`backend/services/notify.py` + `tests/test_class.py`、`tests/test_notify.py`。
+  2. `623b42b`（feat，2026-09-23）：`scripts/checkin_reminder.py --include <username>`（可重复）**验收开关** —— 只放开 `EXCLUDED_USERNAMES` 测试号白名单，**不绕过**「达标即停」、幂等键等其它闸门；Hermes cron wrapper 未带该参数，不会误发测试号。
+- **附：前端缓存口径补充（审计 GAP-3，防复发）**：§12.32 已立「每次前端改动须同步改 `index.html` 的 `?v=` 与 `sw.js` 的 CACHE 名」，但**同一版本内的连续前端 commit**（v2.9.0 的 13:18→13:29 四次）会让 `?v=` 停在首次值 → 已加载过页面的客户端在 CF 的 4h 缓存窗口内继续跑旧 JS。**补充条款（对后续一律适用）**：同一版本内**每产生一次前端 commit，都必须更换静态资源 URL**——可在版本号后加递增后缀（`?v=2.9.0` → `?v=2.9.0.1`），`sw.js` 的 `const V` 同步；或直接改走「前端改动一律 bump patch 版本」走完整三件套。**两选一，不得同版本内不换 URL**；违规处置同 §12.44 条款 2（按「口径旁路」缺陷记审计 FAIL）。
+- **范围边界（未越界）**：未改通知文案/档位/收件人口径；未改 DB schema；未新增依赖；未动 RAG / 出题 / 卡片 / 排行榜。

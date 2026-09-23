@@ -2,7 +2,11 @@
 
 降级优先：无 VAPID 密钥 / 无订阅 / 发送异常 → 只落站内，绝不 500。
 收到 404/410（订阅已失效）→ 删除该订阅。
+
+⚠️ pywebpush 的 `data` 契约 = **已序列化的 str/bytes**；直传 dict 会在本地加密阶段抛
+`KeyError: slice(0, 4079, None)`（v2.4.0~v2.9.0 推送 100% 静默失败的根因）。
 """
+import json
 import logging
 
 from config import (
@@ -15,16 +19,19 @@ from data import models
 log = logging.getLogger("aistudy.push")
 
 
-def _webpush(subscription: dict, payload: dict) -> None:
+def _webpush(subscription: dict, payload) -> bool:
+    """推送单条；返回是否成功（异常一律吞掉降级，由上层决定是否记 last_ok_at）。"""
     from pywebpush import WebPushException, webpush
 
+    # 已序列化的 str/bytes 才能进加密层；dict/其它 → 先 json.dumps
+    data = payload if isinstance(payload, (str, bytes)) else json.dumps(payload, ensure_ascii=False)
     try:
         webpush(
             subscription_info={
                 "endpoint": subscription["endpoint"],
                 "keys": {"p256dh": subscription["p256dh"], "auth": subscription["auth"]},
             },
-            data=payload,
+            data=data,
             vapid_private_key=VAPID_PRIVATE_KEY,
             vapid_claims={"sub": VAPID_SUBJECT},
         )
@@ -34,8 +41,11 @@ def _webpush(subscription: dict, payload: dict) -> None:
         if status in (404, 410):
             raise _SubscriptionGone(subscription["endpoint"])
         log.warning("webpush send failed (%s): %s", status, exc)
+        return False
     except Exception as exc:  # noqa: BLE001 - 推送异常绝不向上冒泡
         log.warning("webpush send error: %s", exc)
+        return False
+    return True
 
 
 class _SubscriptionGone(Exception):
@@ -65,11 +75,13 @@ def send_push(con, user_ids, payload: dict) -> None:
     ).fetchall()
     for s in subs:
         try:
-            _webpush(dict(s), payload)
+            ok = _webpush(dict(s), payload)
         except _SubscriptionGone as exc:
             con.execute("DELETE FROM push_subscriptions WHERE endpoint=?", (exc.endpoint,))
             continue
-        con.execute(
-            "UPDATE push_subscriptions SET last_ok_at=? WHERE id=?", (models.utcnow(), s["id"])
-        )
+        # 只有真投递成功才记 last_ok_at（曾无条件写入 → 失败也被记为「最近成功」）
+        if ok:
+            con.execute(
+                "UPDATE push_subscriptions SET last_ok_at=? WHERE id=?", (models.utcnow(), s["id"])
+            )
     con.commit()

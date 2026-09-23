@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.9.1] - 2026-09-24
+
+### 修复
+- **Web Push 自 v2.4.0 起 100% 静默失败（NOTIF-002）**：`services/push.py` 把 dict 型 payload
+  直传 pywebpush，而 pywebpush 的 `data` 契约是**已序列化的 str/bytes** → 本地加密阶段抛
+  `KeyError: slice(0, 4079, None)` 并被 `except Exception` 吞掉，只留一条 WARNING：
+  学生即便按引导授权也收不到任何推送（v2.9.0「提醒可达性」在推送通道上不成立）。
+  修复 = 发送前 `json.dumps(payload, ensure_ascii=False)`（str/bytes 原样透传）。
+- **`push_subscriptions.last_ok_at` 会说谎**：原先**无条件**在每次尝试后写入，
+  失败也被记成「最近成功」。修复 = `_webpush()` 返回 bool，仅成功才更新。
+- **新增 `tests/test_push.py`（6 例，全 mock 不打网络）**：dict payload 必须被序列化
+  （本事故回归哨兵，已两向校验）、str 原样透传、410 删订阅、失败不写 `last_ok_at`、
+  成功写入、无 VAPID 密钥静默跳过。旧测试只打桩到 `send_push` 层，故 `make`/CI 全绿也漏掉本缺陷。
+
 ## [2.9.0] - 2026-09-23
 
 ### 新增
