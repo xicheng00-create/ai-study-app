@@ -106,3 +106,40 @@ def test_quiz_leaderboard_absent_marking(client, teacher_headers):
     assert by_name["晨晨"]["rank"] == 1
     assert by_name["小宇"]["absent"] is True
     assert by_name["小宇"]["rank"] is None
+
+
+# ---- 教师端「今日打卡 · 提醒可达性」（NOTIF-010）----
+
+def test_checkin_board_teacher_only(client, teacher_headers):
+    uid = make_student(client, teacher_headers, "alice", display_name="晨晨")
+    teacher = login(client, "teacher", "teacher123")
+    th = {"Authorization": f"Bearer {teacher}"}
+    resp = client.get("/api/class/checkin-board", headers=th)
+    assert resp.status_code == 200
+    d = resp.get_json()["data"]
+    assert d["required"]["cards"] == 30
+    by = {s["user_id"]: s for s in d["students"]}
+    assert by[uid]["checked_in"] is False
+    assert by[uid]["push_ready"] is False
+    assert by[uid]["nudged_today"] == 0
+
+    sh = {"Authorization": "Bearer " + login(client, "alice", "student123")}
+    assert client.get("/api/class/checkin-board", headers=sh).status_code == 403
+
+
+# ---- 教师手动催办（NOTIF-011）----
+
+def test_nudge_rate_limit_and_non_student(client, teacher_headers):
+    uid = make_student(client, teacher_headers, "alice", display_name="晨晨")
+    teacher = login(client, "teacher", "teacher123")
+    th = {"Authorization": f"Bearer {teacher}"}
+
+    assert client.post("/api/class/nudge", json={"user_ids": [uid]}, headers=th).status_code == 200
+    assert client.post("/api/class/nudge", json={"user_ids": [uid]}, headers=th).status_code == 200
+    r3 = client.post("/api/class/nudge", json={"user_ids": [uid]}, headers=th)
+    assert r3.status_code == 400
+    assert "今天已经催过 2 次了" in r3.get_json()["msg"]
+
+    r4 = client.post("/api/class/nudge", json={"user_ids": ["not-a-student"]}, headers=th)
+    assert r4.status_code == 400
+    assert "只能催在用学生" in r4.get_json()["msg"]

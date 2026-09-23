@@ -4,7 +4,7 @@
 时区统一走 timeutil.shanghai_date()（UTC+8），与班级榜 today_* 口径一致。
 """
 import random
-from datetime import timedelta
+from datetime import date, timedelta
 
 from config import TASK_CARDS_REQUIRED, TASK_QUESTIONS_REQUIRED
 
@@ -67,6 +67,20 @@ def progress_today(con, user_id) -> dict:
         "cards": max(c["cards"], int(row["cards_done"] or 0)),
         "questions": max(c["questions"], int(row["questions_done"] or 0)),
     }
+
+
+def days_since_last_checkin(con, user_id) -> int:
+    """距上次打卡的天数差（今天 - MAX(checkin_date)）；无任何打卡记录 → 0。
+
+    用于提醒文案的 lapse 前缀：≥2 天没见到时统一加「已经 N 天没见到你了…」。
+    """
+    row = con.execute(
+        "SELECT MAX(checkin_date) AS d FROM daily_checkins WHERE user_id=?", (user_id,)
+    ).fetchone()
+    if not row or not row["d"]:
+        return 0
+    last = date.fromisoformat(row["d"])
+    return (timeutil.shanghai_now().date() - last).days
 
 
 def streak_info(con, user_id) -> dict:

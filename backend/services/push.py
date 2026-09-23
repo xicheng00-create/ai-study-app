@@ -44,6 +44,12 @@ class _SubscriptionGone(Exception):
         super().__init__(f"subscription gone: {endpoint}")
 
 
+def subscribed_user_ids(con) -> set:
+    """已存在推送订阅行的用户 id 集合（NOTIF-010 状态判据 = 订阅存在性）。"""
+    rows = con.execute("SELECT DISTINCT user_id FROM push_subscriptions").fetchall()
+    return {r["user_id"] for r in rows}
+
+
 def send_push(con, user_ids, payload: dict) -> None:
     """给一组用户推送；无密钥/无订阅静默跳过，失败降级，失效订阅删除。"""
     if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:

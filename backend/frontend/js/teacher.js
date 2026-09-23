@@ -534,6 +534,9 @@ const Teacher = {
   async viewClassActivity() {
     let d = { total_turns: [], total_practice: [], today_turns: [], today_conversations: [], today_knowledge: [], mastery: [], quizzes: [], quiz_boards: {}, common_weak_chapters: [] };
     try { d = await API.get("/api/class/leaderboard"); } catch (e) {}
+    // 今日打卡 · 提醒可达性（NOTIF-010/011）：失败静默降级为不显示该卡
+    let board = null;
+    try { board = await API.get("/api/class/checkin-board"); } catch (e) { board = null; }
     const cat = this.classCat || 0;
     const cats = ["今日知识卡片", "累计对话轮", "累计练习", "今日对话轮", "今日对话次数", "测评分数", "掌握度"];
     const chips = cats.map((t, i) => `<div class="chip teacher ${cat === i ? 'active' : ''}" onclick="Teacher.setClassCat(${i})">${t}</div>`).join('');
@@ -571,7 +574,26 @@ const Teacher = {
       <div style="display:flex;gap:6px;flex-wrap:wrap">${weak.map(c => `<span class="badge weak">${esc(c)}</span>`).join('') || '<span class="muted" style="font-size:12.5px">暂无共性薄弱</span>'}</div>
       <button class="btn teacher sm" style="margin-top:12px;width:auto;padding:9px 16px" onclick="go('quiz')">＋ 布置巩固测评</button></div>`;
 
+    let boardCard = '';
+    if (board && board.students) {
+      const req = board.required || { cards: 30, questions: 5 };
+      const rowsHtml = board.students.map(s => {
+        const done = !!s.checked_in;
+        const push = s.push_ready
+          ? '<span style="color:var(--green);font-size:12px">🔔 已开提醒</span>'
+          : '<span style="color:var(--red);font-size:12px">🔔 未开提醒</span>';
+        const btn = done
+          ? '<button class="mini-btn" disabled>已打卡</button>'
+          : (s.nudged_today >= 2
+            ? '<button class="mini-btn" disabled>今天已催 2 次</button>'
+            : `<button class="mini-btn teacher" onclick="Teacher.nudgeStudent('${s.user_id}')">催一下</button>`);
+        return `<div class="rank-row"><div class="rank-meta"><div class="nm">${esc(s.name)}</div><div class="st">${s.cards}/${req.cards} 卡 · ${s.questions}/${req.questions} 题 · ${done ? '已打卡' : '未打卡'}</div></div><div class="rank-val" style="flex-direction:row;gap:8px;align-items:center">${push}${btn}</div></div>`;
+      }).join('');
+      boardCard = `<div class="card"><div class="sec-title">今日打卡 · 提醒可达性</div>${rowsHtml}</div>`;
+    }
+
     return appbar('班级活动', '教师视角 · 全班完整排行榜') + `<div class="content">
+      ${boardCard}
       ${weakCard}
       <div class="pill-wrap" style="margin-bottom:12px">${chips}</div>
       ${body || '<div class="muted">暂无数据</div>'}
@@ -579,4 +601,9 @@ const Teacher = {
   },
   setClassCat(i) { this.classCat = i; render(); },
   setClassQuiz(id) { this.classQuizId = id; this.classCat = 5; render(); },
+  // 教师手动催办（NOTIF-011）：成功后刷新班级页，让「催一下」按钮状态与次数即时更新
+  async nudgeStudent(uid) {
+    try { await API.post("/api/class/nudge", { user_ids: [uid] }); toast("已催 TA"); render(); }
+    catch (e) { toast(e.message); }
+  },
 };

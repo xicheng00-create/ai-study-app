@@ -51,6 +51,7 @@ const App = {
   activeQuiz: null,
   unread: 0,          // 通知未读数（铃铛角标，NOTIF-008）
   checkin: null,      // GET /api/checkin/today 结果（学生端连胜条数据源）
+  prefs: null,        // GET /api/notifications/prefs 结果（提醒开关 + 订阅状态，NOTIF-010）
 
   chapterName(id) {
     const c = this.chapters.find(x => x.id === id);
@@ -216,12 +217,13 @@ function logout() {
 
 /* ===== 设置页（SET-001~005，师生共用）===== */
 async function viewSettings() {
-  let prefs = { push_enabled: false, remind_1900: true };
+  let prefs = { push_enabled: false, remind_daily: true, has_push_sub: false };
   try { prefs = await API.get("/api/notifications/prefs"); } catch (e) {}
   App.settingsPrefs = prefs;
   const u = App.state.user || {};
   const av = AVATARS[u.avatar] || ((u.display_name || "?").charAt(0));
   const pushOn = !!prefs.push_enabled;
+  const subOn = !!prefs.has_push_sub;
   return appbar('设置', '个人资料 · 提醒 · 通知') + `<div class="content">
     <div class="card sm">
       <div class="sec-title">个人资料</div>
@@ -231,8 +233,9 @@ async function viewSettings() {
     <div class="card sm">
       <div class="sec-title">账号与提醒</div>
       <div class="settings-row" onclick="changePassword()"><span class="sr-label">修改密码</span><span class="sr-value">›</span></div>
-      <div class="settings-row"><span class="sr-label">打开提醒<span class="sr-sub">Web Push · 每天 19:00 未打卡提醒</span></span>
+      <div class="settings-row"><span class="sr-label">打开提醒<span class="sr-sub">Web Push · 每晚 19:00–23:00 未达标最多 5 条</span></span>
         <div class="switch ${pushOn ? 'on' : ''}" onclick="toggleReminders(${!pushOn})"><span class="sw-track"></span></div></div>
+      <div class="settings-row"><span class="sr-label">提醒状态</span><span class="sr-value">${subOn ? '✓ 已开启提醒' : '尚未开启（收不到手机通知，请点右侧开关）'}</span></div>
       <div class="settings-row" onclick="go('notifications')"><span class="sr-label">通知中心</span><span class="sr-value">${App.unread ? `<b class="sr-unread">${App.unread}</b> ` : ''}›</span></div>
     </div>
     <div class="card sm"><div class="settings-row danger" onclick="logout()"><span class="sr-label">退出登录</span><span class="sr-value">›</span></div></div>
@@ -294,6 +297,7 @@ async function toggleReminders(on) {
       await API.post("/api/notifications/push/unsubscribe", endpoint ? { endpoint } : {});
       toast("已关闭提醒");
     }
+    await refreshPrefs();
   } catch (e) { toast(e.message); }
   render();
 }
@@ -396,6 +400,12 @@ async function refreshCheckin() {
   return App.checkin;
 }
 
+/* 提醒偏好 + 订阅状态（NOTIF-010）：失败静默置 null，不阻断 boot / 页面渲染 */
+async function refreshPrefs() {
+  try { App.prefs = await API.get("/api/notifications/prefs"); } catch (e) { App.prefs = null; }
+  return App.prefs;
+}
+
 async function boot() {
   if (!API.getToken()) { App.state.role = null; render(); return; }
   try {
@@ -409,6 +419,7 @@ async function boot() {
   }
   await loadChapters();
   await refreshCheckin();
+  await refreshPrefs();
   render();
 }
 

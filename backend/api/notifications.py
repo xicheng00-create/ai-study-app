@@ -29,13 +29,13 @@ def _ensure_prefs(con, user_id) -> dict:
     ).fetchone()
     if row is None:
         con.execute(
-            "INSERT INTO notification_prefs (user_id, push_enabled, remind_1900, updated_at)"
+            "INSERT INTO notification_prefs (user_id, push_enabled, remind_daily, updated_at)"
             " VALUES (?, 0, 1, ?)",
             (user_id, models.utcnow()),
         )
         con.commit()
-        return {"push_enabled": False, "remind_1900": True}
-    return {"push_enabled": bool(row["push_enabled"]), "remind_1900": bool(row["remind_1900"])}
+        return {"push_enabled": False, "remind_daily": True}
+    return {"push_enabled": bool(row["push_enabled"]), "remind_daily": bool(row["remind_daily"])}
 
 
 @notify_bp.route("", methods=["GET"])
@@ -104,7 +104,7 @@ def push_subscribe():
          request.headers.get("User-Agent", ""), now),
     )
     con.execute(
-        "INSERT INTO notification_prefs (user_id, push_enabled, remind_1900, updated_at)"
+        "INSERT INTO notification_prefs (user_id, push_enabled, remind_daily, updated_at)"
         " VALUES (?, 1, 1, ?)"
         " ON CONFLICT(user_id) DO UPDATE SET push_enabled=1, updated_at=excluded.updated_at",
         (g.user_id, now),
@@ -137,7 +137,12 @@ def push_unsubscribe():
 @jwt_required
 def get_prefs():
     con = get_db()
-    return ok(_ensure_prefs(con, g.user_id))
+    prefs = _ensure_prefs(con, g.user_id)
+    from services.push import subscribed_user_ids
+
+    # NOTIF-010：前端用 has_push_sub（订阅存在性）与 push_enabled 一起决定引导卡文案
+    prefs["has_push_sub"] = g.user_id in subscribed_user_ids(con)
+    return ok(prefs)
 
 
 @notify_bp.route("/prefs", methods=["POST"])
@@ -147,16 +152,16 @@ def set_prefs():
     con = get_db()
     cur = _ensure_prefs(con, g.user_id)
     push_enabled = int(bool(data.get("push_enabled", cur["push_enabled"])))
-    remind_1900 = int(bool(data.get("remind_1900", cur["remind_1900"])))
+    remind_daily = int(bool(data.get("remind_daily", cur["remind_daily"])))
     con.execute(
-        "INSERT INTO notification_prefs (user_id, push_enabled, remind_1900, updated_at)"
+        "INSERT INTO notification_prefs (user_id, push_enabled, remind_daily, updated_at)"
         " VALUES (?, ?, ?, ?)"
         " ON CONFLICT(user_id) DO UPDATE SET push_enabled=excluded.push_enabled,"
-        " remind_1900=excluded.remind_1900, updated_at=excluded.updated_at",
-        (g.user_id, push_enabled, remind_1900, models.utcnow()),
+        " remind_daily=excluded.remind_daily, updated_at=excluded.updated_at",
+        (g.user_id, push_enabled, remind_daily, models.utcnow()),
     )
     con.commit()
-    return ok({"push_enabled": bool(push_enabled), "remind_1900": bool(remind_1900)})
+    return ok({"push_enabled": bool(push_enabled), "remind_daily": bool(remind_daily)})
 
 
 @notify_bp.route("/vapid-public-key", methods=["GET"])

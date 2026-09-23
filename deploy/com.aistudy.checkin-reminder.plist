@@ -9,11 +9,30 @@
 		<string>/Users/xicheng/WorkBuddy/AI学习小组app/backend/scripts/checkin_reminder.py</string>
 	</array>
 	<key>WorkingDirectory</key><string>/Users/xicheng/WorkBuddy/AI学习小组app</string>
+	<!-- 每晚 5 档：脚本按当前上海小时推导档位（19/20/21/22/23 点） -->
 	<key>StartCalendarInterval</key>
-	<dict>
-		<key>Hour</key><integer>19</integer>
-		<key>Minute</key><integer>0</integer>
-	</dict>
+	<array>
+		<dict>
+			<key>Hour</key><integer>19</integer>
+			<key>Minute</key><integer>0</integer>
+		</dict>
+		<dict>
+			<key>Hour</key><integer>20</integer>
+			<key>Minute</key><integer>0</integer>
+		</dict>
+		<dict>
+			<key>Hour</key><integer>21</integer>
+			<key>Minute</key><integer>0</integer>
+		</dict>
+		<dict>
+			<key>Hour</key><integer>22</integer>
+			<key>Minute</key><integer>0</integer>
+		</dict>
+		<dict>
+			<key>Hour</key><integer>23</integer>
+			<key>Minute</key><integer>0</integer>
+		</dict>
+	</array>
 	<key>StandardOutPath</key><string>/Users/xicheng/WorkBuddy/AI学习小组app/logs/checkin-reminder.log</string>
 	<key>StandardErrorPath</key><string>/Users/xicheng/WorkBuddy/AI学习小组app/logs/checkin-reminder.err.log</string>
 	<key>EnvironmentVariables</key>

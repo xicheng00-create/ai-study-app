@@ -309,7 +309,7 @@ CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, is_read);
 CREATE TABLE IF NOT EXISTS notification_prefs (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   push_enabled INTEGER NOT NULL DEFAULT 0,
-  remind_1900 INTEGER NOT NULL DEFAULT 1,
+  remind_daily INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT NOT NULL
 );
 
@@ -396,6 +396,11 @@ def migrate(con) -> None:
     );
     CREATE INDEX IF NOT EXISTS idx_card_topics_chapter ON card_topics(chapter_id, ord);
     """)
+
+    # v2.9.0（NOTIF-005 修订）：提醒总开关口径由「仅 19:00」扩为「每晚 19:00–23:00 阶梯」
+    cols = {r["name"] for r in con.execute("PRAGMA table_info(notification_prefs)").fetchall()}
+    if "remind_1900" in cols and "remind_daily" not in cols:
+        con.execute("ALTER TABLE notification_prefs RENAME COLUMN remind_1900 TO remind_daily")
 
     # 存量二元 score(0/1) → 实际得分点（仅首次新增 graded_by 时执行一次）
     if added_graded_by:

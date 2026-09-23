@@ -1,5 +1,6 @@
 """通知中心 / Web Push 降级 / 发布通知 / nudge 限流（NOTIF-001~008）。"""
 from conftest import login, make_student
+from data import models
 
 
 def _chapter(client, teacher_headers, name="第一章"):
@@ -112,3 +113,36 @@ def test_push_failure_still_persists_and_returns_200(client, teacher_headers, mo
 
     kinds = [n["type"] for n in _notifications(client, h)["notifications"]]
     assert kinds.count("path_published") == 1
+
+
+# ---- prefs：remind_daily 口径 + has_push_sub 订阅存在性 ----
+
+def test_prefs_remind_daily_and_has_push_sub(client, teacher_headers):
+    make_student(client, teacher_headers, "nf_pref")
+    h = {"Authorization": "Bearer " + login(client, "nf_pref", "student123")}
+    d = client.get("/api/notifications/prefs", headers=h).get_json()["data"]
+    assert d["remind_daily"] is True
+    assert d["has_push_sub"] is False
+
+    r = client.post("/api/notifications/prefs", json={"remind_daily": False}, headers=h)
+    assert r.status_code == 200
+    assert r.get_json()["data"]["remind_daily"] is False
+    d = client.get("/api/notifications/prefs", headers=h).get_json()["data"]
+    assert d["remind_daily"] is False
+
+
+def test_prefs_has_push_sub_true_when_subscribed(client, teacher_headers):
+    uid = make_student(client, teacher_headers, "nf_sub")
+    with client.application.app_context():
+        from data.db import get_db
+
+        con = get_db()
+        con.execute(
+            "INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (models.new_id(), uid, "https://example.com/ep", "p256dh", "auth", models.utcnow()),
+        )
+        con.commit()
+    h = {"Authorization": "Bearer " + login(client, "nf_sub", "student123")}
+    d = client.get("/api/notifications/prefs", headers=h).get_json()["data"]
+    assert d["has_push_sub"] is True

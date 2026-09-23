@@ -92,6 +92,7 @@ const Student = {
   async viewLearnHome() {
     this.initSelChapters();
     if (!App.checkin) await refreshCheckin();
+    if (App.prefs == null) await refreshPrefs();
     // 资料库竖排（不横滑），最新在前；多选 list：勾选章驱动对话跨章检索 + 知识卡片跨章复习
     const chaptersSorted = [...App.chapters].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
     const sel = this.selChapters || [];
@@ -114,6 +115,7 @@ const Student = {
     return `<div class="chat-head">` + appbar('学习', sub) +
     `</div><div class="content">
       ${this.taskCardHtml()}
+      ${this.remindCardHtml()}
       <button class="home-card" onclick="Student.openChat()">
         <span class="home-ic">${ic('chat')}</span>
         <span class="home-txt"><b>对话</b><small>${scope} · 向 TUTOR 跨章提问，自动标注来源</small></span>
@@ -170,6 +172,16 @@ const Student = {
       ${task('刷练习题', questions, needQ, 'Student.continuePractice()', '已完成')}
       <div class="muted task-hint">范围自定：任何章节的学习都计入进度，学哪章由你在「资料库」勾选</div>
     </div>`;
+  },
+  // 学生端常显「提醒」卡（NOTIF-010）：不得按状态隐藏；订阅存在性驱动两种文案
+  remindCardHtml() {
+    const p = App.prefs || {};
+    if (p.has_push_sub) {
+      return `<div class="card sm mb-12 remind-card"><div class="card-title">✓ 提醒已开启 · 每晚 19:00–23:00 未达标最多提醒 5 次</div></div>`;
+    }
+    return `<div class="card sm mb-12 remind-card"><div class="card-title">🔔 开启提醒，别断连胜</div>
+      <div class="muted">iPhone：Safari → Share → Add to Home Screen，从主屏打开后点下面按钮授权</div>
+      <button class="btn" onclick="toggleReminders(true)">立即开启</button></div>`;
   },
   // 学生自定范围（v2.6.5/CHECKIN-013）：勾选集 → 查询串；未勾选 = 不带参（服务端按全部）
   _scopeIds() { try { return this.selChapterIds() || []; } catch (e) { return []; } },

@@ -8,11 +8,12 @@ import json
 from collections import Counter
 
 from ai import mastery
-from auth.jwt_utils import jwt_required
-from data import timeutil
+from auth.jwt_utils import jwt_required, role_required
+from config import TASK_CARDS_REQUIRED, TASK_QUESTIONS_REQUIRED
+from data import checkin, timeutil
 from data.db import get_db
-from flask import Blueprint, g
-from middleware.errors import ok
+from flask import Blueprint, g, request
+from middleware.errors import e_input, ok
 
 class_bp = Blueprint("class_bp", __name__, url_prefix="/api/class")
 
@@ -256,3 +257,80 @@ def leaderboard():
         "quiz_boards": quiz_boards,
         "common_weak_chapters": common_weak,
     })
+
+
+@class_bp.route("/checkin-board", methods=["GET"])
+@jwt_required
+@role_required("teacher")
+def checkin_board():
+    """教师端「今日打卡 · 提醒可达性」（NOTIF-010）：复用 class_today，每人追加推送订阅态 + 今日催办次数。"""
+    con = get_db()
+    board = checkin.class_today(con, None)
+    today = timeutil.today_str()
+
+    from services.push import subscribed_user_ids
+
+    subs = subscribed_user_ids(con)
+    push_enabled = {
+        r["user_id"]: bool(r["push_enabled"])
+        for r in con.execute("SELECT user_id, push_enabled FROM notification_prefs").fetchall()
+    }
+    nudged = {}
+    for r in con.execute(
+        "SELECT user_id, created_at FROM notifications WHERE type='teacher_nudge'"
+    ).fetchall():
+        if timeutil.shanghai_date(r["created_at"]) == today:
+            nudged[r["user_id"]] = nudged.get(r["user_id"], 0) + 1
+
+    for s in board["students"]:
+        uid = s["user_id"]
+        # 判据 = push_enabled=1 且存在订阅（不是单看布尔开关）
+        s["push_ready"] = bool(push_enabled.get(uid, False) and uid in subs)
+        s["nudged_today"] = int(nudged.get(uid, 0))
+    return ok(board)
+
+
+@class_bp.route("/nudge", methods=["POST"])
+@jwt_required
+@role_required("teacher")
+def nudge_students():
+    """教师手动催办（NOTIF-011）：逐人发 teacher_nudge；每生每天最多 2 次。"""
+    con = get_db()
+    data = request.get_json(silent=True) or {}
+    user_ids = data.get("user_ids")
+    if not isinstance(user_ids, list) or not user_ids:
+        return e_input("user_ids 需为非空数组")
+    if any(not isinstance(x, str) for x in user_ids):
+        return e_input("只能催在用学生")
+
+    students = {s["id"]: s for s in _class_students(con)}
+    if any(uid not in students for uid in user_ids):
+        return e_input("只能催在用学生")
+
+    today = timeutil.today_str()
+    sent = 0
+    skipped = []
+    for uid in user_ids:
+        # 已打卡无需催（前端按钮也会置灰），进 skipped 不落通知
+        if checkin.streak_info(con, uid)["done"]:
+            skipped.append(uid)
+            continue
+        n = 0
+        for r in con.execute(
+            "SELECT created_at FROM notifications WHERE user_id=? AND type='teacher_nudge'",
+            (uid,),
+        ).fetchall():
+            if timeutil.shanghai_date(r["created_at"]) == today:
+                n += 1
+        if n >= 2:
+            return e_input("今天已经催过 2 次了")
+        name = students[uid]["display_name"] or students[uid]["username"]
+        body = (f"{name}，老师说今天的 {TASK_CARDS_REQUIRED} 张卡 + "
+                f"{TASK_QUESTIONS_REQUIRED} 道题还没做完哦，快去做！")
+        from services.notify import notify_users
+
+        sent += notify_users(
+            con, [uid], "teacher_nudge", "👀 老师亲自来催啦", body,
+            ref_kind="nudge", ref_id=f"{today}#{n + 1}",
+        )
+    return ok({"sent": sent, "skipped": skipped})
