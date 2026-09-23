@@ -406,6 +406,37 @@ async function refreshPrefs() {
   return App.prefs;
 }
 
+/* ===== NOTIF-012：App 内拦截式催学弹窗（零授权兜底）=====
+   学生手机没推送授权时，Web Push 一条也到不了；只要学生碰到 App 就躲不掉。
+   触发：打开/回前台（App.checkin 已载入后），今日未达标 → 弹一次模态弹窗。 */
+function _nagToday() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+async function maybeNagCheckin() {
+  if (App.state.role !== 'student') return;                 // 教师端绝不弹
+  const c = App.checkin;
+  if (!c || c.done) return;                                 // 已达标 / 打卡完成绝不弹
+  if (window.Student && Student.learnChat) return;          // 对话页绝不弹
+  // 阈值由后端下发（config.TASK_*_REQUIRED 单一真相）；缺字段兜底 30/5
+  const need = (c.task && c.task.cards_required) || 30;
+  const needQ = (c.task && c.task.questions_required) || 5;
+  const gc = need - Math.min(c.progress.cards, need);
+  const gq = needQ - Math.min(c.progress.questions, needQ);
+  if (gc <= 0 && gq <= 0) return;                            // 双保险：达标不弹
+  const today = _nagToday();
+  try {
+    if (localStorage.getItem('aistudy_nag_' + today) === '1') return;        // 每天最多 1 次
+    if (localStorage.getItem('aistudy_nodisturb_' + today) === '1') return;  // 今晚不再提示
+  } catch (e) { /* localStorage 不可用则跳过频控，仍不弹（保守：不打扰） */ }
+  const sub = c.streak >= 1 ? `${c.streak} 天连胜今晚 24:00 归零` : '今天还没有连胜，先点起火焰';
+  openSheet(`<div class="row" style="font-weight:700;cursor:default">🔥 今天还差 ${gc} 张卡 + ${gq} 道题</div>
+    <div class="row" style="text-align:left;border:none;background:transparent;cursor:default;font-size:13px;color:var(--text-2)">${sub}</div>
+    <div class="row" onclick="Student.doNagNow()">立即去做</div>
+    <div class="row cancel" onclick="Student.doNagLater()">今晚不再提示</div>`);
+  try { localStorage.setItem('aistudy_nag_' + today, '1'); } catch (e) {}
+}
+
 async function boot() {
   if (!API.getToken()) { App.state.role = null; render(); return; }
   try {
@@ -421,6 +452,7 @@ async function boot() {
   await refreshCheckin();
   await refreshPrefs();
   render();
+  maybeNagCheckin();   // 打开 App：学生未达标则弹一次拦截式催学弹窗
 }
 
 window.addEventListener("hashchange", () => {
@@ -429,6 +461,13 @@ window.addEventListener("hashchange", () => {
 
 /* 旋转/窗口尺寸变化：知识卡片全屏态重算卡高上限（62vh 随视口变） */
 window.addEventListener("resize", () => { if (window.Student && Student.knowledgeDeck) Student.kcFit(); });
+
+/* 回到前台：刷新打卡状态后补一次拦截式催学弹窗（NOTIF-012；频控保证每天最多 1 次） */
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible") return;
+  await refreshCheckin();
+  maybeNagCheckin();
+});
 
 /* 键盘弹起时固定输入框不错位：--kb 补偿安卓键盘高度（iOS 下 offsetTop 随键盘上移，约 0） */
 function syncVisualViewport() {

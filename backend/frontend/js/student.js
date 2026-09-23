@@ -185,6 +185,25 @@ const Student = {
       <div class="muted">iPhone：Safari → Share → Add to Home Screen，从主屏打开后点下面按钮授权</div>
       <button class="btn" onclick="toggleReminders(true)">立即开启</button></div>`;
   },
+  // NOTIF-012：「立即去做」——关闭弹窗、跳学习首页，并高亮今日任务卡给用户明显提示
+  doNagNow() {
+    closeSheet();
+    this.learnChat = false; this.knowledgeIdx = false; this.knowledgeDeck = false;
+    if (App.state.hash !== 'learn') go('learn'); else render();
+    // 学习首页渲染后高亮今日任务卡（内联样式，不引入新 CSS，避免 ?v= 缓存失效）
+    requestAnimationFrame(() => {
+      const el = document.querySelector('.task-card');
+      if (!el) return;
+      el.style.boxShadow = '0 0 0 3px var(--coral)';
+      el.style.transition = 'box-shadow .3s';
+      setTimeout(() => { el.style.boxShadow = ''; }, 2500);
+    });
+  },
+  // NOTIF-012：「今晚不再提示」——记 localStorage，当天不再弹
+  doNagLater() {
+    closeSheet();
+    try { localStorage.setItem('aistudy_nodisturb_' + this._kcToday(), '1'); } catch (e) {}
+  },
   // 一键续学（KNOW-013）：读 localStorage 纯读，判断「当日任务 / 知识卡片」两类存档
   resumeInfo() {
     try {
