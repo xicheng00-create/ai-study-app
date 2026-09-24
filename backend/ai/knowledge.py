@@ -9,6 +9,7 @@ from data import models
 from data.db import get_db
 
 from ai import agents
+from ai.cardgate import filter_new_cards
 from ai.cardtext import normalize_label
 from ai.prompts import KNOWLEDGE_SYSTEM
 
@@ -52,6 +53,7 @@ def generate_knowledge_cards(chapter_ids: list[str]) -> list[dict]:
     system = KNOWLEDGE_SYSTEM.format(
         chapter_ids=",".join(chapter_ids),
         retrieved_chunks="\n\n".join(_chapter_text(cid) for cid in chapter_ids),
+        existing_fronts="（无）",
         min_cards=MIN_CARDS * max(len(chapter_ids), 1),
     )
     cards = agents.knowledge_generate(system) or []
@@ -71,13 +73,16 @@ def ensure_chapter_cards(chapter_id: str) -> int:
     """已有共享卡直接复用；Agent 故障不影响资料或路径发布。"""
     try:
         con = get_db()
-        existing = con.execute(
-            "SELECT COUNT(*) AS c FROM knowledge_cards WHERE chapter_id=?", (chapter_id,)
-        ).fetchone()["c"]
-        if existing:
-            return existing
+        existing_fronts = [r["front"] for r in con.execute(
+            "SELECT front FROM knowledge_cards WHERE chapter_id=?", (chapter_id,)
+        ).fetchall()]
+        if existing_fronts:
+            return len(existing_fronts)
         now = models.utcnow()
-        for card in generate_knowledge_cards([chapter_id]):
+        generated = generate_knowledge_cards([chapter_id])
+        # 止血闸门（KNOW-014）：生成后过闸门再 insert，LLM 判重拦截「同一考点换措辞」重复卡
+        kept, _dropped = filter_new_cards(generated, chapter_id, existing_fronts=existing_fronts)
+        for card in kept:
             con.execute(
                 "INSERT OR IGNORE INTO knowledge_cards "
                 "(id,chapter_id,sub_concept,front,back,created_at) VALUES (?,?,?,?,?,?)",

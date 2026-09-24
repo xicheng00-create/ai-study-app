@@ -344,6 +344,23 @@ def dedupe(cards: list[dict]) -> list[dict]:
     return kept
 
 
+def _gate_cards(cards: list[dict], chapter_id: str, existing_fronts: list[str]) -> list[dict]:
+    """止血闸门（KNOW-014，v2.9.4）：写库前过 LLM 判重，丢弃「同一考点换措辞」的重复卡。
+
+    filter_new_cards 内部的 LLM 确认走 backend/ai/agents.py，其 `_config` 在无 Flask
+    上下文时读 os.environ —— 这里把 .env 里的 DEEPSEEK_* 导出到 os.environ 供其使用。
+    """
+    os.environ.setdefault("DEEPSEEK_API_KEY", ENV.get("DEEPSEEK_API_KEY", ""))
+    os.environ.setdefault("DEEPSEEK_BASE_URL", ENV.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
+    os.environ.setdefault("DEEPSEEK_MODEL", ENV.get("DEEPSEEK_MODEL", "deepseek-chat"))
+    from ai.cardgate import filter_new_cards
+    kept, dropped = filter_new_cards(cards, chapter_id, existing_fronts=existing_fronts)
+    if dropped:
+        fronts = [d["front"] for d in dropped]
+        print(f"    [gate] 丢弃 {len(dropped)} 张重复卡：{fronts[:3]}{'…' if len(fronts) > 3 else ''}", flush=True)
+    return kept
+
+
 def rebuild_chapter(con, chapter_id: str, name: str, dry: bool) -> dict:
     pieces = build_pieces(con, chapter_id)
     goal, tags = session_ctx(con, chapter_id)
@@ -362,6 +379,8 @@ def rebuild_chapter(con, chapter_id: str, name: str, dry: bool) -> dict:
             print(f"   [{i}/{len(pieces)}] {piece['source'][:22]:<24} +{len(cards):2d} 卡", flush=True)
 
     cards = dedupe(raw)
+    # 止血闸门（KNOW-014）：重建是全量替换，无「已有卡」可比，仅去本批内部重复
+    cards = _gate_cards(cards, chapter_id, [])
     stats = {"chapter": name, "chapter_id": chapter_id, "pieces": len(pieces),
              "raw": len(raw), "cards": len(cards),
              "sub_concepts": len({c["sub_concept"] for c in cards if c["sub_concept"]})}
@@ -527,22 +546,28 @@ def fill_gaps(con, report: Path) -> dict:
         except Exception as e:  # noqa: BLE001
             print(f"  [warn] 补漏失败 {row['chapter']}: {e}")
             continue
-        existing = {norm_front(r["front"]) for r in con.execute(
-            "SELECT front FROM knowledge_cards WHERE chapter_id=?", (cid,))}
-        added = 0
-        new_ids: list[str] = []
+        existing_fronts = [r["front"] for r in con.execute(
+            "SELECT front FROM knowledge_cards WHERE chapter_id=?", (cid,))]
+        existing = {norm_front(f) for f in existing_fronts}
+        candidates = []
         for c in got[:40]:
             front = str(c.get("front") or "").strip()
             back = str(c.get("back") or "").strip()
             if not front or not back or norm_front(front) in existing:
                 continue
+            candidates.append({"front": front, "back": back, "sub_concept": c.get("sub_concept")})
+        # 止血闸门（KNOW-014）：补漏要避开本章已有卡 + 本批内部重复
+        kept = _gate_cards(candidates, cid, existing_fronts)
+        added = 0
+        new_ids: list[str] = []
+        for c in kept:
             new_id = str(uuid.uuid4())
             con.execute(
                 "INSERT INTO knowledge_cards (id, chapter_id, sub_concept, front, back, source_chunk_id, created_at)"
                 " VALUES (?,?,?,?,?,?,datetime('now'))",
-                (new_id, cid, normalize_label(c.get("sub_concept") or "考点补漏"), front, back, None))
+                (new_id, cid, normalize_label(c.get("sub_concept") or "考点补漏"), c["front"], c["back"], None))
             new_ids.append(new_id)
-            existing.add(norm_front(front))
+            existing.add(norm_front(c["front"]))
             added += 1
         # 绑片不能取「关键词 LIKE 命中的第一条」（会绑到含「AI」等泛词的无关切片），
         # 一律按卡片正反面与切片正文的词元重合度取最吻合者。
@@ -699,9 +724,10 @@ def fill_orphans(con, chapter: str | None, dry: bool, limit: int) -> dict:
             pool = pool[:limit]
         idx = [(r["front"], _tokens(f"{r['front']} {r['back'] or ''}"))
                for r in con.execute("SELECT front, back FROM knowledge_cards WHERE chapter_id=?", (cid,))]
+        existing_fronts = [f for f, _ in idx]
         seen = {norm_front(f) for f, _ in idx}
         print(f"\n[{ch['name']}] 无卡切片 {len(pool)} 条待补卡", flush=True)
-        added = 0
+        candidates = []
         jobs = [(goal, tags, r) for r in pool]
         with futures.ThreadPoolExecutor(max_workers=WORKERS) as ex:
             for i, (row, cards, err) in enumerate(ex.map(gen_for_orphan, jobs), start=1):
@@ -719,20 +745,27 @@ def fill_orphans(con, chapter: str | None, dry: bool, limit: int) -> dict:
                     toks = _tokens(front)
                     if any(is_near_dup(front, toks, f, tk) for f, tk in idx):
                         continue
-                    if not dry:
-                        con.execute(
-                            "INSERT INTO knowledge_cards (id, chapter_id, sub_concept, front, back,"
-                            " source_chunk_id, created_at) VALUES (?,?,?,?,?,?,datetime('now'))",
-                            (str(uuid.uuid4()), cid, c["sub_concept"], front, back, row["id"]))
+                    candidates.append({"front": front, "back": back,
+                                       "sub_concept": c["sub_concept"],
+                                       "source_chunk_id": row["id"]})
                     seen.add(k)
                     idx.append((front, toks))
-                    added += 1
                 if i % 10 == 0:
-                    if not dry:
-                        con.commit()
-                    print(f"   [{i}/{len(pool)}] 累计补 {added} 张", flush=True)
+                    print(f"   [{i}/{len(pool)}] 累计候选 {len(candidates)} 张", flush=True)
+
+        # 止血闸门（KNOW-014）：补无卡切片要避开本章已有卡 + 本批内部重复
+        kept = _gate_cards(candidates, cid, existing_fronts)
+        added = 0
         if not dry:
+            for c in kept:
+                con.execute(
+                    "INSERT INTO knowledge_cards (id, chapter_id, sub_concept, front, back,"
+                    " source_chunk_id, created_at) VALUES (?,?,?,?,?,?,datetime('now'))",
+                    (str(uuid.uuid4()), cid, c["sub_concept"], c["front"], c["back"], c.get("source_chunk_id")))
+                added += 1
             con.commit()
+        else:
+            added = len(kept)
         out.append({"chapter": ch["name"], "orphans": len(pool), "added": added})
         print(f"  → {ch['name']}: 无卡切片 {len(pool)} 条 → 补卡 {added} 张", flush=True)
     return {"added": sum(o["added"] for o in out), "chapters": out}
