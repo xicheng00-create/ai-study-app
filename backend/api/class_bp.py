@@ -17,10 +17,10 @@ from middleware.errors import e_input, ok
 
 class_bp = Blueprint("class_bp", __name__, url_prefix="/api/class")
 
-# 测试账号绝不出现在班级排行榜（hermestest 教师测试 + hermesstu 学生测试）。
-# 全小写存储 + 比较处统一 .lower() 归一：生产库里用户名是小写 hermestest，
-# 旧大小写敏感比较会漏排除（2026-09-23 实测）。
-EXCLUDED_USERNAMES = ("hermestest", "hermesstu")
+# 测试账号绝不出现在班级排行榜。仅排除测试教师号 hermestest；
+# hermesstu 已移出排除名单，作为真机验证账号与真实学生同权（2026-09-24 用户决定）。
+# 全小写存储 + 比较处统一 .lower() 归一。
+EXCLUDED_USERNAMES = ("hermestest",)
 
 
 def _class_students(con):

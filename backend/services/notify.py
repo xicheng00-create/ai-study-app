@@ -8,9 +8,10 @@ from data import models, timeutil
 
 from services import push
 
-# 与 class_bp.EXCLUDED_USERNAMES 保持一致（hermestest / hermesstu）。
-# 全小写存储 + 比较处统一 .lower() 归一：生产库里用户名是小写 hermestest。
-EXCLUDED_USERNAMES = ("hermestest", "hermesstu")
+# 与 class_bp.EXCLUDED_USERNAMES 保持一致。仅排除测试教师号 hermestest；
+# hermesstu 已移出排除名单，作为真机验证账号与真实学生同权（2026-09-24 用户决定）。
+# 全小写存储 + 比较处统一 .lower() 归一。
+EXCLUDED_USERNAMES = ("hermestest",)
 
 
 def active_student_ids(con) -> list[str]:

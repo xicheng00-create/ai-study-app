@@ -170,7 +170,7 @@ def test_l3_absent_digest(client, teacher_headers):
 def test_excluded_test_account_skipped_without_include(client, teacher_headers):
     """不带 --include 时命中 EXCLUDED_USERNAMES 的测试号被跳过（收 0 条），真实学生照发。"""
     alice = make_student(client, teacher_headers, "alice")
-    test_uid = make_student(client, teacher_headers, "hermesstu")
+    test_uid = make_student(client, teacher_headers, "hermestest")
     mod = _load_script()
     assert mod.main(["--slot", "L1"]) == 0
     with client.application.app_context():
@@ -179,9 +179,9 @@ def test_excluded_test_account_skipped_without_include(client, teacher_headers):
 
 
 def test_include_brings_back_test_account(client, teacher_headers, monkeypatch):
-    """带 --include=hermesstu 时该测试号被纳入本期提醒（mock notify_users 断言收件人）。"""
+    """带 --include=hermestest 时该测试号被纳入本期提醒（mock notify_users 断言收件人）。"""
     alice = make_student(client, teacher_headers, "alice")
-    test_uid = make_student(client, teacher_headers, "hermesstu")
+    test_uid = make_student(client, teacher_headers, "hermestest")
     mod = _load_script()
 
     from services import notify
@@ -193,11 +193,22 @@ def test_include_brings_back_test_account(client, teacher_headers, monkeypatch):
         return len(uids)
 
     monkeypatch.setattr(notify, "notify_users", fake_notify)
-    assert mod.main(["--slot", "L1", "--include", "hermesstu"]) == 0
+    assert mod.main(["--slot", "L1", "--include", "hermestest"]) == 0
 
     recipients = {uid for uids in calls for uid in uids}
     assert test_uid in recipients, "被 --include 的测试号应进入收件人"
     assert alice in recipients, "真实学生应照常收到"
+
+
+def test_hermesstu_not_excluded(client, teacher_headers):
+    """hermesstu 已移出排除名单，作为真机验证账号与真实学生同权，照常收到提醒。"""
+    alice = make_student(client, teacher_headers, "alice")
+    hermesstu = make_student(client, teacher_headers, "hermesstu")
+    mod = _load_script()
+    assert mod.main(["--slot", "L1"]) == 0
+    with client.application.app_context():
+        assert _count(client, alice) == 1
+        assert _count(client, hermesstu) == 1
 
 
 def test_l3_no_absent_no_digest(client, teacher_headers, monkeypatch):

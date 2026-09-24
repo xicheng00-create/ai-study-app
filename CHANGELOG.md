@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.9.2] - 2026-09-24
+
+### 变更
+- **`hermesstu` 移出测试号排除名单，成为真机验证账号**：全库唯一有 Web Push 订阅的账号即
+  `hermesstu`，此前被 `EXCLUDED_USERNAMES` 排除 → 永远收不到真实提醒、无法长期真机验收。
+  现将 `EXCLUDED_USERNAMES` 由 `("hermestest", "hermesstu")` 改为 `("hermestest",)`，
+  `hermesstu` 从此与真实学生同权（测试教师号 `hermestest` 仍排除）。
+  两处常量（`services/notify.py` / `api/class_bp.py`）同步；覆盖路径 4 条（发布类通知、
+  教师端班级名单、打卡看板、每晚阶梯提醒）均已生效，`checkin_reminder.py` 不再需要 `--include`。
+
 ## [2.9.1] - 2026-09-24
 
 ### 修复

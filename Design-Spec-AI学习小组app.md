@@ -281,14 +281,14 @@
 **Functional**
 | REQ | 角色 | 优先级 | 说明 |
 |-----|------|--------|------|
-| CLASS-001 | 全部 | P1 | 班级归属：所有 active 学生（除测试号 `hermestest` / `hermesstu`，见 `EXCLUDED_USERNAMES`）同属一个班级，实名展示 |
+| CLASS-001 | 全部 | P1 | 班级归属：所有 active 学生（除测试号 `hermestest`，见 `EXCLUDED_USERNAMES`；`hermesstu` 为真机验证账号、不排除）同属一个班级，实名展示 |
 | CLASS-002 | 全部 | P1 | 累计对话轮次 / 累计练习次数排行 |
 | CLASS-003 | 全部 | P1 | 今日对话轮次 / 今日对话次数 / **今日知识卡片学习张数**排行（今天 UTC+8；后者按 `knowledge_reviews.last_review_at` 每卡一行统计） |
 | CLASS-004 | 全部 | P1 | 每次测评的分数排名历史（未参加标注「未参加」，附「已发布测评列表」） |
 | CLASS-005 | 全部 | P1 | 掌握度排行（平均 M = 已评估章节 compute_mastery().m 的均值，可附「已掌握 X 章」） |
 | CLASS-006 | teacher | P1 | 共性薄弱章节 + 「＋布置巩固测评」入口（跳转出题页） |
 
-**Technical**：`GET /api/class/leaderboard`（student/teacher 均可访问）；student 限定同班集合（即除测试号外的 active 学生）、teacher 无需 `@user_scope` 可看完整排名；测试号（`EXCLUDED_USERNAMES` = `hermestest` / `hermesstu`，比较处统一 `.lower()` 归一）绝不出现。掌握度排行「平均 M」未评估章节不计入、不当 0。
+**Technical**：`GET /api/class/leaderboard`（student/teacher 均可访问）；student 限定同班集合（即除测试号外的 active 学生）、teacher 无需 `@user_scope` 可看完整排名；测试号（`EXCLUDED_USERNAMES` = `hermestest`，比较处统一 `.lower()` 归一）绝不出现；`hermesstu` 为真机验证账号、正常展示。掌握度排行「平均 M」未评估章节不计入、不当 0。
 
 ### 3.8 教师管理后台 — `teacher_bp`（L3，REQ-ADMIN）
 **Functional**
@@ -355,13 +355,14 @@
 - **NOTIF-008（P0）铃铛 + 未读角标**：`appbar` 右上角（学生端 + 教师端都有），点开 → 通知中心。 ✅
 - **NOTIF-009（P1）教师端 21:00 未达标名单**：`L3`（21:00）除学生提醒外，另给**全部在用教师**（排除测试号）各发 1 条站内通知 `type='absent_digest'`、`ref_id='<date>'`，标题「📋 今日未达标名单」，正文列出未达标学生名（最多 5 个，多则加「等」）。用途：推送不可达时，老师可线下催。 ⚠️ 代码已交付，真机推送授权待 Ray 配合。
 - **NOTIF-010（P0）提醒可达性：学生端引导（开启后隐藏）+ 教师端可见订阅状态**：学生端「学习」首页「提醒」卡片**仅在不具备推送条件时显示**（未授权 / 无订阅 / 提醒开关关闭）：标题「🔔 开启提醒，别断连胜」+ iPhone 指引（英文 label）+「立即开启」按钮；**一旦「已授权且已订阅且提醒开关开启」→ 该卡片完全隐藏**（Ray 2026-09-23：「开启提醒要是已经开启了就消失，不要一直在那里」——催办卡而非状态控件，不适用「控件常显置灰」通则）。教师端「班级活动」页新增「今日打卡 · 提醒可达性」卡片（**给老师看的常驻状态面板，仍常显**）：每人一行 `已打卡 / 未打卡` + `🔔 已开提醒 / 未开提醒（红色）`。状态判据 = **订阅存在性**（`push_subscriptions`）+ `push_enabled`。 ✅
+- **测试号排除名单口径（对后续一律适用，v2.9.2）**：`EXCLUDED_USERNAMES` 是测试号排除的**唯一真相**，当前 = `("hermestest",)`——仅排除测试教师号 `hermestest`；`hermesstu` 已移出排除名单，作为**真机验证账号**与真实学生同权（2026-09-24 用户决定：全库唯一有 Web Push 订阅的账号即 `hermesstu`，须能长期在自己 iPhone 上收到真实提醒做真机验收）。**触发点** = 两处常量 `backend/services/notify.py` / `backend/api/class_bp.py`（`data/checkin.py` 与 `scripts/checkin_reminder.py` 均引用它、不另设）。**覆盖路径（4 条，改完须自查无旁路）**：① `services/notify.py::active_student_ids`（发布类通知收件人）；② `api/class_bp.py::_class_students`（教师端班级名单 → 「催一下」按钮随之可用）；③ `data/checkin.py::_student_map`（打卡看板 / 未达标名单）；④ `scripts/checkin_reminder.py`（每晚阶梯提醒，不再需要 `--include`）。**违规处置**：若日后要恢复排除某号，须**同时**改两处常量并 bump 版本；只改一处会导致教师端名单出现测试号、或真机验证号静默失联。
 - **NOTIF-011（P1）教师手动催办**：教师端「今日打卡」卡片里，未打卡学生行提供「催一下」按钮：`POST /api/class/nudge`，`{user_ids:[...]}`，服务端逐人发 `type='teacher_nudge'` 通知；**每生每天最多 2 次**（超出返回 `e_input("今天已经催过 2 次了")`）；不能催自己/非学生。教师端按钮在「已达 2 次」或「已打卡」状态下**常显但置灰**并写明原因（不得隐藏）。 ✅
 - **NOTIF-012（P0）App 内拦截式催学弹窗（零授权）**：学生手机没推送授权时，Web Push 一条也到不了；这是唯一不依赖任何授权的催学手段。触发：学生端 App **打开或回到前台**（`boot()` 完成、`App.checkin` 已载入后），若今日**未达标**（`cards < TASK_CARDS_REQUIRED` 或 `questions < TASK_QUESTIONS_REQUIRED`）→ 弹一次模态弹窗：标题「🔥 今天还差 X 张卡 + Y 道题」，副文案（有连胜 → 「N 天连胜今晚 24:00 归零」；无连胜 → 「今天还没有连胜，先点起火焰」），按钮「立即去做」（关闭弹窗 + 跳学习首页并高亮今日任务卡）/「今晚不再提示」。频控：每设备每天最多 1 次（`aistudy_nag_<date>`）、点「今晚不再提示」当天不再弹（`aistudy_nodisturb_<date>`）；**已达标、教师端、打卡完成、对话页绝不弹**。纯前端（用 `App.checkin` 已有数据判定，**不加后端、不加接口**）。 ✅
 
 **Technical**
 - **双通道（NOTIF-002，P0）**：站内落库 **+** Web Push（VAPID）。**无订阅 / 无密钥 / 发送异常 → 降级为只落站内，绝不 500**；收到 404/410 删除该订阅。这是「19:00 提醒」在 App 关闭时唯一可行通道。 ⚠️ 代码/降级/订阅链路已实现，真机 push 授权需 Ray 配合点授权验证。
 - 新增 blueprint `notify_bp`（`/api/notifications`：`GET ""` 列表 / `GET /unread` / `POST /read` / `POST /push/subscribe` / `POST /push/unsubscribe` / `GET|POST /prefs` / `GET /vapid-public-key`）；服务层 `backend/services/notify.py`（先落库、再推送，统一入口 `notify_users()`）+ `backend/services/push.py`（pywebpush 封装）；文案池 `backend/ai/reminder_copy.py`（**纯函数、确定性、不调 LLM**）。
-- 新增表 `notifications`、`push_subscriptions`、`notification_prefs`。**幂等**：`notify_users()` 对 `(user_id, type, ref_id, 当天)` 去重；发布类沿用 `class_bp.EXCLUDED_USERNAMES`（`hermestest` / `hermesstu`）排除测试号；unpublish 不发通知。
+- 新增表 `notifications`、`push_subscriptions`、`notification_prefs`。**幂等**：`notify_users()` 对 `(user_id, type, ref_id, 当天)` 去重；发布类沿用 `class_bp.EXCLUDED_USERNAMES`（当前 `hermestest`）排除测试号；unpublish 不发通知。
 - 19:00 载体：用户域 LaunchAgent `com.aistudy.checkin-reminder` → `backend/scripts/checkin_reminder.py`（**本机直连库，不经 HTTP，无公网入口**）。
 - **限流纪律**：只有会调 LLM 的端点挂 `@rate_limit`；`/api/notifications/*`、`/api/checkin/today|class` 等高频轻量端点**不挂**，避免饿死 LLM 额度。
 - **平台限制（如实标注）**：iOS ≥16.4 且已「添加到主屏幕」才支持 Web Push，且权限请求**必须由用户手势触发**（放在设置页「打开提醒」按钮）；iOS **不支持**通知大图 `image`，「萌图」在 iOS 上体现为通知 `icon` + App 内通知卡片；Android / 桌面 Chrome 支持大图。
