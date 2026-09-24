@@ -122,6 +122,79 @@ def test_quiz_leaderboard_absent_marking(client, teacher_headers):
     assert by_name["小宇"]["rank"] is None
 
 
+def test_leaderboard_hermesstu_equivalence(client, teacher_headers):
+    """hermesstu 已移出排除名单，与真实学生同权：6 类榜 + students + mastery + quiz_boards 均在列。"""
+    chapter_id = _chapter(client, teacher_headers)
+    qid = _draft_and_publish(client, teacher_headers, chapter_id)
+    hermesstu_id = make_student(client, teacher_headers, "hermesstu", display_name="何墨")
+    alice_id = make_student(client, teacher_headers, "alice", display_name="晨晨")
+    bob_id = make_student(client, teacher_headers, "bob", display_name="小宇")
+    make_student(client, teacher_headers, "hermestest", display_name="测试号")
+
+    # 给 hermesstu 造一张今日复习卡片 → today_knowledge 有数据（value==1）；其余 5 类无记录仍补 0 在列
+    with client.application.app_context():
+        con = get_db()
+        card_id = models.new_id()
+        now = models.utcnow()
+        con.execute(
+            "INSERT INTO knowledge_cards (id, chapter_id, sub_concept, front, back, created_at)"
+            " VALUES (?, ?, '', '正面', '背面', ?)",
+            (card_id, chapter_id, now),
+        )
+        con.execute(
+            "INSERT INTO knowledge_reviews (id, card_id, user_id, learn_count, interval_days,"
+            " next_review_at, status, last_review_at, created_at)"
+            " VALUES (?, ?, ?, 1, 1, ?, 'learning', ?, ?)",
+            (models.new_id(), card_id, hermesstu_id, now, now, now),
+        )
+        con.commit()
+
+    # 仅 alice 参加测评；bob / hermesstu 未参加（用于 absent 同口径断言）
+    alice = login(client, "alice", "student123")
+    detail = client.get(f"/api/quizzes/{qid}", headers={"Authorization": f"Bearer {alice}"}).get_json()["data"]
+    answers = [{"question_id": q["id"], "answer": "1"} for q in detail["questions"]]
+    client.post(f"/api/quizzes/{qid}/attempts", json={"answers": answers},
+                headers={"Authorization": f"Bearer {alice}"})
+
+    teacher = login(client, "teacher", "teacher123")
+    d = client.get("/api/class/leaderboard", headers={"Authorization": f"Bearer {teacher}"}).get_json()["data"]
+
+    # students 在列；反向排除 hermestest
+    student_ids = {s["user_id"] for s in d["students"]}
+    assert {alice_id, bob_id, hermesstu_id} <= student_ids
+    assert all(s["display_name"] != "测试号" for s in d["students"])
+
+    # 6 类 sorted 榜都在列（value 缺省补 0）；反向排除 hermestest
+    for cat in ("total_turns", "total_practice", "today_turns",
+                "today_conversations", "today_practice", "today_knowledge"):
+        ids = {e["user_id"] for e in d[cat]}
+        assert hermesstu_id in ids, cat
+        assert alice_id in ids, cat
+        assert bob_id in ids, cat
+        assert all(e["display_name"] != "测试号" for e in d[cat]), cat
+
+    # hermesstu 有数据分类：today_knowledge == 1（证明其真实计入、非 absent）
+    tk = {e["user_id"]: e["value"] for e in d["today_knowledge"]}
+    assert tk[hermesstu_id] == 1
+
+    # mastery 在列（无测评/练习 → 未评估，与真实学生同口径）；反向排除 hermestest
+    mastery_by_id = {m["user_id"]: m for m in d["mastery"]}
+    assert hermesstu_id in mastery_by_id
+    assert mastery_by_id[hermesstu_id]["avg_m"] is None
+    assert all(m["display_name"] != "测试号" for m in d["mastery"])
+
+    # quiz_boards：未参加的 hermesstu 与未参加的真实学生小宇同口径（absent=True / rank=None）
+    board = d["quiz_boards"][qid]
+    by_name = {e["display_name"]: e for e in board}
+    assert by_name["晨晨"]["absent"] is False
+    assert by_name["晨晨"]["rank"] == 1
+    assert by_name["小宇"]["absent"] is True
+    assert by_name["小宇"]["rank"] is None
+    assert by_name["何墨"]["absent"] is True
+    assert by_name["何墨"]["rank"] is None
+    assert all(e["display_name"] != "测试号" for e in board)
+
+
 # ---- 教师端「今日打卡 · 提醒可达性」（NOTIF-010）----
 
 def test_checkin_board_teacher_only(client, teacher_headers):

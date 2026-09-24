@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.9.3] - 2026-09-24
+
+### 变更
+- **`hermesstu` 排行榜等价断言（CLASS-001）**：新增 `test_leaderboard_hermesstu_equivalence`，
+  验证 `hermesstu` 与真实学生同权出现在全部 6 类榜（累计对话轮次 / 累计练习 / 今日对话轮次 /
+  今日对话会话 / 今日练习 / 今日知识卡片）+ `students` + `mastery` + `quiz_boards`（未参加测评时
+  `absent=True`、`rank=None`，与真实学生同口径），并反向断言 `hermestest` 仍不出现在任何榜单。
+- **复习卡片按钮间隙统一（KNOW-012）**：「问 TUTOR」按钮此前紧贴「没记住 / 记住了」无间隙，
+  真机反馈后给该按钮加 `kc-tutor` 类并新增 `.kc-tutor{margin-top:10px}`，与「暂停退出」同距。
+
 ## [2.9.2] - 2026-09-24
 
 ### 变更

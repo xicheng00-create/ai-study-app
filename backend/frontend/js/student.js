@@ -680,7 +680,7 @@ const Student = {
       </div></div>
     <div class="kc-hint">拖动卡片：右滑 = 记住了 · 左滑 = 没记住</div>
     <div class="kc-actions"><button class="btn ghost" onclick="Student.reviewKnowledge(false)">${ic('cross')}没记住</button><button class="btn" onclick="Student.reviewKnowledge(true)">记住了${ic('check')}</button></div>
-    <button class="btn ghost" onclick="Student.askCurrentKcTutor()">💬 问 TUTOR 这张卡</button>
+    <button class="btn ghost kc-tutor" onclick="Student.askCurrentKcTutor()">💬 问 TUTOR 这张卡</button>
     <button class="btn ghost kc-quit" onclick="Student.pauseKnowledge()">${ic('back')}暂停退出（保存进度）</button></div>` + tabbar();
   },
   // ===== 卡片手势动画：翻转切 class（3D 过渡）、拖拽跟手、超阈值甩出/回弹、换卡入场 =====
