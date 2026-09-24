@@ -99,3 +99,36 @@ def knowledge_generate(system: str) -> list[dict] | None:
     out = _chat([{"role": "system", "content": system}], feature="knowledge")
     parsed = _parse_json(out) if out else None
     return parsed["cards"] if isinstance(parsed, dict) and isinstance(parsed.get("cards"), list) else None
+
+
+DUP_CHECK_SYSTEM = """你是「AI 学习小组」的知识卡片去重复核员。判断两张卡片是否为「同一考点的同一件事、答案可无损合并」。
+
+卡片 A：
+front: {front_a}
+back: {back_a}
+
+卡片 B：
+front: {front_b}
+back: {back_b}
+
+判重口径（严格）：
+- 只有「同一考点的同一件事、答案可无损合并」才 mergeable=true。
+- 命中以下任一情况，一律 mergeable=false：
+  * 同模板不同主体（如四家 IDE 的同类问句，主体不同）；
+  * 数字或阈值不同；
+  * 定义 vs 误区 vs 示例 vs 步骤（侧面不同，不可合并）。
+
+只输出 JSON，不要任何多余文字：
+{{"mergeable": true|false, "reason": "一句话理由"}}"""
+
+
+def knowledge_dup_check(front_a: str, back_a: str, front_b: str, back_b=None) -> dict | None:
+    """知识卡片去重复核（止血闸门用）：返回 {"mergeable": bool, "reason": str}；失败/超时返回 None。"""
+    system = DUP_CHECK_SYSTEM.format(
+        front_a=front_a, back_a=back_a or "",
+        front_b=front_b, back_b=back_b or "")
+    out = _chat([{"role": "system", "content": system}], feature="knowledge_dup_check")
+    parsed = _parse_json(out) if out else None
+    if isinstance(parsed, dict) and isinstance(parsed.get("mergeable"), bool):
+        return {"mergeable": parsed["mergeable"], "reason": str(parsed.get("reason") or "")}
+    return None
