@@ -26,6 +26,18 @@ def _isolate_usage_log(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_card_gate_log(tmp_path, monkeypatch):
+    """全局隔离卡片止血闸门审计日志，避免测试写入真实 instance/logs/card_gate.jsonl。
+
+    在线写卡路径（knowledge.ensure_chapter_cards → cardgate.filter_new_cards → _audit）默认落
+    生产审计日志；测试里 LLM 不可用必然走「降级全保留」，每次 pytest 都会往生产取证通道追加
+    gate_degraded 噪声（2026-09-25 审计实测 99.2% 的行来自测试），使 KNOW-014 的告警通道失真。
+    需要断言日志内容的测试（tests/test_card_gate.py）自己 setenv 覆盖即可，测试级覆盖在此之后生效。
+    """
+    monkeypatch.setenv("CARD_GATE_LOG", str(tmp_path / "card_gate.jsonl"))
+
+
+@pytest.fixture(autouse=True)
 def _stub_quizzer_source(monkeypatch):
     """出题链路打桩（v2.7.4：题源=知识卡片，无卡片或模型不出题则返回空）。
 
