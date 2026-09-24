@@ -27,13 +27,15 @@ def _stub(monkeypatch, fn):
 def test_drops_brd_dup_pair(monkeypatch, tmp_path):
     """同一考点换措辞（BRD 全称 / BRD 缩写）→ 丢弃信息较少的一张。
 
-    第三张「BRD 章节」卡用于把本章 BRD df 抬到 3（R4 稀有拉丁 token 召回下限）。
+    本章只有这两张卡共享 BRD（df=2），必须走 R4 召回下限 → 走到 LLM 确认。
+    防回归：必须断言 LLM 确实被调用过（预筛阈值回归成不触发时，仅断言结果会静默通过）。
     """
     monkeypatch.setenv("CARD_GATE_LOG", str(_log_path(tmp_path)))
 
+    calls = []
+
     def dup(front_a, back_a, front_b, back_b=None):
-        if "章节" in front_a or "章节" in front_b:
-            return {"mergeable": False, "reason": "侧面不同"}
+        calls.append((front_a, front_b))
         if "BRD" in front_a and "BRD" in front_b:
             return {"mergeable": True, "reason": "同一考点 BRD，答案可无损合并"}
         return {"mergeable": False, "reason": "不同考点"}
@@ -44,7 +46,6 @@ def test_drops_brd_dup_pair(monkeypatch, tmp_path):
          "back": "BRD 全称 Business Requirements Document，业务需求文档，用于记录产品需求与目标，含背景、范围、需求清单。"},
         {"front": "BRD 是什么的缩写，指什么",
          "back": "BRD 是 Business Requirements Document 的缩写。"},
-        {"front": "BRD 应该包含哪些章节？", "back": "通常包含背景、目标、范围、需求清单等章节。"},
     ]
     kept, dropped = filter_new_cards(cards, "ch1", existing_fronts=[])
     kept_fronts = {c["front"] for c in kept}
@@ -53,11 +54,68 @@ def test_drops_brd_dup_pair(monkeypatch, tmp_path):
     dup_pair = {"BRD 的全称和用途是什么？", "BRD 是什么的缩写，指什么"}
     assert len(kept_fronts & dup_pair) == 1, "重复对必须只剩一张"
     assert len(dropped_fronts & dup_pair) == 1, "重复对必须丢弃一张"
-    assert "BRD 应该包含哪些章节？" in kept_fronts
+
+    # 防回归：这对卡必须真的走到 LLM 确认（df=2 时 R4 也要召回）
+    assert len(calls) >= 1, "BRD 对必须触发 LLM 确认（R4 下界 2 漏判回归会走到这里失败）"
+    assert any(("BRD 的全称" in fa and "BRD 是什么" in fb) or
+               ("BRD 的全称" in fb and "BRD 是什么" in fa) for fa, fb in calls), \
+        "LLM 确认必须覆盖 BRD 那一对"
 
     log = _read_log(tmp_path)
     assert any(r.get("event") == "card_dropped" and r.get("rule") for r in log), \
         "被丢卡要写入审计日志并带命中规则"
+
+
+def test_drops_brd_dup_pair_in_large_corpus(monkeypatch, tmp_path):
+    """大批量语料 df 场景：existing_fronts 塞 30 张含其它实体的卡 + 这 2 张 BRD 卡 → 仍判重。
+
+    30 张其它实体把 BRD df 维持在 2（稀有），不得因语料变大而漏判。
+    """
+    monkeypatch.setenv("CARD_GATE_LOG", str(_log_path(tmp_path)))
+
+    calls = []
+
+    def dup(front_a, back_a, front_b, back_b=None):
+        calls.append((front_a, front_b))
+        if "BRD" in front_a and "BRD" in front_b:
+            return {"mergeable": True, "reason": "同一考点 BRD，答案可无损合并"}
+        return {"mergeable": False, "reason": "不同考点"}
+
+    _stub(monkeypatch, dup)
+    existing = [f"实体{i} 的定义是什么" for i in range(30)]
+    cards = [
+        {"front": "BRD 的全称和用途是什么？", "back": "BRD 全称 Business Requirements Document，业务需求文档。"},
+        {"front": "BRD 是什么的缩写，指什么", "back": "BRD 是 Business Requirements Document 的缩写。"},
+    ]
+    kept, dropped = filter_new_cards(cards, "ch1", existing_fronts=existing)
+    assert len(kept) == 1 and len(dropped) == 1
+    assert any(("BRD 的全称" in fa and "BRD 是什么" in fb) or
+               ("BRD 的全称" in fb and "BRD 是什么" in fa) for fa, fb in calls), \
+        "BRD 对在大语料下仍须走到 LLM 确认"
+
+
+def test_r4_guarded_against_common_token(monkeypatch, tmp_path):
+    """反例：existing_fronts 塞 50 张含同一 token 的卡（df>40）→ R4 不再触发（泛词护栏有效）。
+
+    token 已是全章泛词（>40），不再靠「稀有实体锚点」召回；两张新卡无其它相似性 → 全留。
+    """
+    monkeypatch.setenv("CARD_GATE_LOG", str(_log_path(tmp_path)))
+
+    calls = []
+
+    def dup(front_a, back_a, front_b, back_b=None):
+        calls.append((front_a, front_b))
+        return {"mergeable": True, "reason": "不应被调到的 LLM 确认"}
+
+    _stub(monkeypatch, dup)
+    existing = [f"API 的第 {i} 个用法是什么" for i in range(50)]
+    cards = [
+        {"front": "API 的定义是什么", "back": "API 是应用程序编程接口。"},
+        {"front": "API 网关的作用", "back": "API 网关负责路由、限流、鉴权。"},
+    ]
+    kept, dropped = filter_new_cards(cards, "ch1", existing_fronts=existing)
+    assert len(kept) == 2 and dropped == [], "df>40 的泛词不得触发 R4 召回"
+    assert calls == [], "泛词 token 不应触发 LLM 确认"
 
 
 def test_drops_tool_calling_dup_pair(monkeypatch, tmp_path):

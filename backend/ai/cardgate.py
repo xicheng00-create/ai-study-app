@@ -13,10 +13,12 @@
   * R2 词元 Jaccard ≥ 0.60（拉丁词 [A-Za-z]{2,} + CJK 2-gram）
   * R3 字袋 Jaccard ≥ 0.70（仅双方 front 归一后长度 ≤ 30 的短问句）
   * R4 共享稀有拉丁 token：双方都含同一长度 ≥2 的拉丁 token，且该 token 在
-        本章出现次数 3..40（df 稀有），且双方 front 归一后长度 ≤ 60 —— 不加任何
-        相似度门槛（「BRD 的全称…」/「BRD 是什么的缩写…」就是靠这条召回）
+        本章出现次数 2..40（df 稀有），且双方 front 归一后长度 ≤ 60 —— 不加任何
+        相似度门槛（「BRD 的全称…」/「BRD 是什么的缩写…」就是靠这条召回）。
+        **下界 2 是必须的**：候选对自身就是 df=2 的最小情形（本章再无第三张卡
+        用到该 token），下界写成 3 会把这类卡整类漏掉（2026-09-24 真机实测复现）。
   * R5 前置术语相同：归一后去掉开头「的/了/吗/呢/是」，取前 4 字作为 head；
-        head 相同且该 head 在本章 df 3..40
+        head 相同且该 head 在本章 df 2..40（下界同为 2，理由同 R4）
 - LLM 确认口径：只有「同一考点的同一件事、答案可无损合并」才 mergeable=true；
   同模板不同主体 / 数字或阈值不同 / 定义 vs 误区 vs 示例 vs 步骤 一律 false。
 - LLM 失败/超时 → 一律保留（绝不误删），审计日志记 gate_degraded=true。
@@ -42,10 +44,10 @@ R1_BIGRAM_JACCARD = 0.45
 R2_TOKEN_JACCARD = 0.60
 R3_BAG_JACCARD = 0.70
 R3_MAX_LEN = 30
-R4_LATIN_DF_MIN, R4_LATIN_DF_MAX = 3, 40
+R4_LATIN_DF_MIN, R4_LATIN_DF_MAX = 2, 40
 R4_MAX_LEN = 60
 R5_HEAD_LEN = 4
-R5_DF_MIN, R5_DF_MAX = 3, 40
+R5_DF_MIN, R5_DF_MAX = 2, 40
 _STRIP_PREFIX = "的了吗呢是"
 
 _CJK = r"㐀-䶿一-鿿豈-﫿぀-ヿ가-힯"
