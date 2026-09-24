@@ -10,9 +10,10 @@
 /* v57：v2.7.4 清理死记硬背低价值卡片（做题范围同步）+ 出题题源改为知识卡片 +
    修复 v2.7.2 起 V 常量未随版本升级导致预缓存旧 bundle 的缺陷 */
 /* v58：v2.9.0 每晚 19:00–23:00 阶梯式萌系提醒 + 学生端常显开启引导 + 教师端提醒可达性/催办 */
-const CACHE = "aistudy-shell-v59";
+/* v60：v2.9.4 知识卡片「重复出卡」止血闸门（写库前 LLM 判重，本版本为后端改动，bump 以强制旧缓存失效） */
+const CACHE = "aistudy-shell-v60";
 /* 预缓存 URL 必须与 index.html 里的 ?v= 同版（CF 对 .js/.css 强制 4h 浏览器缓存，换 URL 才能穿透） */
-const V = "2.9.3";
+const V = "2.9.4";
 const ASSETS = ["/", `/css/style.css?v=${V}`, `/js/api.js?v=${V}`, `/js/app.js?v=${V}`, `/js/student.js?v=${V}`, `/js/teacher.js?v=${V}`, "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

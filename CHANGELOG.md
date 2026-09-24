@@ -1,5 +1,35 @@
 # Changelog
 
+## [2.9.4] - 2026-09-24
+
+### 新增
+- **知识卡片「重复出卡」止血闸门（KNOW-014）**：新增 `backend/ai/cardgate.py`，对外唯一入口
+  `filter_new_cards(cards, chapter_id, existing_fronts=None) -> (kept, dropped)`，在**写库前**逐张
+  判定：确定性预筛（R1 字符二元组 / R2 词元 / R3 字袋 / R4 稀有拉丁 token / R5 前置术语，宁可多召回）
+  → LLM 确认（`agents.knowledge_dup_check`，只有「同一考点同一件事、答案可无损合并」才 mergeable）
+  → 丢弃信息较少的一张并记审计 `instance/logs/card_gate.jsonl`。LLM 失败/超时一律保留并记
+  `gate_degraded`。
+- **接线覆盖全部写卡路径**：在线 `ai/knowledge.py::ensure_chapter_cards`（生成后过闸门再 insert）+
+  离线 `scripts/rebuild_cards.py` 三处（`rebuild_chapter` / `fill_gaps` / `fill_orphans`，收敛为
+  `_gate_cards` helper）。其余任何 `INSERT/REPLACE INTO knowledge_cards` 路径（tests 除外）均已覆盖。
+- **提示词强化**：`KNOWLEDGE_SYSTEM` 规则 6 展开为「同一考点只出一张卡；多个侧面/例子并在同一答案
+  用 1./2. 列举；禁止换措辞/换语序/改标点/加限定词重复同一考点」，并加「本章已有考点清单」槽位。
+
+### 背景（2026-09-24 全量去重 + 低价值清退）
+- 重复卡全量去重（脚本 `scripts/merge_duplicate_cards.py`）分两轮：**第一轮 5011→4501（删 510 张，
+  273 组）**，**第二轮 4501→4460（删 41 张，34 组）**；报告
+  `backups/2026-09-22-cards/dedup-report-20260924T1256*.json`、`*T1259*.json`。
+- 低价值卡清退（用户指示「删全部 70」）：**4460→4390（删 70 张）**，口径为 2026-09-22 教研定调
+  四类（课程元信息 27 / 纯数值 25 / 纯清单 10 / 代码细节 8），逐张 LLM 判定 + 拿不准一律保留；
+  脚本已收编 `scripts/purge_low_value_cards.py`，报告
+  `backups/2026-09-24-lowvalue/lowvalue-report-*.json`（含被删卡全文与复习行，可回滚）。
+- **净结果：5011→4390（-621 张），孤儿复习行/主题行均 0**。生成侧仍会换措辞重复同一考点
+  （第 13 章「工具调用」24 张、全库 RAG 26 张），本版本从写库源头止血。
+
+### 测试
+- `tests/test_card_gate.py`（6 例，LLM 用 stub 不真调）：BRD 同义必丢、工具调用/tool calling 必丢、
+  同模板异主体必留、数字不同必留、定义 vs 误区必留、LLM 抛异常降级全保留。
+
 ## [2.9.3] - 2026-09-24
 
 ### 变更
