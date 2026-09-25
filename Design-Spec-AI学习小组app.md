@@ -84,7 +84,7 @@
 ├─────────────────────────────────────────────────────────────────────┤
 │ L5 数据层   SQLite WAL + chunks 表（关键词检索）+ uploads/                        │
 └─────────────────────────────────────────────────────────────────────┘
-横切 A) 安全护栏：@jwt_required / @role_required / @rate_limit / @validate_json / @user_scope
+横切 A) 安全护栏：@jwt_required / @role_required / @rate_limit / 入参校验 / user_id 过滤（见 §3.10）
 横切 B) 可观测+备份：/health + launchd KeepAlive + iCloud rsync(wal_checkpoint)
 ```
 
@@ -176,7 +176,7 @@
 | REQ | 角色 | 优先级 | 说明 |
 |-----|------|--------|------|
 | QUIZ-001 | teacher | P0 | 生成草稿→预览微调→确认发布 |
-| QUIZ-002 | student | P0 | 在线作答，可重做取最近 |
+| QUIZ-002 | student | P0 | 在线作答（**一次作答**：已作答不可重复提交、成绩取首次，v1.11.0） |
 | QUIZ-003 | student | P0 | GRADER 三档自动批改 |
 | QUIZ-004 | student | P1 | 测评报告（得分/错题/薄弱点） |
 | QUIZ-005 | teacher | P1 | 题型/难度/数量配置（凑满 100 分组合，教师可选预设/自定义）|
@@ -218,7 +218,7 @@
 **Functional**
 | REQ | 角色 | 优先级 | 说明 |
 |-----|------|--------|------|
-| KNOW-001 | student | P1 | **学习路径发布 / 资料发布时自动**从章节资料抽取知识点生成知识卡片（正面=知识点/问题，背面=答案/解析+一句示例）存库，**学生无需手动生成**（每章一组 ≥20 知识点，全章覆盖；已有卡复用不再重复调 LLM；失败可懒加载兜底） |
+| KNOW-001 | student | P1 | **学习路径发布 / 资料发布时自动**从章节资料抽取知识点生成知识卡片（正面=知识点/问题，背面=答案/解析+一句示例）存库，**学生无需手动生成**（每章一组，目标 ≥40 张 / `MIN_CARDS`（v2.7.5 起为**目标非硬指标**，见 KNOW-010⑥），全章覆盖；已有卡复用不再重复调 LLM；失败可懒加载兜底） |
 | KNOW-002 | student | P1 | 点卡 3D 翻转看答案；**左滑=没记住、右滑=记住了**（底部兜底按钮 ←没记住\|记住了→）；顶部进度 第N/总数 + 每卡状态色；**卡高随内容自适应**——长答案不裁切：卡高 = 当前卡面内容高（下限 320px，上限取「卡顶→tabbar 上沿」的可用高，大屏兜底 620px），超出上限在**卡面内滚动**（v2.6.2，REQ-KNOW-CARDFIT-001） |
 | KNOW-003 | student | P1 | 系统记录每知识点**学习次数（learn_count）**+ **复习状况**（new/learning/reviewing/mastered + 间隔 1→3→7）；每日「待复习」队列优先，再学新卡。**「今日待复习」口径（v2.6.4，REQ-KNOW-DUE-001）**：= 已学过（`learn_count>0`）且**已到期或逾期**（`next_review_at ≤ 今天`，UTC+8）且未掌握；**未学的卡只算「未学」，不计入待复习**（旧口径把懒建的 new 行也当到期 → 新发布章节显示「待复习 = 全部卡片」）。**学习记录长期累计、绝不按天清空** |
 | KNOW-004 | student | P1 | **卡片必须细粒度且全章覆盖**（CR-2026-0919-CARDS；**v2.7.5 起口径由「应试级」改为「理解型」**，价值门槛见 KNOW-010）：① 生成时投喂**全章每一份资料的每一个切片**（按资料分层、每份保底、总预算 2 万字），不再抽样 ~18 片×300 字；② 提示词硬性要求「**一个考点一张卡**」——概念定义/原理/差异辨析/选型判断/易混区别/常见误区/场景应用/案例结论逐条成卡，禁止「主要包含以下几方面」式概括，每章 ≥40 张（**v2.7.5 起为「目标」而非硬指标——张数下限让位于价值门槛，见 KNOW-010⑥**）（**v2.7.4 起由 KNOW-010 取代原「数字/专有名词/顺序/比例/阈值/年份等能出选择题的细节必须单独成卡」条款——此类卡被判定为死记硬背低价值，已禁产并全量清理**）；③ **只抽本 Session 内容**——课程共用素材（如全课程行业术语表）中属于其它周次的词条一律跳过，禁止跨章错配；④ 每张卡必须绑定 `source_chunk_id`，可回溯课件原文切片；⑤ **反向也要成立**：任何一条课件切片都必须至少被一张卡片引用（无卡切片 = 覆盖缺口，须补卡），做到「课上有讲、卡片必有」 |
@@ -305,9 +305,9 @@
 **Functional / Technical 合一**（见 §四）。
 
 ### 3.10 横切安全护栏（横切 A，REQ-ARCH）
-- `@jwt_required` / `@role_required` / `@rate_limit(60/day)` / `@validate_json(schema)` / `@user_scope`。
+- `@jwt_required` / `@role_required` / `@rate_limit(60/day)` / 入参校验（`middleware/input_validation.py` 的 `require_fields`/`check_len`，**蓝图内调用**，无 `@validate_json` 装饰器）/ 本人数据隔离（**蓝图内联** `WHERE ... user_id=g.user_id`；`@user_scope` 定义于 `auth/jwt_utils.py` 但**当前无路由挂载**）。
 - 错误码契约：`E_AUTH_*` / `E_ROLE_*` / `E_RATE` / `E_NOT_FOUND` / `E_INVALID_INPUT` / `E_AI_FALLBACK` / `E_INTERNAL`。
-- **数据隔离硬约束**：所有读操作经 `@user_scope` 自动 `WHERE user_id=g.user_id`；教师聚合走 `/api/teacher/*`；**集成测试必须含「学生 A 读学生 B → 403/空」（F9）**。
+- **数据隔离硬约束**：所有本人读操作必须带 `WHERE ... user_id=g.user_id`（`g.user_id` 由 `@jwt_required` 注入）；**`@user_scope` 装饰器已定义但当前 0 处挂载**，本文档出现处一律表示该**契约**；教师聚合走 `/api/teacher/*`；**集成测试必须含「学生 A 读学生 B → 403/空」（F9）**。
 
 ---
 
@@ -472,17 +472,21 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 | materials_bp | /api/materials | 上传/解析/列表/删除/批量 | 教师写，全部读 |
 | conversations_bp | /api/conversations | 对话 CRUD + 引导问答(SSE 占位) | 学生本人 |
 | quizzes_bp | /api/quizzes | 草稿/发布/版本 | 教师发布，学生作答 |
-| attempts_bp | /api/attempts | 作答记录 | 学生本人 |
+| attempts_bp | /api/quizzes | 作答记录（`POST /api/quizzes/:id/attempts`，一次作答取首次） | 学生本人 |
+| attempts_review_bp | /api/attempts | 教师覆核改分（`PUT /api/attempts/:id/review`） | 教师 |
 | practice_bp | /api/practice | 自主练习生成/作答/批改/历史 | 学生本人 |
 | progress_bp | /api/progress | 掌握度/四态/薄弱/巩固 + 每周概况/成绩 + 每日建议 | 学生本人 + 教师聚合 |
 | reports_bp | /api/reports | 周报（v1.9.0 起废弃，保留不引用） | 学生本人 |
 | class_bp | /api/class | 班级排行榜 6 类 + 共性薄弱 | 学生/教师 |
 | teacher_bp | /api/teacher | 全班概览/详情 | 教师 |
 | curriculum_bp | /api/curriculum | 学习路径 Session CRUD + 发布/取消发布 + 视频课 CRUD + 总览 | 教师写，全部读（学生仅 published） |
+| knowledge_bp | /api/knowledge | 知识卡片：章内卡组/总览/今日卡组/复习打点 | 学生本人（教师核查走 `teacher_bp`） |
+| checkin_bp | /api/checkin | 今日任务/打卡连胜/班级打卡/催办/一键练 | 学生本人 |
+| notify_bp | /api/notifications | 站内通知 + Web Push 订阅/偏好 | 登录用户本人 |
 | health_bp | /health | 探活 | 公开 |
 
 ### 6.2 中间件（横切 A）
-`@jwt_required`（解析 Bearer→g.user_id/g.role）｜`@role_required("teacher")`｜`@rate_limit(60/day)`｜`@validate_json(schema)`｜`@user_scope`（自动 `user_id` 过滤）。
+`@jwt_required`（解析 Bearer→g.user_id/g.role）｜`@role_required("teacher")`｜`@rate_limit(60/day)`（按 `(user_id, endpoint)` 独立计数）｜入参校验 `require_fields`/`check_len`（`middleware/input_validation.py`，蓝图内调用）｜本人数据隔离 = 蓝图内联 `user_id` 过滤（`@user_scope` 已定义未挂载；本文档 §6.4 表中 `@user_scope` 一律表示该**契约**）。
 
 ### 6.3 错误码契约
 成功 `{code:0,data:...}`；失败 `{code:E,msg:...}`：`E_AUTH_*` / `E_ROLE_*` / `E_RATE` / `E_NOT_FOUND` / `E_INVALID_INPUT` / `E_AI_FALLBACK` / `E_INTERNAL`。
@@ -490,7 +494,7 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 ### 6.4 关键接口（Functional↔Technical 绑定）
 | REQ | Method & Path | 角色 | 中间件 |
 |-----|---------------|------|--------|
-| AUTH-001 | POST /api/auth/login | 全部 | @validate_json |
+| AUTH-001 | POST /api/auth/login | 全部 | require_fields 入参校验 |
 | AUTH-002 | POST /api/auth/register | teacher | @role_required |
 | MAT-002 | POST /api/materials/upload | teacher | @role_required, @rate_limit |
 | CHAT-003 | POST /api/conversations/:id/message | student | @jwt_required, @user_scope |
@@ -499,7 +503,7 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 | PRACTICE-001 | POST /api/practice/generate | student | @jwt_required, @role_required |
 | PRACTICE-002 | POST /api/practice/:id/submit | student | @jwt_required, @role_required |
 | PROG-001 | GET /api/progress/mastery | student | @user_scope |
-| PROG-006 | POST /api/review-items/generate | student | @user_scope |
+| PROG-006 | POST /api/progress/review-items/generate | student | @user_scope（本人过滤） |
 | ADMIN-003 | GET /api/teacher/overview | teacher | @role_required |
 | — | GET /health | 公开 | — |
 
@@ -558,13 +562,13 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 | ChemAI 监理项 | 本期实现 | REQ |
 |---------------|----------|-----|
 | JWT 4 角色+矩阵 | JWT 2 角色 + `@role_required` | AUTH-004 |
-| 运行护栏 | `@rate_limit(60/day)` + 重复请求 5s 去重 | NFR-006 |
+| 运行护栏 | `@rate_limit(60/day)`（v1.19.0 起按 `(user_id, endpoint)` 独立计数）；原设计「重复请求 5s 去重」**未实现**（全仓无此中间件） | NFR-006 |
 | 审批门禁 | 草稿→确认发布 | QUIZ-001/008 |
 | 内容安全 | 入参长度限制 + 敏感词列表 | CHAT-004(F5) |
 | Checkpoint | iCloud 每日 rsync | DEP-008 |
 | 心跳 | /health + launchd KeepAlive | NFR-007 |
 
-- **数据隔离硬约束**：读操作经 `@user_scope`；教师聚合走 `/api/teacher/*` 不经 `@user_scope`；**F9 越权读 403 用例入 DoD**。
+- **数据隔离硬约束**：读操作按 `g.user_id` 内联过滤（`@user_scope` 已定义但未挂载，见 §3.10/§6.2）；教师聚合走 `/api/teacher/*` 不做用户级过滤；**F9 越权读 403 用例入 DoD**。
 - **F7 软删除**：资料删改软删 + 二次确认 + 7 天窗口。
 - **F5 TUTOR 输出门控**：拒绝规则 + 越界检测 + 「AI 生成请核对」标注。
 
@@ -1520,3 +1524,30 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **证据（现状即判据）**：`card_topics` 已发布章 86 组中 6 组 <5 张（最小「闭源旗舰模型对比」1 张），孤儿绑定 0；取证脚本 `/tmp/spec_audit_topics.py`。
 - **依据（为何选补条款而非重跑）**：① 组小 = 该主题卡片少，浏览页「章 → 组 → 卡」两级钻取照常可用，**无功能损失**；② 重跑会重排**已发布章**的分组归属，学生正在使用的浏览分组会变（收益低、风险高），且要再消耗一次生成；③ 分组是**只读浏览标签**，不参与出卡/复习调度（KNOW-008 ③），不影响学习数据与复习进度。
 - **范围边界（未越界）**：未动库、未动代码、未动 CHANGELOG、未 bump 版本；未追改历史快照数字。
+
+---
+
+### 12.55 实现状态回写（Spec 自洽审计修正，2026-09-26，纯文档）
+
+> 触发：follow-up cron step 5「Design Spec 全文自洽审计」。**全文 1523 行逐段读完**（`read_file` 分段，非 grep 抽样），逐条以真实代码取证；只改与代码冲突的旧叙述，**不改需求意图、不动代码**。**纯文档改动**：无运行时代码变更，`backend/app.py` version 保持 `2.9.5`（health 不变属预期，不重启）。
+
+| # | 位置 | 旧叙述（与代码冲突） | 代码证据（以代码为准） | 处置 |
+|---|------|---------------------|----------------------|------|
+| 1 | §3.4 QUIZ-002 | 在线作答，**可重做**取最近 | `api/attempts.py:24` `SELECT MIN(created_at)`；`:55`「该测评已作答，不能重复提交」；`:22` 注释「一次作答取首次，QUIZ-002 改为一次作答」 | 更正为「一次作答、成绩取首次（v1.11.0）」，与 §12.11 一致 |
+| 2 | §3.4 KNOW-001 | 每章一组 **≥20** 知识点 | `ai/knowledge.py:20` `MIN_CARDS = 40`（同表 KNOW-004 亦写 ≥40） | 更正为 ≥40 张（目标值，v2.7.5 起让位于价值门槛） |
+| 3 | §2 架构图「横切 A」 | 列 `@validate_json` / `@user_scope` | `validate_json` 全仓 0 命中；`@user_scope` 仅 `auth/jwt_utils.py:86` 定义、**0 处挂载**；入参校验实为 `middleware/input_validation.py` 的 `require_fields`/`check_len` | 更正为「入参校验 / user_id 过滤（见 §3.10）」 |
+| 4 | §3.10 安全护栏 | `@validate_json(schema)` ＋「所有读操作经 `@user_scope`」 | 同上；隔离实为蓝图内联（`api/conversations.py:26/46` `WHERE ... AND user_id=?` + `g.user_id`） | 更正为实况机制 |
+| 5 | §6.1 Blueprint 表 | `attempts_bp` 写 `/api/attempts`；另缺 4 个已注册蓝图 | `api/attempts.py:17` `url_prefix="/api/quizzes"`、`:18` `attempts_review_bp → /api/attempts`；`app.py` 注册 `knowledge_bp`/`checkin_bp`/`notify_bp`（正文 §3.4.2/§3.11/§3.12 均有记载） | 更正前缀 ＋ 补 4 行（摘要表与正文对齐） |
+| 6 | §6.2 中间件 | `@validate_json(schema)`｜`@user_scope`（自动 `user_id` 过滤） | 同 #4 | 更正为实况，并声明 §6.4 表中 `@user_scope` 表示本人隔离**契约** |
+| 7 | §6.4 AUTH-001 | 中间件 `@validate_json` | `api/auth.py` 无该装饰器（用 `require_fields`/`check_len`） | 更正为 `require_fields 入参校验` |
+| 8 | §6.4 PROG-006 | `POST /api/review-items/generate` | `api/progress.py:16` 前缀 `/api/progress` ＋ `:170` 路由 | 更正为 `POST /api/progress/review-items/generate` |
+| 9 | §十「运行护栏」 | `@rate_limit(60/day)` **+ 重复请求 5s 去重** | 全仓无该去重实现（`dedup`/`throttle`/`_seen` 0 命中）；`middleware/rate_limit.py` 即全部运行护栏 | 删去「5s 去重」并标注**未实现**（NFR-006 实际只落限速） |
+
+**待人工裁决（不猜、不删）**
+- §11 验收「崩溃恢复：launchd KeepAlive，`kill -9` 5s 内自起」＋ §8 NFR-002 同源断言：plist 配置事实为真（`~/Library/LaunchAgents/com.shuiyanhaha.aistudy.plist` 含 `RunAtLoad`/`KeepAlive`，端口 5003），但 runbook 记录 **2026-09-22 实测一次「kill 后 24s+ 未自愈」**，并已立规「永不依赖 KeepAlive 自愈 → 一律 `launchctl kickstart -k` 兜底」；`kill -9` 场景**从未实测**。→ 本轮**不改该行**，交 Ray 定夺：是否把验收口径改为「`launchctl kickstart -k` 后 ≤5s 恢复并返回新版本 `/health`」。
+
+**保留（经核不算矛盾，勿再清理）**
+- §3.4.2 实测卡片数（252/358/573/361 = 1544 张 ≈ 54 天）：本轮**只读快照复核完全一致**（`chapters` = 4 published / 12 draft；全库 `knowledge_cards` = **4390**，与 §12.53「净 5011→4390（-621）」一致）。
+- §12.39 / §12.40 的 2140 / 2113 / 1674 张、371/564/644/534 张、71 天：**标题自带版本标注的历史快照**（v2.6.9 / v2.7.0），与最新口径并存属预期。
+- KNOW-006 复习卡组排序（①今日待复习→②未学→③未到期→④已掌握）与 CHECKIN-009/010 今日任务卡组排序（①未学→②到期→③低掌握度补足）：**分属两套卡组、各自与代码一致**（`frontend/js/student.js` `kcDeckOrder` vs `data/checkin.py::build_today_deck`）→ 非矛盾。
+- §6.1 `reports_bp` 标「v1.9.0 起废弃，保留不引用」与代码一致（路由存在、注册保留）。
