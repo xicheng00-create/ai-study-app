@@ -1,7 +1,7 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.9.4（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
-> 日期：2026-09-25（随代码现状回写）
+> 版本：v2.9.5（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
+> 日期：2026-09-26（随代码现状回写）
 > 状态：设计评审（正文静态章节以**当前生产代码**为准；§12.x 为实现状态回写历史）
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）
 > 方法论：pm-toolkit 架构分层 / 领域建模 / API 契约 / 角色分端 UI 规格 + 架构再审（F1–F10）
@@ -1507,6 +1507,7 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **取证**：`grep -rn "doNagLater\|aistudy_nodisturb"` → 0 命中（删除彻底，无残留引用）；`node --check` 两个 JS 通过；`make lint test smoke` 全绿。
 - **范围边界（未越界）**：未动后端、未动测试、未新增依赖、未改频控（`aistudy_nag_<date>` 保留）。
 - **已决（Ray 2026-09-26 裁决「补条款」）**：清退后已发布章 `card_topics` 存留的 6 组 <5 张**允许存留**，不重跑分组——条款正文见 §3.4 KNOW-008 ②「清退例外」与 §12.54。
+- **文档头同步**：v2.9.4 → **v2.9.5**（同类漂移第 2 次复发，见 §12.52 更正 1；已在 GAP-2 加固判据防复发）。
 
 ---
 
