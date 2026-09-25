@@ -427,13 +427,11 @@ async function maybeNagCheckin() {
   const today = _nagToday();
   try {
     if (localStorage.getItem('aistudy_nag_' + today) === '1') return;        // 每天最多 1 次
-    if (localStorage.getItem('aistudy_nodisturb_' + today) === '1') return;  // 今晚不再提示
   } catch (e) { /* localStorage 不可用则跳过频控，仍不弹（保守：不打扰） */ }
   const sub = c.streak >= 1 ? `${c.streak} 天连胜今晚 24:00 归零` : '今天还没有连胜，先点起火焰';
   openSheet(`<div class="row" style="font-weight:700;cursor:default">🔥 今天还差 ${gc} 张卡 + ${gq} 道题</div>
     <div class="row" style="text-align:left;border:none;background:transparent;cursor:default;font-size:13px;color:var(--text-2)">${sub}</div>
-    <div class="row" onclick="Student.doNagNow()">立即去做</div>
-    <div class="row cancel" onclick="Student.doNagLater()">今晚不再提示</div>`);
+    <div class="row" onclick="Student.doNagNow()">立即去做</div>`);
   try { localStorage.setItem('aistudy_nag_' + today, '1'); } catch (e) {}
 }
 

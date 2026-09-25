@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.9.5] - 2026-09-26
+
+### 变更
+- **催学弹窗（NOTIF-012）移除「今晚不再提示」出口**：`js/app.js` 弹窗只保留「立即去做」，
+  `js/student.js` 删除 `doNagLater()` 与 `aistudy_nodisturb_<date>` 频控读取。
+  依据：Ray 2026-09-26 —— 学生误点即当天不再被催，且该出口对「催学」目标有害，一律不再提供；
+  每设备每天 1 次的频控（`aistudy_nag_<date>`）保留。
+- 该按钮原先只写**设备本地 localStorage**，不影响服务端 Web Push 阶梯提醒（19:00–23:00 照常推送）。
+
+### 说明
+- 纯前端改动；版本三件套 bump：`app.py` 2.9.5 / `sw.js` CACHE `aistudy-shell-v61` + `V="2.9.5"` /
+  `index.html` 6 处 `?v=2.9.5`（CF 强制 4h 缓存，必须换 URL 才能穿透）。
+
 ## [2.9.4] - 2026-09-24
 
 ### 新增

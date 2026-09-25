@@ -199,11 +199,7 @@ const Student = {
       setTimeout(() => { el.style.boxShadow = ''; }, 2500);
     });
   },
-  // NOTIF-012：「今晚不再提示」——记 localStorage，当天不再弹
-  doNagLater() {
-    closeSheet();
-    try { localStorage.setItem('aistudy_nodisturb_' + this._kcToday(), '1'); } catch (e) {}
-  },
+  // NOTIF-012（v2.9.5 起）：催学弹窗只保留「立即去做」一个出口，不再提供「今晚不再提示」
   // 一键续学（KNOW-013）：读 localStorage 纯读，判断「当日任务 / 知识卡片」两类存档
   resumeInfo() {
     try {

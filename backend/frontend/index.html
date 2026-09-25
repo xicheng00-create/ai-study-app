@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="stylesheet" href="/css/style.css?v=2.9.4">
+  <link rel="stylesheet" href="/css/style.css?v=2.9.5">
 </head>
 <body>
   <div id="app">
@@ -20,15 +20,15 @@
   <div class="sheet-mask" id="sheetMask"><div class="sheet" id="sheet"></div></div>
   <!-- 下载进度条：资料下载分块流式时显示百分比进度 -->
   <div id="dlProgress"><span class="dl-spin"></span><span id="dlProgressTxt">下载中</span><div id="dlProgressBar"><div id="dlProgressPct"></div></div></div>
-  <script src="/js/api.js?v=2.9.4"></script>
-  <script src="/js/app.js?v=2.9.4"></script>
-  <script src="/js/student.js?v=2.9.4"></script>
-  <script src="/js/teacher.js?v=2.9.4"></script>
+  <script src="/js/api.js?v=2.9.5"></script>
+  <script src="/js/app.js?v=2.9.5"></script>
+  <script src="/js/student.js?v=2.9.5"></script>
+  <script src="/js/teacher.js?v=2.9.5"></script>
   <script>
     document.getElementById("sheetMask").addEventListener("click", e => { if (e.target.id === "sheetMask") closeSheet(); });
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js?v=2.9.4").then((reg) => {
+        navigator.serviceWorker.register("/sw.js?v=2.9.5").then((reg) => {
           // 新 SW 接管时自动刷新，确保用户看到最新版（修复旧版缓存问题）
           if (navigator.serviceWorker.controller) {
             navigator.serviceWorker.addEventListener("controllerchange", () => location.reload());
