@@ -1,7 +1,7 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.9.5（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
-> 日期：2026-09-26（随代码现状回写）
+> 版本：v2.9.6（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
+> 日期：2026-09-27（随代码现状回写）
 > 状态：设计评审（正文静态章节以**当前生产代码**为准；§12.x 为实现状态回写历史）
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）
 > 方法论：pm-toolkit 架构分层 / 领域建模 / API 契约 / 角色分端 UI 规格 + 架构再审（F1–F10）
@@ -169,7 +169,7 @@
 - **两层 Fallback**（architecture §5.5）：L1 DeepSeek；L2 TUTOR 提示词内固定引导语池（按意图/章节预生成）；触发（API>30s/5xx、召回为空、越界）→ 降级；**L3 固定答案不做**（宁可报错不静默错答）。
 - 状态机：单次对话 turn 计数，==12 强制转「给结论+推荐练习」（CHAT-005）。
 - 数据：conversations(+user_id, ±chapter_id, DM-009)、messages；隔离由 `@user_scope` 保证（CHAT-006）。
-- 错误码：`E_AI_FALLBACK`（兜底触发）、`E_INVALID_INPUT`。
+- 错误码：`E_INVALID_INPUT`；`E_AI_FALLBACK`（原设计「兜底触发」）**未实现**——全仓 0 命中，两层 Fallback 走**内容层降级**（返回固定引导语），不返回错误码（2026-09-27 自洽审计以代码更正）。
 
 ### 3.4 测评 — `quizzes_bp` + `attempts_bp`（L3，REQ-QUIZ，AI: QUIZZER/GRADER）
 **Functional**
@@ -306,7 +306,7 @@
 
 ### 3.10 横切安全护栏（横切 A，REQ-ARCH）
 - `@jwt_required` / `@role_required` / `@rate_limit(60/day)` / 入参校验（`middleware/input_validation.py` 的 `require_fields`/`check_len`，**蓝图内调用**，无 `@validate_json` 装饰器）/ 本人数据隔离（**蓝图内联** `WHERE ... user_id=g.user_id`；`@user_scope` 定义于 `auth/jwt_utils.py` 但**当前无路由挂载**）。
-- 错误码契约：`E_AUTH_*` / `E_ROLE_*` / `E_RATE` / `E_NOT_FOUND` / `E_INVALID_INPUT` / `E_AI_FALLBACK` / `E_INTERNAL`。
+- 错误码契约（实测 = `middleware/errors.py` 的工厂函数 + 全仓字面量）：`E_AUTH_*` / `E_ROLE_*` / `E_FORBIDDEN` / `E_RATE` / `E_NOT_FOUND` / `E_INVALID_INPUT` / `E_INTERNAL`；`E_AI_FALLBACK` **未实现**（全仓 0 命中，2026-09-27 自洽审计以代码更正）。
 - **数据隔离硬约束**：所有本人读操作必须带 `WHERE ... user_id=g.user_id`（`g.user_id` 由 `@jwt_required` 注入）；**`@user_scope` 装饰器已定义但当前 0 处挂载**，本文档出现处一律表示该**契约**；教师聚合走 `/api/teacher/*`；**集成测试必须含「学生 A 读学生 B → 403/空」（F9）**。
 
 ---
@@ -489,7 +489,7 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 `@jwt_required`（解析 Bearer→g.user_id/g.role）｜`@role_required("teacher")`｜`@rate_limit(60/day)`（按 `(user_id, endpoint)` 独立计数）｜入参校验 `require_fields`/`check_len`（`middleware/input_validation.py`，蓝图内调用）｜本人数据隔离 = 蓝图内联 `user_id` 过滤（`@user_scope` 已定义未挂载；本文档 §6.4 表中 `@user_scope` 一律表示该**契约**）。
 
 ### 6.3 错误码契约
-成功 `{code:0,data:...}`；失败 `{code:E,msg:...}`：`E_AUTH_*` / `E_ROLE_*` / `E_RATE` / `E_NOT_FOUND` / `E_INVALID_INPUT` / `E_AI_FALLBACK` / `E_INTERNAL`。
+成功 `{code:0,data:...}`；失败 `{code:E,msg:...}`：`E_AUTH_*` / `E_ROLE_*` / `E_FORBIDDEN` / `E_RATE` / `E_NOT_FOUND` / `E_INVALID_INPUT` / `E_INTERNAL`（唯一实现 = `middleware/errors.py`；`E_AI_FALLBACK` 未实现，见 §3.10）。
 
 ### 6.4 关键接口（Functional↔Technical 绑定）
 | REQ | Method & Path | 角色 | 中间件 |
@@ -810,12 +810,12 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 ```
 backend/ app.py(config+蓝图注册+静态托管) · config.py
   api/{attempts,auth,chapters,checkin,class_bp,conversations,curriculum,health,knowledge,materials,notifications,practice,progress,quizzes,reports,teacher}.py
-  ai/{advice_gen,agents,cardtext,fallback,grader,knowledge,mastery,parser,prompts,quizzer,rag,reminder_copy,review_sched,tutor,usage_log,video_link}.py
+  ai/{advice_gen,agents,cardgate,cardtext,fallback,grader,knowledge,mastery,parser,prompts,quizzer,rag,reminder_copy,review_sched,tutor,usage_log,video_link}.py
   data/{models,db,seed,checkin,timeutil}.py · middleware/{rate_limit,errors,input_validation}.py
   services/{notify,push}.py（站内通知落库 + Web Push 通道）
   scripts/{checkin_reminder,daily_advice_gen}.py
-frontend/ index.html · manifest.webmanifest · sw.js · js/{api,app,student,teacher}.js · css/
-scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_binding · backup_icloud.sh · courseware_files · group_cards · inject_curriculum · inject_w1 · merge_duplicate_cards · normalize_subconcepts · ocr.swift · ocr_materials · publish_sessions · rebuild_cards · rename_chapters
+backend/frontend/ index.html · manifest.webmanifest · sw.js · js/{api,app,student,teacher}.js · css/　← ⚠️ 仓库根目录**无** `frontend/`，`app.py:17` 以 `static_folder=None` + `send_from_directory(<backend>/frontend, …)` 托管（2026-09-27 审计取证实况）
+scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_binding · backup_icloud.sh · courseware_files · group_cards · inject_curriculum · inject_w1 · merge_duplicate_cards · normalize_subconcepts · ocr.swift · ocr_materials · publish_sessions · purge_low_value_cards · rebuild_cards · rename_chapters
 ```
 
 ---
@@ -1566,3 +1566,46 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **本轮回写证据**：`backend/services/push.py` warning 一行；回归用例 `tests/test_push.py::test_send_push_logs_subscription_gone`（410 → 留痕 + 删行；**500 → 不删行、不留痕**对照）；`make lint test smoke` 全绿。
 - **未越界**：未改投递逻辑、未改文案、未动前端资产（`sw.js` CACHE 与 `index.html? v=` **不 bump**，本次无前端变更）；`backend/app.py` version `2.9.6` 与 CHANGELOG 段号一致；未追改历史快照数字。
 - **仍未闭合的一项（不在本次范围）**：学生端「提醒状态」真判据（`has_push_sub`）目前只在**设置页**可见，首页引导卡在失败时仅闪一次 toast —— 评估为候选加固 B（Ray 2026-09-26 决定：先做 A，观察当晚 19:00 结果再定）。
+
+---
+
+### 12.57 实现状态回写（审计 2026-09-27，文档头同步 + 版本诚实三处同值条款固化）
+
+> 触发：`audit/AUDIT-2026-09-27.md` GAP-1。**纯文档改动**：无运行时代码变更，`backend/app.py` version 保持 `2.9.6`（health 不变属预期，不重启、不 bump 版本）。
+
+- **闭合内容**：文档头 `> 版本：v2.9.5` → **`v2.9.6`**、`> 日期` → `2026-09-27`，与 `backend/app.py:13 version = "2.9.6"` 及 `CHANGELOG.md` 头 `## [2.9.6]` 三者同值。
+- **同类漂移第 3 次复发**（§12.52 / 2026-09-26 GAP-1 / 本次）：前两次均靠审计侧加固检测点收敛，**写入侧一直缺固定动作**。本轮把「三处同值」条款落在**本规格**（唯一事实来源，见下方「版本三处同值（对后续一律适用）」）；**`CLAUDE.md` §5 的镜像条款本轮未能写入** —— 该文件为受保护的 agent 指令文件，本 cron（无交互用户）写入被工具守卫拒绝，**不重试、不绕道**，登记为待人工/外部会话落地项。
+- **版本三处同值（对后续一律适用）**：**触发点** = 任何把 `backend/app.py` 的 `version` bump 到新值的 commit；**覆盖路径** = 同 commit 必须同步本规格**文档头** `> 版本：vX.Y.Z`（+ `> 日期`），使 `CHANGELOG.md` 段号 / `backend/app.py` 常量 / 本规格文档头**三者同值**；**违规处置** = 审计 fact 脚本 §10b 报 FAIL，按硬闸门处理（发现即修，docs-only 不 bump 版本、不重启）。
+  - **待补镜像**：`CLAUDE.md` §5 应增同义条款（本轮受保护文件写入被拒，未落地，见审计 2026-09-27 GAP-1 action 3）。
+- **同批 commit 附带（本轮未落地，待人工）**：审计 GAP-2 要求订正 `CLAUDE.md` 4 处与代码/本规格「⚠️ RAG 事实基线」冲突的陈旧口径（ChromaDB ×2 → SQLite `chunks` 关键词/2-gram；隧道 `5001` → `5003`；`data/{models,chroma_client,seed}.py` → 实况清单；附录 A 前端路径 → `backend/frontend/js/{api,app,student,teacher}.js`）。**该文件受写保护**（`BLOCKED: write to protected agent-instruction file`），本轮**未改动**，清单见 `AUDIT-2026-09-27.md` GAP-2。
+- **未越界**：未动代码、未动 CHANGELOG、未动前端资产（`sw.js` CACHE 与 `index.html ?v=` 不 bump，本次无前端变更）；`DesignSpec-学生端阶梯提醒-执行方案.md` 保持未跟踪。
+
+---
+
+### 12.58 实现状态回写（审计 2026-09-27 step 5 全文自洽审计修正，纯文档）
+
+> 触发：follow-up cron step 5「Design Spec 全文自洽审计」。**并发判定（落笔前）**：`git status --porcelain` 仅 1 个 ` M`（本规格 = 本 cron 自身的 §12.57 在途改动）+ 1 个 untracked 受保护文档；`HEAD == origin/main == c9a516a`，无并行修改者 → 判定为**本 cron 在途改动**（非他人在途改动），可落笔；若为他人在途改动则只出清单、不改文件。
+> **纯文档改动**：无运行时代码变更，`backend/app.py` version 保持 `2.9.6`（health 不变属预期，不重启、不 bump 版本）。
+
+**取法**：全文 1581 行逐段 `read_file`（offset/limit 分段，非 grep 抽样）＋机械交叉核对（路径 / 全大写常量 / `/api` 路由 / 表名列名 / 版本链 五路，对照 `backend/**` 真实代码与生产库只读快照 `/tmp` 副本）。
+
+| # | 位置 | 旧叙述（与代码冲突） | 代码证据（以代码为准） | 处置 |
+|---|------|---------------------|----------------------|------|
+| 1 | §3.3 错误码 | `E_AI_FALLBACK`（兜底触发） | `grep -rn "E_AI_FALLBACK" backend/` → **0 命中**；两层 Fallback 走内容层降级（`ai/fallback.py`），不返回错误码 | 标注**未实现**（保留需求意图，不删条目） |
+| 2 | §3.10 错误码契约 | 同 #1，且**漏列** `E_FORBIDDEN` | 全仓错误码字面量去重 = `E_AUTH` / `E_ROLE` / `E_FORBIDDEN` / `E_RATE` / `E_NOT_FOUND` / `E_INVALID_INPUT` / `E_INTERNAL`（`middleware/errors.py` 工厂函数；`e_forbidden` 实用于 `api/conversations.py:84` 等） | 补 `E_FORBIDDEN` ＋ 标注 `E_AI_FALLBACK` 未实现 |
+| 3 | §6.3 错误码契约 | 同 #2 | 同 #2 | 同步更正 |
+| 4 | 附录 A | `frontend/ index.html …`（暗示仓库根有 `frontend/`） | `ls -d frontend` → **No such file or directory**；`backend/frontend/` 实存（index.html/js/css/sw.js）；`backend/app.py:17` `static_folder=None`、`:80/86/88` `send_from_directory(frontend_dir, …)` | 更正为 `backend/frontend/` ＋ 脚注取证 |
+| 5 | 附录 A `ai/` 清单 | 缺 `cardgate.py`（v2.9.4 新增） | `ls backend/ai` 含 `cardgate.py` | 补名（事实补全，不改意图） |
+| 6 | 附录 A 根 `scripts/` 清单 | 缺 `purge_low_value_cards.py`（v2.9.4 新增） | `ls scripts` 含 `purge_low_value_cards.py` | 补名 |
+
+**保留（经核不算矛盾，勿再清理）**
+
+- 附录 A 的 `api/*`、`data/{models,db,seed,checkin,timeutil}.py`、`middleware/{rate_limit,errors,input_validation}.py`、`services/{notify,push}.py`、`backend/scripts/{checkin_reminder,daily_advice_gen}.py`：与 `ls` 实况**逐项一致**。
+- 版本链：`backend/app.py 2.9.6` = `CHANGELOG [2.9.6]` = 本文档头 `v2.9.6`；`sw.js CACHE v61` / `?v=2.9.5` 是**最后一次前端变更（v2.9.5）**的正确残留（v2.9.6 无前端改动）→ 非矛盾。
+- `@user_scope` 0 处挂载（`auth/jwt_utils.py` 定义、无路由挂载）、`EXCLUDED_USERNAMES = ("hermestest",)`（`api/class_bp.py:23`、`services/notify.py:14`；`hermesstu` 为真机验证账号**不排除**）：与代码一致，**不动**。
+- `knowledge_cards` 62 处指向不存在章节的正文（「留到 W7」等）：09-22 登记的**待人工裁决**项，本轮不动。
+- 机械核对命中的 `/api/reminder`（取消项已在 §12.x 标注）、`/api/attempts`（`api/attempts.py:18` `url_prefix="/api/attempts"` 真实存在）：**非矛盾**。
+
+**未闭合（交人工/外部会话）**：`CLAUDE.md` 的 GAP-1 第 3 条（§5 版本诚实镜像条款）与 GAP-2（ChromaDB ×2 / 隧道 `5001` / `data/{models,chroma_client,seed}.py` / 附录 A 前端路径 4 处订正）**本轮仍未落地**——该文件受工具守卫硬拦（`BLOCKED: write to protected agent-instruction file(s) (CLAUDE.md) … Do NOT retry it or attempt the same edit via another path`），本轮只做核对、未改文件。
+
+**未越界**：未动代码、未动 `CHANGELOG.md`、未动前端资产（`sw.js` CACHE 与 `index.html ?v=` 不 bump）、未动任何受保护文档；`DesignSpec-学生端阶梯提醒-执行方案.md` 保持未跟踪。
