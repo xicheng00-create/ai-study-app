@@ -361,7 +361,7 @@
 - **NOTIF-012（P0）App 内拦截式催学弹窗（零授权）**：学生手机没推送授权时，Web Push 一条也到不了；这是唯一不依赖任何授权的催学手段。触发：学生端 App **打开或回到前台**（`boot()` 完成、`App.checkin` 已载入后），若今日**未达标**（`cards < TASK_CARDS_REQUIRED` 或 `questions < TASK_QUESTIONS_REQUIRED`）→ 弹一次模态弹窗：标题「🔥 今天还差 X 张卡 + Y 道题」，副文案（有连胜 → 「N 天连胜今晚 24:00 归零」；无连胜 → 「今天还没有连胜，先点起火焰」），按钮「立即去做」（关闭弹窗 + 跳学习首页并高亮今日任务卡）——**v2.9.5 起取消「今晚不再提示」出口**（Ray 2026-09-26 口径：催学弹窗**一律不得提供**「不再提示／稍后／静音」类出口，学生误点即当天失去催学，视为需求缺陷）。频控：每设备每天最多 1 次（`aistudy_nag_<date>`）；**已达标、教师端、打卡完成、对话页绝不弹**。纯前端（用 `App.checkin` 已有数据判定，**不加后端、不加接口**）。 ✅
 
 **Technical**
-- **双通道（NOTIF-002，P0）**：站内落库 **+** Web Push（VAPID）。**无订阅 / 无密钥 / 发送异常 → 降级为只落站内，绝不 500**；收到 404/410 删除该订阅。这是「19:00 提醒」在 App 关闭时唯一可行通道。 ⚠️ 代码/降级/订阅链路已实现，真机 push 授权需 Ray 配合点授权验证。
+- **双通道（NOTIF-002，P0）**：站内落库 **+** Web Push（VAPID）。**无订阅 / 无密钥 / 发送异常 → 降级为只落站内，绝不 500**；收到 404/410 删除该订阅，**且删行必须留 warning 日志**（`sub` / `user` / `endpoint` 前 56 字符，v2.9.6；无日志即视为**缺陷**——否则「曾经开过、后来失效」与「从未开过」在库里不可区分，见 §12.56）。这是「19:00 提醒」在 App 关闭时唯一可行通道。 ✅ 代码/降级/订阅链路已实现；真机投递已证（2026-09-26 三名学生设备 `last_ok_at` 推进，含 5onghan 实推自证）。
 - 新增 blueprint `notify_bp`（`/api/notifications`：`GET ""` 列表 / `GET /unread` / `POST /read` / `POST /push/subscribe` / `POST /push/unsubscribe` / `GET|POST /prefs` / `GET /vapid-public-key`）；服务层 `backend/services/notify.py`（先落库、再推送，统一入口 `notify_users()`）+ `backend/services/push.py`（pywebpush 封装）；文案池 `backend/ai/reminder_copy.py`（**纯函数、确定性、不调 LLM**）。
 - 新增表 `notifications`、`push_subscriptions`、`notification_prefs`。**幂等**：`notify_users()` 对 `(user_id, type, ref_id, 当天)` 去重；发布类沿用 `class_bp.EXCLUDED_USERNAMES`（当前 `hermestest`）排除测试号；unpublish 不发通知。
 - 19:00 载体：用户域 LaunchAgent `com.aistudy.checkin-reminder` → `backend/scripts/checkin_reminder.py`（**本机直连库，不经 HTTP，无公网入口**）。
@@ -876,7 +876,7 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 |---|---|---|
 | CHECKIN-001~008 | ✅ | 服务端唯一判定 + 幂等（`daily_checkins UNIQUE`）+ 今日卡组/练习自动装配 + 顶部连胜条 + 班级今日打卡 |
 | NOTIF-001/003/004/006/007/008 | ✅ | 通知中心（列表/未读/已读/跳转）、发布路径/测评通知、nudge 限流、streak_done 即时通知、铃铛未读角标 |
-| NOTIF-002 | ⚠️ | Web Push（VAPID）订阅/推送/降级/404-410 删订阅已实现；真机 push 授权需 Ray 配合点授权 |
+| NOTIF-002 | ✅ | Web Push（VAPID）订阅/推送/降级/404-410 删订阅已实现，**删行必留 warning 日志**（v2.9.6）；真机投递已证（2026-09-26 三名学生设备 last_ok_at 推进） |
 | NOTIF-005 | ⚠️ | `checkin_reminder.py` + 文案池 + 萌图 + plist 已交付；LaunchAgent 已安装（2026-09-19）；**收件人口径经 v2.4.1 修正，见 §12.26**。真机 19:00 触发需 Ray 配合 |
 | SET-001~004 | ✅ | 独立设置页、改名（1–20 字）、预设头像（a1..a12 白名单）、复用改密端点 |
 | SET-005 | ⚠️ | Web Push 授权/订阅开关已实现；真机授权需 Ray 配合验证 |
@@ -1551,3 +1551,18 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - §12.39 / §12.40 的 2140 / 2113 / 1674 张、371/564/644/534 张、71 天：**标题自带版本标注的历史快照**（v2.6.9 / v2.7.0），与最新口径并存属预期。
 - KNOW-006 复习卡组排序（①今日待复习→②未学→③未到期→④已掌握）与 CHECKIN-009/010 今日任务卡组排序（①未学→②到期→③低掌握度补足）：**分属两套卡组、各自与代码一致**（`frontend/js/student.js` `kcDeckOrder` vs `data/checkin.py::build_today_deck`）→ 非矛盾。
 - §6.1 `reports_bp` 标「v1.9.0 起废弃，保留不引用」与代码一致（路由存在、注册保留）。
+
+---
+
+### 12.56 实现状态回写（v2.9.6，2026-09-26，NOTIF-002 订阅失效留痕）
+
+> **触发**：Ray 2026-09-26 报「周大维尼和 5onghan 说他们开了 iPhone 推送但是没有收到通知，昨天他们都没完成连胜，请排查」。三段式诊断（**只读**，未改任何业务数据）：**调度段正常**（`launchd com.aistudy.checkin-reminder` 在册，`StartCalendarInterval` = `[19,20,21,22,23]`；09-25 五档全跑 `sent=2/2/3/2/2`，每档第二次跑 `sent=0`＝幂等去重生效）；**落库段正常**（09-25 站内通知 `Winnie` 6 条、`Han` 6 条，全部未读）；**断点在收件人段** —— `5onghan`（`Han`）的订阅行 **2026-09-26T09:58:25Z 才建立**（09-25 无设备可投），`周大维尼`（`Winnie`）订阅 **0 条 + `push_enabled=0`**（从未注册成功）。通道本身健康：`hermesstu` `last_ok_at` 09-26T09:41Z、一朵小然花 09-26T04:28Z；并对 `Han` 的真机订阅**实推自证**，`last_ok_at` 推进至 09-26T10:36Z。Ray 拍板「**做A**」＝订阅失效删行必须留痕。
+
+**规格条款（对后续一律适用）**
+
+- **触发点**：`services/push.py` 发送时收到 HTTP 404/410（`_SubscriptionGone`）。
+- **覆盖路径（已核，无旁路）**：程序中删除 `push_subscriptions` 只有两处 —— ① `services/push.py` 的失效自动清理 → **本版加 warning：`sub` / `user` / `endpoint` 前 56 字符**（`grep -rn "DELETE FROM push_subscriptions"` 已确认无第三条）；② `api/notifications.py` 学生主动关闭提醒 —— 属**用户动作**，`notification_prefs.push_enabled=0` 即已构成记录，不另加日志。**不得新增任何静默删除路径。**
+- **违规处置**：任何一次失效删除若无对应 warning，按**需求缺陷**处理（口径同 NOTIF-012：发现即修并 bump 版本）；排查「学生说收不到通知」时，必须能凭日志区分「曾经开过、后来失效」与「从未开过」，禁止只能靠推断。
+- **本轮回写证据**：`backend/services/push.py` warning 一行；回归用例 `tests/test_push.py::test_send_push_logs_subscription_gone`（410 → 留痕 + 删行；**500 → 不删行、不留痕**对照）；`make lint test smoke` 全绿。
+- **未越界**：未改投递逻辑、未改文案、未动前端资产（`sw.js` CACHE 与 `index.html? v=` **不 bump**，本次无前端变更）；`backend/app.py` version `2.9.6` 与 CHANGELOG 段号一致；未追改历史快照数字。
+- **仍未闭合的一项（不在本次范围）**：学生端「提醒状态」真判据（`has_push_sub`）目前只在**设置页**可见，首页引导卡在失败时仅闪一次 toast —— 评估为候选加固 B（Ray 2026-09-26 决定：先做 A，观察当晚 19:00 结果再定）。

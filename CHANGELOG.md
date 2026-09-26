@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.9.6] - 2026-09-26
+
+### 修复
+- **推送订阅失效（Apple 404/410）删行现在必须留痕**：`services/push.py` 的
+  `_SubscriptionGone` 分支在 `DELETE FROM push_subscriptions` 前写一条 warning
+  （`sub` / `user` / `endpoint` 前 56 字符）。
+  触发来源：Ray 2026-09-26 报「周大维尼和 5onghan 说开了 iPhone 推送但收不到通知」排查 ——
+  此前删行完全静默，**「曾经开过、后来失效」与「从未开过」在库里长得一模一样**，
+  无法归因（当次只能推断 Winnie 属后者）。
+  覆盖路径：程序中删除订阅行只有两条 —— `services/push.py:80`（失效自动清理，本次留痕）
+  与 `api/notifications.py:124/127`（学生主动关闭提醒，属用户动作，`push_enabled` 已记录）。
+
+### 说明
+- 纯后端改动（含 1 个回归用例 `tests/test_push.py::test_send_push_logs_subscription_gone`）；
+  **无前端资产变更**，故 sw.js CACHE / `index.html? v=` 不 bump，仅 `app.py` 2.9.6。
+- 行为不变：仍不删行以外不改数据、非失效错误（如 500）不删行、不影响投递成功率。
+
 ## [2.9.5] - 2026-09-26
 
 ### 变更

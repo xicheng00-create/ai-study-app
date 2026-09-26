@@ -77,6 +77,13 @@ def send_push(con, user_ids, payload: dict) -> None:
         try:
             ok = _webpush(dict(s), payload)
         except _SubscriptionGone as exc:
+            # 订阅失效（Apple 返回 404/410）删行必须留痕：否则「曾经开过、后来失效」与
+            # 「从未开过」在库里长得一模一样，学生报「没收到通知」时无法归因
+            # （2026-09-26 周大维尼 / 5onghan 排查：分不清二者，只能靠猜）。
+            log.warning(
+                "订阅失效（HTTP 404/410）→ 删除订阅行 sub=%s user=%s endpoint=%.56s",
+                s["id"], s["user_id"], exc.endpoint,
+            )
             con.execute("DELETE FROM push_subscriptions WHERE endpoint=?", (exc.endpoint,))
             continue
         # 只有真投递成功才记 last_ok_at（曾无条件写入 → 失败也被记为「最近成功」）
