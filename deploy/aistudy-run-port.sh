@@ -4,7 +4,8 @@
 # ⚠️ 关键：必须**先 source .env（拿密钥），再**用传入值覆盖** PORT/HOST/FLASK_ENV——
 #     .env 里 PORT=5001 会在 source 时覆盖 shell 变量，所以覆盖赋值必须放在 source 之后。
 set -euo pipefail
-REPO="/Users/xicheng/WorkBuddy/AI学习小组app"
+# REPO 自定位（脚本在 <repo>/deploy/ 下）；可用第 3 参显式指定，供 dev 实例复用同一脚本
+REPO="${3:-$(cd "$(dirname "$0")/.." && pwd)}"
 NEW_PORT="${1:-5003}"
 NEW_HOST="${2:-0.0.0.0}"
 
