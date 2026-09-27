@@ -166,7 +166,9 @@ const audit = `(() => {
    for (const route of ['#progress','#quiz']) {
     // 每次带唯一 cb 参数 = 强制**冷载深链**（而不是同页 hashchange）。
     // 两者行为曾不一致：app boot 忽略 hash → 冷载显示学习主页而地址栏仍是目标路由（真缺陷）。
-    ab(['open', `${BASE}/?cb=${Date.now()}${route}`]); ab(['wait','--fn',"!document.querySelector('.loading')"]);
+    // 冷载 + 等目标页真正画完：只看 .loading 消失会在「异步取数未完」时误判（公网 #quiz@390 曾由此假红）。
+    ab(['open', `${BASE}/?cb=${Date.now()}${route}`]);
+    ab(['wait','--fn',"(()=>{const c=document.querySelector('.content');return !document.querySelector('.loading') && !!c && c.children.length>2})()"]);
     const landed = ab(['eval', `location.hash`, '--json']);
     if (!landed.includes(`"${route}"`)) { fail(`${route}@${width}: 未落到目标路由（location.hash=${landed.trim()}）—— 检查路由格式`); continue; }
     const x=pageEval(audit);
