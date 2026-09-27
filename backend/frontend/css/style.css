@@ -403,3 +403,30 @@ select.count-sel{font-size:16px;font-weight:600;font-family:var(--font);color:va
 .notif-t{font-weight:700;font-size:14px;margin-bottom:2px}
 .notif-b{font-size:13px;color:var(--text-2);line-height:1.45}
 .notif-time{font-size:11px;color:var(--text-3);margin-top:5px}
+
+/* v2.12.0 A — warm-paper component language; structure and interactions unchanged */
+:root{
+  --bg:#FBF7F2; --surface:#FFFDF9; --surface-2:#F5EFE7; --text:#1B1E22; --text-2:#6E6553;
+  --text-3:#958B7B; --border:#E5DECC; --coral:#F2714E; --coral-strong:#E25C3A;
+  --green:#1E7C50; --green-soft:#E8F1EA; --radius:16px; --radius-s:14px;
+  --shadow:0 8px 22px rgba(35,32,22,.08);
+}
+body{background:#E8E1D7;color:var(--text)}
+#app{background:var(--bg);box-shadow:0 0 0 1px var(--border)}
+.appbar{padding:14px 20px 11px;border-bottom:1px solid var(--border);background:var(--bg)}
+.appbar h1{font-size:22px;letter-spacing:-.2px}
+.appbar .sub{font-size:11.5px;color:var(--text-2)}
+.card,.qcard,.dcard,.rank-row,.checkin-row{border-color:var(--border);border-radius:16px;box-shadow:var(--shadow)}
+.card{padding:16px;margin-bottom:12px}
+.btn{border-radius:14px;background:var(--coral);font-size:15px;padding:13px}
+.btn.ghost{color:var(--coral-strong);border-color:var(--border);background:var(--surface)}
+.tabbar{gap:10px;background:rgba(251,247,242,.94);border-top-color:var(--border)}
+.tab{font-size:11.5px}.tab.active{color:var(--coral)}
+.bell{border-color:var(--border);background:var(--surface)}
+.avatar{border-color:var(--border);background:var(--coral-soft);color:var(--coral-strong)}
+.streak-bar{background:var(--coral-soft);padding:10px 20px;border-bottom:1px solid var(--border)}
+.streak-bar.done{background:var(--green-soft)}
+.streak-num{color:var(--coral-strong)}
+.streak-bar.done .streak-status{color:var(--green)}
+
+
