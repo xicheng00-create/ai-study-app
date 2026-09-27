@@ -145,8 +145,8 @@ def test_practice_counts_toward_mastery(client, teacher_headers, monkeypatch):
     # 全错 → M=0.0，且作答次数计入（即使无 published quiz）
     resp = client.get("/api/progress/mastery", headers=h)
     chap = [c for c in resp.get_json()["data"]["chapters"] if c["chapter_id"] == cid][0]
-    assert chap["m"] == 0.0
-    assert chap["attempts"] == len(data["questions"])
+    assert chap["m"] is None
+    assert chap["mastery"]["state"] == "na"  # 历史无主题/未学卡不得冒充证据
 
 
 def test_practice_wrong_flows_to_weak_and_review(client, teacher_headers, monkeypatch):

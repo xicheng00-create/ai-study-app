@@ -1,6 +1,6 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.9.6（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
+> 版本：v2.10.0（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
 > 日期：2026-09-27（随代码现状回写）
 > 状态：设计评审（正文静态章节以**当前生产代码**为准；§12.x 为实现状态回写历史）
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）
@@ -1651,3 +1651,6 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 **未闭合（交人工/外部会话）**：`CLAUDE.md` 的 GAP-1 第 3 条（§5 版本诚实镜像条款）与 GAP-2（ChromaDB ×2 / 隧道 `5001` / `data/{models,chroma_client,seed}.py` / 附录 A 前端路径 4 处订正）**本轮仍未落地**——该文件受工具守卫硬拦（`BLOCKED: write to protected agent-instruction file(s) (CLAUDE.md) … Do NOT retry it or attempt the same edit via another path`），本轮只做核对、未改文件。
 
 **未越界**：未动代码、未动 `CHANGELOG.md`、未动前端资产（`sw.js` CACHE 与 `index.html ?v=` 不 bump）、未动任何受保护文档；`DesignSpec-学生端阶梯提醒-执行方案.md` 保持未跟踪。
+
+### PROG-007~012 实现状态（v2.10.0）
+已接入主题归属、卡级证据、四级 rollup、班级算术平均与学生/教师端覆盖率展示；历史无主题事件不回填。

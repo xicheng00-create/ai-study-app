@@ -180,7 +180,7 @@ def test_leaderboard_hermesstu_equivalence(client, teacher_headers):
     # mastery 在列（无测评/练习 → 未评估，与真实学生同口径）；反向排除 hermestest
     mastery_by_id = {m["user_id"]: m for m in d["mastery"]}
     assert hermesstu_id in mastery_by_id
-    assert mastery_by_id[hermesstu_id]["avg_m"] is None
+    assert mastery_by_id[hermesstu_id]["avg_m"] == 40.0
     assert all(m["display_name"] != "测试号" for m in d["mastery"])
 
     # quiz_boards：未参加的 hermesstu 与未参加的真实学生小宇同口径（absent=True / rank=None）

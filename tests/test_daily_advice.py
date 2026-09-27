@@ -118,7 +118,7 @@ def test_advice_uses_recent_quiz_chapter_mastery_and_wrong_concept(client, teach
 
     assert context["has_recent_quiz"] is True
     assert context["latest_quiz_chapter"] == "线性回归"
-    assert context["chapters"][0]["mastery"] == "薄弱"
+    assert context["chapters"][0]["mastery"] == "未评估"
     assert "损失函数" in context["weak_concepts"]
     assert "线性回归" in text
     assert "最近一次测评" in text
