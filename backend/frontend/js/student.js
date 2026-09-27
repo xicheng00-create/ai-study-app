@@ -1313,7 +1313,7 @@ const Student = {
       `<div class="chapter"><div class="nm">${esc(App.chapterName(x.chapter_id))}</div><div class="mt">${this.masteryText(x.mastery)}</div></div>`
     ).join('') || '尚无卡片'}</div>`;
     const scopeHtml = `<div class="card"><div class="sec-title">学科</div>${this.masteryText(mastery.subject)}</div>` +
-      (mastery.books || []).map(b => `<div class="card"><div class="sec-title">${esc(b.folder)}</div>${this.masteryText(b.mastery)}</div>`).join('');
+      (mastery.books || []).filter(b => (b.folder || '').trim()).map(b => `<div class="card"><div class="sec-title">${esc(b.folder)}</div>${this.masteryText(b.mastery)}</div>`).join('');
     return appbar('进度', '按章节掌握度（仅本人）') + `<div class="content">
       <div class="muted">掌握度 = 已学卡掌握度平均（卡级 = 50% 状态分 + 50% 作答正确率）；覆盖率 = 已学卡 ÷ 全部卡</div>
       <div class="stat-row"><div class="stat"><div class="v" style="color:var(--green)">${c.master}</div><div class="k">已掌握</div></div>
