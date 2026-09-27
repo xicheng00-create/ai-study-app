@@ -997,20 +997,7 @@ const Student = {
     }).join('') || '<div class="muted">老师尚未发布测评</div>';
     const practiceEntry = `<div class="qcard" style="border-color:var(--coral)" onclick="Student.enterPractice()"><div class="ic">${ic('target')}</div>
       <div class="meta"><div class="t">自主练习</div><div class="s">根据资料 AI 出题 · 5-10 题自选 · 即答即批</div></div></div>`;
-    let weak = { weak_points: [] };
-    let reviews = { review_items: [] };
-    try { weak = await API.get("/api/progress/weak-points"); } catch (e) {}
-    try { reviews = await API.get("/api/progress/review-items"); } catch (e) {}
-    const weakPoints = weak.weak_points || [];
-    const weakWrongCount = weakPoints.reduce((sum, point) => sum + (point.evidence || []).length, 0);
-    const weakHtml = `<div class="card"><div class="sec-title">薄弱点（带错题依据）</div><div class="weak" style="cursor:pointer" onclick="go('weak')"><span class="badge weak" style="flex-shrink:0">${ic('pin')}</span><div style="flex:1"><div style="font-weight:600;font-size:13.5px">薄弱点 · ${weakPoints.length} 章 · ${weakWrongCount} 道错题</div><div class="muted" style="font-size:12px">点击查看按练习 / 测评分组的错题依据</div></div><span>›</span></div></div>`;
-    const reviewHtml = (reviews.review_items || []).map(r => `<div class="rev-item ${r.status === 'done' ? 'done' : ''}">
-      <span class="badge ${r.status === 'done' ? 'master' : 'weak'}">${esc(App.chapterName(r.chapter_id))}</span>
-      <div style="flex:1;font-size:13px">${r.status === 'done' ? '已完成' : (r.due ? '已到期，可作答' : '下次复习 ' + r.interval_days + ' 天后')}</div>
-      ${r.status === 'pending' && r.due ? `<button class="mini-btn" style="border-color:var(--coral);color:var(--coral-strong)" onclick="Student.openReview('${r.id}')">作答</button>` : ''}</div>`).join('') || '<div class="muted" style="font-size:12.5px">尚未生成复习计划</div>';
-    const reviewHtmlBlock = `<div class="card"><div class="sec-title">巩固练习闭环（间隔复习 1→3→7）</div>${reviewHtml}
-      <button class="btn" style="margin-top:12px" onclick="Student.genReview()">一键生成巩固练习</button></div>`;
-    return appbar('测评', '教师发布 · 全班同题') + `<div class="content">${practiceEntry}${list}${weakHtml}${reviewHtmlBlock}</div>` + tabbar();
+    return appbar('测评', '教师发布 · 全班同题') + `<div class="content">${practiceEntry}${list}</div>` + tabbar();
   },
   async openQuiz(id) {
     try {
