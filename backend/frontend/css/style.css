@@ -401,9 +401,19 @@ select.count-sel{font-size:16px;font-weight:600;font-family:var(--font);color:va
 .notif-img{width:44px;height:44px;border-radius:12px;object-fit:cover;flex-shrink:0}
 .notif-body{flex:1;min-width:0}
 .notif-t{font-weight:700;font-size:14px;margin-bottom:2px}
-.notif-b{font-size:13px;color:var(--text-2);line-height:1.45}
+.notif-time{font-size:11px;color:var(--text-3);margin-top:5px}
 
-/* v2.12.0 C — quiz and progress data language */
+/* v2.12.0 D — class check-in and release styling */
+.rank-row{border-radius:14px;box-shadow:none;background:var(--surface)}
+.rank-row.me{border-color:var(--coral);background:var(--coral-soft)}
+.checkin-row{box-shadow:none;border-radius:14px}
+.checkin-row.me{border-color:var(--border);background:var(--surface)}
+.checkin-row.done{background:var(--green-soft);border-color:#CFE3D5}
+.checkin-done{color:var(--green)}
+.nudge-btn{background:transparent;color:var(--coral-strong);border:1px solid var(--coral);border-radius:14px}
+.nudge-btn.done{background:var(--surface-2);color:var(--text-2);border-color:var(--border)}
+.rank-num.medal.gold{background:#FDEBC8}.rank-num.medal.silver{background:#E8ECF1}.rank-num.medal.bronze{background:#FADFD5}
+
 .qcard{border-radius:16px;box-shadow:var(--shadow);padding:15px}
 .qcard .ic{background:var(--coral-soft);color:var(--coral-strong)}
 .badge.master{background:var(--green-soft);color:var(--green)}
