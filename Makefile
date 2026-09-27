@@ -40,6 +40,6 @@ backup:
 	bash scripts/backup_icloud.sh
 
 ui-audit:
-	node scripts/ui_audit.js
+	UI_AUDIT_SELF_BOOT=1 node scripts/ui_audit.js
 
 all: lint test smoke ui-audit

@@ -429,13 +429,27 @@ async function maybeNagCheckin() {
   try { localStorage.setItem('aistudy_nag_' + today, '1'); } catch (e) {}
 }
 
+/* 深链/刷新必须落到目标页：只认「该角色白名单内」的 hash，否则回落角色首页。
+   历史 bug：boot 把 hash 硬编码成 learn/admin，导致刷新或通知深链 /#progress 时
+   地址栏写着 #progress、页面却是学习主页（审计冷载断言即抓此坑）。 */
+const ROLE_ROUTES = {
+  student: ["learn", "quiz", "path", "progress", "weak", "class", "settings", "notifications"],
+  teacher: ["admin", "curriculum", "knowledge", "quiz", "progress", "class", "settings", "notifications"],
+};
+function hashRoute() { return (location.hash || "").replace(/^#\/?/, ""); }
+function routeFromHash(role) {
+  const h = hashRoute();
+  if ((ROLE_ROUTES[role] || []).indexOf(h) >= 0) return h;
+  return role === "teacher" ? "admin" : "learn";
+}
+
 async function boot() {
   if (!API.getToken()) { App.state.role = null; render(); return; }
   try {
     const me = await API.get("/api/auth/me");
     App.state.user = me;
     App.state.role = me.role;
-    App.state.hash = (me.role === "teacher") ? "admin" : "learn";
+    App.state.hash = routeFromHash(me.role);   // 深链优先：刷新 /#progress 必须留在进度页
   } catch (e) {
     API.setToken("");
     App.state.role = null;
@@ -448,7 +462,7 @@ async function boot() {
 }
 
 window.addEventListener("hashchange", () => {
-  if (App.state.role) { App.state.hash = location.hash.replace("#", "") || App.state.hash; render(); }
+  if (App.state.role) { App.state.hash = hashRoute() || App.state.hash; render(); }
 });
 
 /* 旋转/窗口尺寸变化：知识卡片全屏态重算卡高上限（62vh 随视口变） */

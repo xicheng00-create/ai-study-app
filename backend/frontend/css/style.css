@@ -38,10 +38,12 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text);overflow:hidde
 .kc-tutor{margin-top:10px}
 .avatar{width:36px;height:36px;border-radius:50%;background:var(--coral-soft);color:var(--coral-strong);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;border:1px solid var(--border);cursor:pointer}
 .avatar.teacher{background:var(--indigo-soft);color:var(--indigo)}
-.content{padding:6px 20px 20px}
+.content{padding:12px 20px 20px}
+/* 卡片之间必须留缝（原 .dcard/.card 相邻 0px 相贴，Ray 截图可见）——对齐个人 review 的 12px 节奏 */
+.content > .card, .content > .dcard, .content > .sec-title { margin-bottom:12px } /* PROG-015：页头↕首块竖向间隙 ≥12px（原 6px 违反相邻可交互块 ≥12px） */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
 .card.sm{padding:13px 15px}
-.muted{color:var(--text-2);font-size:13px}
+.muted{color:var(--text-2);font-size:13px;margin:12px 0} /* 对齐个人 review 的 12px 节奏：公式/说明文字不再贴住连胜条与数据卡 */
 .pill{display:inline-flex;align-items:center;gap:5px;background:var(--surface-2);color:var(--text-2);border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:600;white-space:nowrap;flex:0 0 auto}
 .pill.active{background:var(--coral);color:#fff}
 /* 对话 pill 标题：单行不折行，超出省略（修复「新对/话」折行观感） */
@@ -80,12 +82,12 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text);overflow:hidde
 .composer .send{width:46px;height:46px;border-radius:14px;background:var(--coral);border:none;color:#fff;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
 .composer .send .ic{width:20px;height:20px}
 .dl .ic{width:14px;height:14px;vertical-align:-2px}
-.tabbar{position:fixed;bottom:0;left:0;right:0;margin:0 auto;max-width:520px;height:78px;background:rgba(251,247,242,.86);backdrop-filter:blur(20px);border-top:1px solid var(--border);display:flex;padding:8px 6px 18px;z-index:30}
+.tabbar{position:fixed;bottom:0;left:0;right:0;margin:0 auto;max-width:520px;height:78px;background:rgba(251,247,242,.86);backdrop-filter:blur(20px);border-top:1px solid var(--border);display:flex;gap:12px;padding:8px 6px 18px;z-index:30} /* tab 之间留缝（原 flex:1 无 gap → 5 个 tab 相互 0px 紧贴） */
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--text-3);font-size:10.5px;font-weight:600;cursor:pointer;border:none;background:none;font-family:var(--font)}
 .tab svg{width:23px;height:23px}
 .tab.active{color:var(--coral)}
 .tab.teacher.active{color:var(--indigo)}
-.chapter{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;background:var(--surface);cursor:pointer}
+.chapter{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid var(--border);border-radius:12px;margin-bottom:12px;background:var(--surface);cursor:pointer}
 .chapter.active{border-color:var(--coral);background:var(--coral-soft)}
 .chapter .nm{font-weight:600;font-size:14.5px}
 .chapter .mt{font-size:12px;color:var(--text-2);margin-top:2px}
