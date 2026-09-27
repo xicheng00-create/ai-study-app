@@ -997,7 +997,20 @@ const Student = {
     }).join('') || '<div class="muted">老师尚未发布测评</div>';
     const practiceEntry = `<div class="qcard" style="border-color:var(--coral)" onclick="Student.enterPractice()"><div class="ic">${ic('target')}</div>
       <div class="meta"><div class="t">自主练习</div><div class="s">根据资料 AI 出题 · 5-10 题自选 · 即答即批</div></div></div>`;
-    return appbar('测评', '教师发布 · 全班同题') + `<div class="content">${practiceEntry}${list}</div>` + tabbar();
+    let weak = { weak_points: [] };
+    let reviews = { review_items: [] };
+    try { weak = await API.get("/api/progress/weak-points"); } catch (e) {}
+    try { reviews = await API.get("/api/progress/review-items"); } catch (e) {}
+    const weakPoints = weak.weak_points || [];
+    const weakWrongCount = weakPoints.reduce((sum, point) => sum + (point.evidence || []).length, 0);
+    const weakHtml = `<div class="card"><div class="sec-title">薄弱点（带错题依据）</div><div class="weak" style="cursor:pointer" onclick="go('weak')"><span class="badge weak" style="flex-shrink:0">${ic('pin')}</span><div style="flex:1"><div style="font-weight:600;font-size:13.5px">薄弱点 · ${weakPoints.length} 章 · ${weakWrongCount} 道错题</div><div class="muted" style="font-size:12px">点击查看按练习 / 测评分组的错题依据</div></div><span>›</span></div></div>`;
+    const reviewHtml = (reviews.review_items || []).map(r => `<div class="rev-item ${r.status === 'done' ? 'done' : ''}">
+      <span class="badge ${r.status === 'done' ? 'master' : 'weak'}">${esc(App.chapterName(r.chapter_id))}</span>
+      <div style="flex:1;font-size:13px">${r.status === 'done' ? '已完成' : (r.due ? '已到期，可作答' : '下次复习 ' + r.interval_days + ' 天后')}</div>
+      ${r.status === 'pending' && r.due ? `<button class="mini-btn" style="border-color:var(--coral);color:var(--coral-strong)" onclick="Student.openReview('${r.id}')">作答</button>` : ''}</div>`).join('') || '<div class="muted" style="font-size:12.5px">尚未生成复习计划</div>';
+    const reviewHtmlBlock = `<div class="card"><div class="sec-title">巩固练习闭环（间隔复习 1→3→7）</div>${reviewHtml}
+      <button class="btn" style="margin-top:12px" onclick="Student.genReview()">一键生成巩固练习</button></div>`;
+    return appbar('测评', '教师发布 · 全班同题') + `<div class="content">${practiceEntry}${list}${weakHtml}${reviewHtmlBlock}</div>` + tabbar();
   },
   async openQuiz(id) {
     try {
@@ -1261,74 +1274,31 @@ const Student = {
   toggleWeak(cid) { this.weakOpen = (this.weakOpen === cid) ? null : cid; this.weakGroupOpen = {}; render(); },
   toggleWeakGroup(cid, gid) { const k = `${cid}:${gid}`; this.weakGroupOpen[k] = !this.weakGroupOpen[k]; render(); },
   async viewProgress() {
-    let mastery = { chapters: [], counts: { master: 0, progress: 0, weak: 0, na: 0 } };
-    let weak = { weak_points: [] };
-    let reviews = { review_items: [] };
+    let mastery = { chapters: [], subject: {} };
     let advice = { has_advice: false, advice: "" };
-    let weekly = { stats: {}, weak_chapters: [] };
     try { mastery = await API.get("/api/progress/mastery"); } catch (e) {}
-    try { weak = await API.get("/api/progress/weak-points"); } catch (e) {}
-    try { reviews = await API.get("/api/progress/review-items"); } catch (e) {}
     try { advice = await API.get("/api/progress/advice"); } catch (e) {}
-    try { weekly = await API.get("/api/progress/weekly-stats"); } catch (e) {}
-    let kcOv = { chapters: [] };
-    try { kcOv = await API.get("/api/knowledge/overview"); } catch (e) {}
-    const c = mastery.counts || { master: 0, progress: 0, weak: 0, na: 0 };
+    const s = mastery.subject || {};
+    const fmt = (v) => v == null ? '—' : v;
     const chapList = (mastery.chapters || []).map(ch => {
-      const st = { cls: ch.state, label: ch.state_label };
-      return `<div class="chapter"><div><div class="nm">${esc(ch.name)}</div><div class="mt">${this.masteryText(ch.mastery)}</div></div><span class="badge ${st.cls}">${st.label}</span></div>`;
+      const x = ch.mastery || {};
+      const txt = `掌握度 ${x.m == null ? '—' : x.m + '%'} · 覆盖率 ${x.coverage || 0}% · 已学 ${x.learned || 0} / 共 ${x.cards_total || 0}`;
+      return `<div class="chapter"><div><div class="nm">${esc(ch.name)}</div><div class="mt">${txt}</div></div><span class="badge ${esc(ch.state)}">${esc(ch.state_label)}</span></div>`;
     }).join('') || '<div class="muted">暂无章节</div>';
-    const weakPoints = weak.weak_points || [];
-    const weakWrongCount = weakPoints.reduce(function (s, w) { return s + (w.evidence || []).length; }, 0);
-    // 薄弱点入口卡：点击进入独立薄弱点页（不再内嵌展开全部错题）
-    const weakHtml = `<div class="weak" style="cursor:pointer" onclick="go('weak')"><span class="badge weak" style="flex-shrink:0">${ic('pin')}</span><div style="flex:1"><div style="font-weight:600;font-size:13.5px">薄弱点 · ${weakPoints.length} 章 · ${weakWrongCount} 道错题</div><div class="muted" style="font-size:12px">点击查看按练习 / 测评分组的错题依据</div></div><span>›</span></div>`;
-    const revHtml = (reviews.review_items || []).map(r => `<div class="rev-item ${r.status === 'done' ? 'done' : ''}">
-      <span class="badge ${r.status === 'done' ? 'master' : 'weak'}">${esc(App.chapterName(r.chapter_id))}</span>
-      <div style="flex:1;font-size:13px">${r.status === 'done' ? '已完成' : (r.due ? '已到期，可作答' : '下次复习 ' + r.interval_days + ' 天后')}</div>
-      ${r.status === 'pending' && r.due ? `<button class="mini-btn" style="border-color:var(--coral);color:var(--coral-strong)" onclick="Student.openReview('${r.id}')">作答</button>` : ''}</div>`).join('') || '<div class="muted" style="font-size:12.5px">尚未生成复习计划</div>';
-    // AI 学习建议（RPT-003；v2.6.4 修「旧建议锁死按钮」；v2.6.5 按钮常显——已生成时置灰不隐藏，避免误判「没有按钮」）
-    const adviceLines = (advice.advice || "").split("\n").filter(Boolean);
-    const canGen = advice.can_generate !== false;   // 缺字段（旧响应）兜底为可生成
+    const adviceLines = (advice.advice || '').split('\n').filter(Boolean);
+    const canGen = advice.can_generate !== false;
     const genBtn = canGen
       ? `<button class="btn sm" onclick="Student.genAdvice()" ${this._adviceBusy ? 'disabled' : ''}>${ic('sparkle')}${this._adviceBusy ? '正在生成…' : '生成今日建议'}</button>`
       : `<button class="btn sm" disabled>${ic('sparkle')}今日已生成 · 明天可再生成</button>`;
     const adviceHtml = advice.has_advice && adviceLines.length
       ? adviceLines.map(t => `<div class="ai-tip"><div class="ic">AI</div><div style="font-size:13.5px;line-height:1.5">${esc(t)}</div></div>`).join('')
-        + `<div class="muted" style="font-size:11.5px;margin-top:6px">${esc(advice.advice_date || '')} 生成 · ${advice.is_today ? '今日已生成（每天最多一次）' : '今日还没生成（每天最多一次）'}</div>`
-        + `<div style="margin-top:8px">${genBtn}</div>`
-      : `<div class="muted" style="margin-bottom:8px">还没有学习建议——点下方按钮立即生成：AI 根据你自上一条建议以来的对话、练习、测评与薄弱章节给出 3 条建议（每天最多一次）</div>
-         ${genBtn}`;
-    // 本周概况 + 成绩分析（RPT-001/002 迁移）
-    const s = weekly.stats || {};
-    const weeklyHtml = `<div class="card"><div style="font-weight:700;margin-bottom:12px">本周概况</div>
-      <div class="stat-row" style="margin:0">
-        <div class="stat"><div class="v">${s.days || 0}</div><div class="k">学习天数</div></div>
-        <div class="stat"><div class="v">${s.conversations || 0}</div><div class="k">对话天数</div></div>
-        <div class="stat"><div class="v">${s.quizzes || 0}</div><div class="k">测评天数</div></div></div>
-      <div style="font-size:13px;margin-top:10px">平均：<b>${s.avg_score == null ? '—' : s.avg_score}</b> · 最高：<b>${s.max_score == null ? '—' : s.max_score}</b></div>
-      <div class="muted" style="margin-top:6px">薄弱章节：${(weekly.weak_chapters || []).map(esc).join('、') || '无'}</div></div>`;
-    // 知识卡片学习进度块：数据 GET /api/knowledge/overview（仅含已产生复习记录的章）
-    const kcChs = (kcOv.chapters || []).filter(x => x.counts && x.counts.total > 0);
-    const kcHtml = `<div class="card"><div class="sec-title">知识卡片</div>${kcChs.map(x =>
-      `<div class="chapter"><div class="nm">${esc(App.chapterName(x.chapter_id))}</div><div class="mt">${this.masteryText(x.mastery)}</div></div>`
-    ).join('') || '尚无卡片'}</div>`;
-    const scopeHtml = `<div class="card"><div class="sec-title">学科</div>${this.masteryText(mastery.subject)}</div>` +
-      (mastery.books || []).filter(b => (b.folder || '').trim()).map(b => `<div class="card"><div class="sec-title">${esc(b.folder)}</div>${this.masteryText(b.mastery)}</div>`).join('');
-    return appbar('进度', '按章节掌握度（仅本人）') + `<div class="content">
-      <div class="muted">掌握度 = 已学卡掌握度平均（卡级 = 50% 状态分 + 50% 作答正确率）；覆盖率 = 已学卡 ÷ 全部卡</div>
-      <div class="stat-row"><div class="stat"><div class="v" style="color:var(--green)">${c.master}</div><div class="k">已掌握</div></div>
-        <div class="stat"><div class="v" style="color:var(--amber)">${c.progress}</div><div class="k">进行中</div></div>
-        <div class="stat"><div class="v" style="color:var(--red)">${c.weak}</div><div class="k">薄弱</div></div>
-        <div class="stat"><div class="v" style="color:var(--text-3)">${c.na}</div><div class="k">未评估</div></div></div>
-      <div class="card"><div style="font-weight:700;margin-bottom:10px">AI 学习建议</div>${adviceHtml}</div>
-      ${weeklyHtml}
-      ${kcHtml}
-      ${scopeHtml}
-      <div class="card"><div class="sec-title">各章节状态</div>${chapList}</div>
-      <div class="card"><div class="sec-title">薄弱点（带错题依据）</div>${weakHtml}</div>
-      <div class="card"><div class="sec-title">巩固练习闭环（间隔复习 1→3→7）</div>${revHtml}
-        <button class="btn" style="margin-top:12px" onclick="Student.genReview()">一键生成巩固练习</button></div>
-    </div>` + tabbar();
+        + `<div class="muted" style="font-size:11.5px;margin-top:6px">${esc(advice.advice_date || '')} 生成 · ${advice.is_today ? '今日已生成（每天最多一次）' : '今日还没生成（每天最多一次）'}</div><div style="margin-top:8px">${genBtn}</div>`
+      : `<div class="muted" style="margin-bottom:8px">还没有学习建议——点下方按钮立即生成</div>${genBtn}`;
+    const dataCard = `<div class="dcard"><div class="hero"><div class="v">${fmt(s.m)}</div><div class="u">${s.m == null ? '' : '%'}</div><div class="k">学科掌握度</div></div>
+      <div class="bar"><i style="width:${s.coverage || 0}%"></i></div><div class="grid">
+      <div><b>${fmt(s.coverage)}%</b><span>覆盖率</span></div><div><b>${(s.learned || 0).toLocaleString()}</b><span>已学卡片</span></div><div><b>${(s.cards_total || 0).toLocaleString()}</b><span>总卡片</span></div></div></div>`;
+    return appbar('进度', '按章节掌握度（仅本人）') + `<div class="content"><div class="muted">掌握度 = 已学卡掌握度平均（卡级 = 50% 状态分 + 50% 作答正确率）；覆盖率 = 已学卡 ÷ 全部卡</div>${dataCard}
+      <div class="card"><div class="sec-title">各章节状态</div>${chapList}</div><div class="card"><div style="font-weight:700;margin-bottom:10px">AI 学习建议</div>${adviceHtml}</div></div>` + tabbar();
   },
   async viewWeak() {
     let weak = { weak_points: [] };
