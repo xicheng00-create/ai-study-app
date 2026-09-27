@@ -73,18 +73,12 @@ def _quiz_score(con, user_id, quiz):
 
 
 def _mastery_average(con, user_id):
-    """平均 M = 已评估章节 compute_mastery().m 的均值（未评估不计入、不当 0，定义 B）。"""
-    chapters = con.execute("SELECT * FROM chapters WHERE status='published'").fetchall()
-    ms = []
-    mastered = 0
-    for ch in chapters:
-        m = mastery.compute_mastery(con, user_id, ch["id"])
-        if m["m"] is not None:
-            ms.append(m["m"])
-            if m["state"] == "master":
-                mastered += 1
-    avg = round(sum(ms) / len(ms), 1) if ms else None
-    return avg, mastered
+    """排行榜沿用全学科卡级集合，禁止跨章平均稀释。"""
+    subject = mastery.compute_subject_mastery(con, user_id)
+    chapters = con.execute("SELECT id FROM chapters WHERE status='published'").fetchall()
+    mastered = sum(mastery.compute_mastery(con, user_id, ch["id"])["state"] == "master"
+                   for ch in chapters)
+    return subject["m"], mastered
 
 
 def _weak_names(con, user_id):
@@ -227,7 +221,9 @@ def leaderboard():
     mastery_rows = []
     for uid in students:
         avg_m, mastered = _mastery_average(con, uid)
+        student_mastery = mastery.compute_subject_mastery(con, uid)
         mastery_rows.append({
+            "mastery": student_mastery,
             "user_id": uid,
             "display_name": students[uid]["display_name"],
             "avg_m": avg_m,
