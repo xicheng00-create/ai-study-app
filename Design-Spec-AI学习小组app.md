@@ -1,6 +1,6 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.11.1（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
+> 版本：v2.12.2（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
 > 日期：2026-09-27（随代码现状回写）
 > 状态：设计评审（正文静态章节以**当前生产代码**为准；§12.x 为实现状态回写历史）
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）
