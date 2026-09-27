@@ -289,9 +289,10 @@
 - **单一计算点**：`ai/mastery.py` 为唯一实现（`compute_mastery` 保留签名、内部换公式；`mastery_state` 改按上表阈值 +
   证据门槛）；API 下发 `mastery: {m, learned, cards_total, coverage, evidence_cards, state, state_label}`；
   **前端零计算**（`tutor.py` / `advice_gen.py` / `checkin.py` / `teacher.py` / `reports.py` / `class_bp.py` 全部改为读同一结构）。
-- **断言**：`tests/test_mastery_unified.py`（4 卡 = mastered/acc100、learning/acc0、new、new → 卡级 `100/20/0/0`；
-  章级 `M = 30`、`coverage = 50%`、`evidence_cards = 2`；阈值边界与证据门槛；`learned = 0` 不除零）；
+- **断言**：`tests/test_mastery.py`（UNI-MASTER 落地时并入既有文件）（4 卡 = mastered/acc100、learning/acc0、new、new → 卡级 `100/20/0/0`；
+  章级 `M = 60`（**只除已学卡**）、`coverage = 50%`、`evidence_cards = 2`；阈值边界与证据门槛；`learned = 0` 不除零）；
   既有 `test_mastery*.py` 全部按新公式重写期望值（**旧期望值属过期事实，直接改，不留双口径**）。
+  > 2026-09-28 spec 自洽审计更正：原文写 `tests/test_mastery_unified.py` **+** 章级 `M = 30`，两项均与代码不符。① 该文件**从未存在**（`git log --all --diff-filter=D -- tests/test_mastery_unified.py` 空、全仓 grep 仅命中本规格该行），断言实并入 `tests/test_mastery.py`；② `30` = 含未学卡作分母的旧口径，与本节公式 `M_level = round(Σ_{learned} M_card / learned)` 及 `ai/mastery.py:116-118`（`learned_cards` 过滤 `state != "new"`）冲突——本项目 `.venv` 实测 `mastery.rollup` 返回 `(60, 50, 2)`。
 - **PROG-012 班级级聚合口径（教师端）**：`班级 M_level` = 班内**该层非 `na`** 学生的 `M_level` **算术平均**；
   `班级 coverage` = 班内学生 `coverage` 的**算术平均**；同时必须显示 `已评估 {n} / 全班 {N} 人`（`na` 学生不计入平均但计入人数）。
   **禁止**用「全班卡总数」直接当分母（会把没开始的学生算成 0 而虚低，与 PROG-009「覆盖率独立」口径冲突）。
@@ -780,7 +781,7 @@ Student(一键巩固) → 算 M 找薄弱章 → QUIZZER 出巩固题 → INSERT
 
 ### 12.17 实现状态回写（v1.16.1~v1.16.2，2026-09-08）
 
-> - **CHAT-004 视图（学习页 appbar 与模式切换顶部缝隙根治，✅）**：v1.16.1 定位 appbar 与「引导式/直接讲解」模式切换之间出现缝隙——`.seg-sticky{position:sticky;top:74px}` 硬编码 top 对齐，但 iOS appbar 实际渲染 **71px**，留 **3px 透明带**，滚动时资料库横向卡片/对话消息从缝隙漏出。v1.16.2 **根治**：把 appbar 与模式切换**合并为同一 `.chat-head` 吸顶块**（`position:sticky;top:0;z-index:30;background:var(--bg)`），二者成为同一不透明容器一起钉在 `top:0`——从结构上消灭「appbar 与 seg 独立缝隙」，不再依赖任何硬编码 top 对位；`.chat-head .appbar{position:static;border-bottom:none}`（去掉 appbar 自身 sticky、避免与 chat-head 抢位）。**教训**：`position:sticky` 用硬编码 top（如 `top:74px`）对齐另一个可变高度祖先/兄弟是**根本脆弱**——iOS/安卓字体度量差几像素即漏缝；要根治应把要一起固定的元素包进**同一不透明 sticky 容器**。诊断「顶部漏缝」用 `scripts/verify_header_no_leak.py`（iPhone profile + 逐 2px 扫 header 带 alpha），勿手写不同版本 headless 脚本。
+> - **CHAT-004 视图（学习页 appbar 与模式切换顶部缝隙根治，✅）**：v1.16.1 定位 appbar 与「引导式/直接讲解」模式切换之间出现缝隙——`.seg-sticky{position:sticky;top:74px}` 硬编码 top 对齐，但 iOS appbar 实际渲染 **71px**，留 **3px 透明带**，滚动时资料库横向卡片/对话消息从缝隙漏出。v1.16.2 **根治**：把 appbar 与模式切换**合并为同一 `.chat-head` 吸顶块**（`position:sticky;top:0;z-index:30;background:var(--bg)`），二者成为同一不透明容器一起钉在 `top:0`——从结构上消灭「appbar 与 seg 独立缝隙」，不再依赖任何硬编码 top 对位；`.chat-head .appbar{position:static;border-bottom:none}`（去掉 appbar 自身 sticky、避免与 chat-head 抢位）。**教训**：`position:sticky` 用硬编码 top（如 `top:74px`）对齐另一个可变高度祖先/兄弟是**根本脆弱**——iOS/安卓字体度量差几像素即漏缝；要根治应把要一起固定的元素包进**同一不透明 sticky 容器**。诊断「顶部漏缝」用 **`ai-study-app-production` skill 支持脚本 `verify_header_no_leak.py`**（非本仓库内文件；iPhone profile + 逐 2px 扫 header 带 alpha），勿手写不同版本 headless 脚本。
 
 ## 十三、NFR 与已知盲区（融合 PRD §13 + architecture §十三）
 
