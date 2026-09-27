@@ -261,6 +261,7 @@
 | PROG-008 | 全部 | P1 | 四态映射阈值（UNI-MASTER 重写） |
 | PROG-009 | 全部 | P1 | 覆盖率 coverage（已学卡 ÷ 全部卡，与 M 并列） |
 | PROG-010 | 全部 | P1 | 四级 rollup（卡 → 章 → 书 → 学科，同一条公式） |
+| PROG-011 | 全部 | P1 | 练习/测评 → 卡的**主题粒度映射**（卡级作答正确率的唯一通路） |
 
 **Technical（UNI-MASTER，2026-09-27 Ray 拍板 · 与「个人复习 app」同一套公式）**
 - **L1 卡级**：`state ∈ {new, learning, reviewing, mastered}`（内部值两 app 统一；显示 未学习/学习中/复习中/已掌握）；
@@ -286,6 +287,19 @@
 - **断言**：`tests/test_mastery_unified.py`（4 卡 = mastered/acc100、learning/acc0、new、new → 卡级 `100/20/0/0`；
   章级 `M = 30`、`coverage = 50%`、`evidence_cards = 2`；阈值边界与证据门槛；`learned = 0` 不除零）；
   既有 `test_mastery*.py` 全部按新公式重写期望值（**旧期望值属过期事实，直接改，不留双口径**）。
+- **PROG-011 主题粒度映射（2026-09-27 Ray 拍板 · 卡级作答正确率的唯一通路）**：
+  本 app 的测评题 `questions` 与自主练习题 `practice_questions` **只挂到章**（`chapter_id` + `sub_concept`），
+  且实测：题目的 `sub_concept` 与卡片 `sub_concept` / `card_topics.topic` **词表对不上**（140 题按 `sub_concept` 仅 53 匹配、
+  按主题 0 匹配）→ **现状下「练习正确率」没有任何通路能接到具体卡上**，这正是「章节掌握度仅凭几道练习题」的根因。
+  - **新口径**：出题（测评 draft 生成 + 自主练习生成）时**必须写入主题归属** `topic`，取值 = 该章 `card_topics.topic` 的**原值**
+    （`questions.topic` / `practice_questions.topic` 新列，可空）。该章无主题（无 `card_topics`）时留空。
+  - **卡级 `acc`** = **该卡所属主题**（`card_topics.topic`，同章）下**全部已作答事件**的加权得分率（口径与 UNI-MASTER 一致：
+    `Σ(w·earned)/Σ(w·earned_max)`、`w = 0.5^周`）；同主题的卡**共享**该 `acc`；该主题无已作答事件 → `acc = null`（**不假装**）。
+  - **历史数据**：已有 140 条已作答练习题 / 120 条 attempts **无主题归属** → **不计入卡级 acc**，也不回填猜测值。
+  - **触发点**：出题生成、作答落库、任何计算卡级 `acc` 的位置。**覆盖路径**：`ai/quizzer.py` + 自主练习生成 + `ai/mastery.py`，**无旁路**。
+  - **违规处置**：出题不写主题、或按章级分数直接下发给卡 → 缺陷。
+  - **机械断言**：`tests/test_topic_mapping.py`（同主题 2 卡 + 2 题作答 → 两卡 `acc` 相同且 = 加权得分率；无题主题 → `acc = null`；
+    无主题章 → 不抛异常）+ 反断言：`mastery.py` 不得读取 `questions.chapter_id` 聚合后直接赋给卡。
 - 间隔复习状态机（architecture §5.4）：`review_items` `pending ─[到期+完成]─► done`；答对 `interval_days *=3`(1→3→7)，答错重置为 1。调度复用 launchd 每日扫描（不引入 Celery/Redis）。
 - 数据：attempts(DM-006, 含 quiz_version)、review_items(DM-007)、questions(DM-005)。
 - 薄弱点：章节级 + 知识点级(P2)，每条附 `attempts` 错题依据（拒绝凭空定性，PROG-005）；v1.8.0 起同时纳入**自主练习错题**（`practice_questions`）作为薄弱点/巩固练习输入，**v1.9.0 起练习（已作答）计入掌握度 M；UNI-MASTER 起经卡级作答正确率进入**（见本节 M 公式；旧口径「不改 M」「直接对层级计分」均已作废）（REQ-PRACTICE-003）。
