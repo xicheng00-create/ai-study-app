@@ -402,9 +402,24 @@ select.count-sel{font-size:16px;font-weight:600;font-family:var(--font);color:va
 .notif-body{flex:1;min-width:0}
 .notif-t{font-weight:700;font-size:14px;margin-bottom:2px}
 .notif-b{font-size:13px;color:var(--text-2);line-height:1.45}
-.notif-time{font-size:11px;color:var(--text-3);margin-top:5px}
 
-/* v2.12.0 B — learning hub and knowledge deck */
+/* v2.12.0 C — quiz and progress data language */
+.qcard{border-radius:16px;box-shadow:var(--shadow);padding:15px}
+.qcard .ic{background:var(--coral-soft);color:var(--coral-strong)}
+.badge.master{background:var(--green-soft);color:var(--green)}
+.badge.prog,.badge.weak{background:var(--coral-soft);color:var(--coral-strong)}
+.badge.ver{background:var(--surface-2);color:var(--text-2)}
+.dcard{border-radius:16px;padding:18px;box-shadow:var(--shadow)}
+.dcard .hero .v,.dcard .hero .u{color:var(--coral-strong)}
+.dcard .bar{height:6px;background:var(--surface-2)}
+.dcard .bar>i{background:#55524B}
+.dcard .grid{border-top-color:var(--border)}
+.chapter .badge.master{background:var(--green-soft);color:var(--green)}
+.chapter .badge.weak,.chapter .badge.na{background:var(--coral-soft);color:var(--coral-strong)}
+.ai-tip .ic{background:var(--coral-soft);color:var(--coral-strong)}
+.card .btn.sm:disabled{background:var(--surface-2);color:var(--text-2);border-color:var(--border);opacity:1}
+.weak{border-bottom-color:var(--border)}
+
 .home-card{border-radius:16px;border-color:var(--border);background:var(--surface);box-shadow:var(--shadow);padding:15px 16px;margin-bottom:12px}
 .home-ic{border-radius:12px;background:var(--coral-soft);color:var(--coral-strong)}
 .home-ic.alt{background:#F5EFE7;color:var(--coral-strong)}
