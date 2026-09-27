@@ -186,6 +186,8 @@ const audit = `(() => {
      const md=pageEval(`JSON.stringify({coverage:getComputedStyle(document.querySelector('.dcard .bar>i')).backgroundColor, rows:[...document.querySelectorAll('.chapter')].map(r=>({bars:r.querySelectorAll('.chapter-bar i').length,text:r.innerText,mastery:r.querySelector('.mastery-bar')?getComputedStyle(r.querySelector('.mastery-bar')).backgroundColor:null}))})`);
      if(md.coverage!=='rgb(85, 82, 75)') fail(`${route}@${width}: 数据卡覆盖率条颜色错误 ${md.coverage}`); else pass(`${route}@${width}: 数据卡覆盖率条为深灰`);
      if(md.rows.some(r=>r.bars<2||r.mastery!=='rgb(242, 113, 78)'||!r.text.includes('已学')||!r.text.includes('共'))) fail(`${route}@${width}: 章节两条 bar/文案/掌握度颜色断言失败`); else pass(`${route}@${width}: 章节两条 bar、文案与橙色掌握度通过`);
+     const dup=md.rows.filter(r=>((r.text.match(/掌握度/g)||[]).length>1)||((r.text.match(/覆盖率/g)||[]).length>1));
+     if(dup.length) fail(`${route}@${width}: 章节行数值与 bar 标签重复（掌握度/覆盖率各应只出现 1 次）`); else pass(`${route}@${width}: 章节行无重复数值（数值只在 bar 标签上）`);
     } else {
      const wi=x.text.indexOf('薄弱点（带错题依据）'), ri=x.text.indexOf('巩固练习闭环');
      if(wi<0||ri<0||wi>ri) fail(`${route}@${width}: 测评承载块缺失或顺序错误`); else pass(`${route}@${width}: 测评承载块顺序正确`);

@@ -1284,7 +1284,7 @@ const Student = {
       const x = ch.mastery || {};
       const mastery = x.m == null ? 0 : x.m;
       const coverage = x.coverage || 0;
-      const txt = `掌握度 ${x.m == null ? '—' : x.m + '%'} · 覆盖率 ${coverage}% · 已学 ${x.learned || 0} / 共 ${x.cards_total || 0}`;
+      const txt = `已学 ${x.learned || 0} / 共 ${x.cards_total || 0}`;
       return `<div class="chapter"><div class="chapter-progress"><div class="nm">${esc(ch.name)}</div><div class="mt chapter-metrics">${txt}</div><div class="chapter-bar-row"><span>掌握度 ${x.m == null ? '—' : x.m + '%'}</span><div class="chapter-bar"><i class="mastery-bar" style="width:${mastery}%"></i></div></div><div class="chapter-bar-row"><span>覆盖率 ${coverage}%</span><div class="chapter-bar"><i class="coverage-bar" style="width:${coverage}%"></i></div></div></div><span class="badge ${esc(ch.state)}">${esc(ch.state_label)}</span></div>`;
     }).join('') || '<div class="muted">暂无章节</div>';
     const adviceLines = (advice.advice || '').split('\n').filter(Boolean);
