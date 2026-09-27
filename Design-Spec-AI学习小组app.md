@@ -21,7 +21,7 @@
 | AI 编排 | 引导式/出题/批改 | **极简三 Agent 提示词**（TUTOR/QUIZZER/GRADER）+ 两层 Fallback | CHAT-004, QUIZ-001/003 |
 | RAG | 资料原文检索 | SQLite `chunks` 表关键词/2-gram 检索（top-k=5，Jaccard 重合度；无向量库/无嵌入） | MAT-003, ARCH-RAG |
 | 部署韧性 | 常驻 + 备份 | 用户域 **LaunchAgent** `com.shuiyanhaha.aistudy`（KeepAlive+RunAtLoad，端口 5003）+ iCloud rsync（先 `wal_checkpoint`） | DEP-006, DEP-008, F1/F2 |
-| 数据正确性 | 重出题不污染掌握度 | `attempts.quiz_version`；M 聚合该章「最新 published version 测评 + 自主练习 + 已掌握知识卡片（仅奖不罚）」三部分，按章时间衰减加权（F3 仅约束测评不被重出题污染） | DM-006, PROG-007, F3 |
+| 数据正确性 | 重出题不污染掌握度 | `attempts.quiz_version`；M 按 **UNI-MASTER** 口径由**卡级 rollup**（卡级 = 0.5×状态分 + 0.5×作答正确率；章/书/学科同式，并按周半衰期加权），卡片百分比**必须**参与聚合（F3 仅约束测评不被重出题污染） | DM-006, PROG-007, F3 |
 | 安全护栏 | 越权防护 | `@user_scope` + `@role_required` + 越权读 403 集成测试 | AUTH-004, MAT-007, F9 |
 | 护栏兜底 | 不静默错答 | TUTOR 输出门控 + 三层降级（两层落地） | CHAT-004, F5 |
 | 测评评分 | 百分制（默认 PRESET `20c`=20 道选择题×5 分合计 100；或 `20b`=20 道是非题；v1.10.0 起取消问答题；教师可配 choice/bool 组合凑满 100） | 客观题（选择/是非）由**系统确定性判分**（0 或满分）；问答题（仅兼容库里旧题）由 **AI(GRADER)** 评 0–10；教师可覆核改分；questions.points + attempts.score 改存实际得分 | QUIZ-003/005/009 |
@@ -206,7 +206,7 @@
 | PRACTICE-003 | student | P1 | 练习错题进入薄弱点/巩固练习依据（v1.9.0 起练习同时计入掌握度 M）|
 
 **Technical**
-- **独立数据层**：`practice_sessions`（user_id/chapter_ids/difficulty/total_points/config_json）+ `practice_questions`（session_id/chapter_id/sub_concept/type/content/options/answer_key/points/content_hash/correct/user_answer/score/reason/answered_at）。练习是学生**个人即席生成**，**不进老师 draft→publish 状态机**，不写 quizzes/questions/attempts；**v1.9.0 起练习（已作答）与测评同权重计入掌握度 M（任务书定义 A），不再是「不污染 M」**。
+- **独立数据层**：`practice_sessions`（user_id/chapter_ids/difficulty/total_points/config_json）+ `practice_questions`（session_id/chapter_id/sub_concept/type/content/options/answer_key/points/content_hash/correct/user_answer/score/reason/answered_at）。练习是学生**个人即席生成**，**不进老师 draft→publish 状态机**，不写 quizzes/questions/attempts；**练习与测评自 v1.9.0 起计入掌握度；自 UNI-MASTER（2026-09-27）起一律经「卡级作答正确率」进入 M（不再直接对层级 M 计分）**。
 - **题数 5-10 自定义默认 5 + 卡片驱动 + 难度 high + 同学生跨知识点不重复（v1.16.0 起，v1.17.x 强化跨会话知识点；v2.7.4 起题源改知识卡片）**：`quizzer.generate_practice_questions()` 基于章节**知识卡片**出 **count 道 choice/bool（count 默认 5、上限 10、下限 5，入参校验）**（**v1.10.0 起取消 essay**、v1.16.0 起不再强制 20 道/100 分），difficulty=hard；不再凑 100 分，`total_points` 写各题实际分之和，`_session_dict` 按实际 total_points 归一。**题源=知识卡片（v2.7.4）**：`quizzer._retrieve_cards()` 按 `sub_concept` 轮转取该章卡片（上限 `MAX_SOURCE_CARDS=50`）注入 QUIZZER_SYSTEM（`source_cards`），提示词明写「唯一题源=知识卡片」且禁死记硬背/代码细节题；无卡片或 LLM 真返空时返回空列表、由端点提示（无卡片 → 「所选章节暂无知识卡片，无法出题」，否则「练习生成失败，请稍后重试」），**不再硬塞通用模板**。**同学生跨会话去重（题干级）**：`practice_questions.content_hash`（题干规范化 hash，去空格/标点/大小写）存 `hash(q.content)`，生成前查该学生历史题干注入提示词「避免重复、基于资料衍生变体」，后端 `_cap_to_max` 再按规范化 hash 过滤已出题干；不同学生可相同、同考点不同问法不算重复。**⚠️ 知识点覆盖（v1.16.x 检索广 + v1.17.x 跨会话知识点不重复）**：`_retrieve_chunks` 对练习**不再只取 material_id/chunk_idx 排序前 5 条**（那样 82-chunk 的 md 主体内容一条都进不去、题目全撞同批知识点），改为**跨全章多样化抽样**（按 material 分层 + chunk 分段各取若干，喂料上限 ~6000 字符，保证大 md 全覆盖）；`_cap_to_max` 在题干 hash 之外**加 sub_concept 维度去重**（单次题目尽量不同知识点，不足才允许同点变体）；**跨会话知识点不重复（v1.17.x）**——生成前查该生历史练过的 `sub_concept`（`practice_questions.sub_concept` distinct）做成 `exclude_sub_concepts` 注入提示词（「避免这些子概念，从其余知识点出题」）+ 后端 `_cap_to_max` 过滤 `sub_concept ∈ exclude_sub_concepts` 的题。这样每次练习命中的知识点不同，~22 知识点每次 5 道约 4-5 次才开始重复。**（v2.7.4 起上文的「资料抽样」实现已废弃**——`_retrieve_chunks`/`_chunk_text` 删除，改由 `_retrieve_cards()` 按 `sub_concept` 轮转取该章知识卡片作唯一题源，取卡上限 `MAX_SOURCE_CARDS=50`，见 §3.4 Technical / QUIZ-011）**
 - **难度 hard（内部字段）**：`QUIZZER_SYSTEM` 注入 `{difficulty}`（normal/hard 指示）；练习固定 `difficulty='hard'`（综合运用/多步推理/概念辨析/跨知识点），老师测评默认 `normal` 不受影响。**注意**：`difficulty` 只是内部字段（无难度筛选项/徽章），但**前端确有一处难度文案**——`backend/frontend/js/student.js` 的自主练习 appbar 恒显示「AI 出题 · 5-10 题 · 高难度」（v1.16.0「自主练习改最多5道资料驱动高难度」起）；§12.7 记录的「移除难度标注」是 v1.9.0 当时的清理，不构成现状态依据（以代码为准）。
 - **批改复用 GRADER**：与测评一致（客观题确定性判分；essay AI 三档/启发式分支保留以兼容旧数据，v1.10.0 起不再产生）；`practice_questions` 写 `correct/score/user_answer/reason/answered_at`。
@@ -257,14 +257,38 @@
 | PROG-004 | teacher | P1 | 全班概览聚合 |
 | PROG-005 | 全部 | P1 | 薄弱点列表（附错题依据） |
 | PROG-006 | student | P1 | 一键巩固练习 + 间隔复习 |
-| PROG-007 | 全部 | P1 | 掌握度 M 计算（时间衰减加权） |
-| PROG-008 | 全部 | P1 | 四态映射阈值 |
+| PROG-007 | 全部 | P1 | 掌握度 M = 卡级（0.5×状态分 + 0.5×作答正确率）四级 rollup，覆盖率并列（UNI-MASTER，与个人复习 app 同一套） |
+| PROG-008 | 全部 | P1 | 四态映射阈值（UNI-MASTER 重写） |
+| PROG-009 | 全部 | P1 | 覆盖率 coverage（已学卡 ÷ 全部卡，与 M 并列） |
+| PROG-010 | 全部 | P1 | 四级 rollup（卡 → 章 → 书 → 学科，同一条公式） |
 
-**Technical**
-- M 公式（百分制）：`M = Σ(wᵢ·score_earnedᵢ) / Σ(wᵢ·points_possibleᵢ) × 100`，`wᵢ=0.5^间隔周数`，`points_possibleᵢ` 取 `questions.points`（选择/是非 5，问答 10 仅兼容旧题）；**M 聚合三部分（同一条加权公式、按章聚合、带时间衰减，对应 `ai/mastery.py::compute_mastery`）**：① 该章最新 published version 的测评 attempts（F3）；② 该章自主练习 `practice_questions`（answered_at 非空，earned=score、possible=points）；③ 该章本人 `knowledge_reviews` 中 `status='mastered'` 的卡片（每张按 5 分满分计入分子与分母，**仅奖不罚**——new/learning/reviewing 卡不进分母，不因未掌握卡拉低 M）。仅当三者皆无作答/无掌握卡时才返回 `m=None`（未评估）。M 为 0–100 百分比。四态：已掌握 M≥80 且有效作答≥2；进行中 50≤M<80 或 M≥80 但<2 次；薄弱 M<50；未评估 从未测验/练习/掌握卡（不计入薄弱）。**有效作答次数 = 测评 attempt 行数 + 已作答 practice_questions 行数 + 已掌握卡片张数**（影响「已掌握≥2 次」门槛）。
+**Technical（UNI-MASTER，2026-09-27 Ray 拍板 · 与「个人复习 app」同一套公式）**
+- **L1 卡级**：`state ∈ {new, learning, reviewing, mastered}`（内部值两 app 统一；显示 未学习/学习中/复习中/已掌握）；
+  `state_score` = new 0 / learning 40 / reviewing 70 / mastered 100；
+  `acc`（作答正确率）= `Σ(w·earned) / Σ(w·earned_max)`，`w = 0.5^自作答起的周数`（半衰期 1 周）；
+  作答事件 = 知识卡自评（记得 1 / 忘了 0，满分 1）+ 测评 `attempts`（earned = `effective_score`，possible = `questions.points`）
+  + 自主练习 `practice_questions`（earned = `score`，possible = `points`，`answered_at` 非空）；
+  无作答事件 → `acc = null`、`evidence = false`、`M_card = state_score`；
+  `M_card = round(0.5 × state_score + 0.5 × acc)`（`acc = null` 时 `M_card = state_score`）。
+  **卡级 `mastered` 判定 = 调度条件 且 作答事件 ≥ 2 且 `acc ≥ 80`**（治「一道题就掌握」）。
+- **L2/L3/L4（章 / 书 / 学科）= 同一条公式、不同集合**：`learned` = 该层 `state ≠ new` 的卡数；
+  `M_level = round(Σ_{learned} M_card / learned)`（**章级沿用 `quiz_version` 与 `knowledge_cards.chapter_id` 归属**）；
+  `learned = 0` → `m = null`（未评估，**不除零**）；`coverage = round(learned / cards_total × 100)` ——
+  **覆盖率是独立指标，与掌握度并列显示**（不是分母、不参与 M）；`evidence_cards` = 该层 `evidence = true` 的卡数。
+- **层级四态（PROG-008 重写）**：`已掌握` ⟺ `M ≥ 80` 且 `evidence_cards ≥ max(2, ceil(cards_total × 0.2))`；
+  `进行中` ⟺ `M ≥ 50`；`薄弱` ⟺ `learned > 0 且 M < 50`；`未评估` ⟺ `learned = 0`。
+  词表与卡级四态**含义不同，不得挤在同一 UI 位**。
+- **废除的旧口径（写进规格以免复活）**：①「已掌握卡按 5 分满分、**仅奖不罚**」（卡片百分比不进分母）；
+  ② 测评/练习分数**直接**进层级 M（今后一律只经卡级 `acc` 进入）；③ 旧四态「有效作答次数」口径。
+- **单一计算点**：`ai/mastery.py` 为唯一实现（`compute_mastery` 保留签名、内部换公式；`mastery_state` 改按上表阈值 +
+  证据门槛）；API 下发 `mastery: {m, learned, cards_total, coverage, evidence_cards, state, state_label}`；
+  **前端零计算**（`tutor.py` / `advice_gen.py` / `checkin.py` / `teacher.py` / `reports.py` / `class_bp.py` 全部改为读同一结构）。
+- **断言**：`tests/test_mastery_unified.py`（4 卡 = mastered/acc100、learning/acc0、new、new → 卡级 `100/20/0/0`；
+  章级 `M = 30`、`coverage = 50%`、`evidence_cards = 2`；阈值边界与证据门槛；`learned = 0` 不除零）；
+  既有 `test_mastery*.py` 全部按新公式重写期望值（**旧期望值属过期事实，直接改，不留双口径**）。
 - 间隔复习状态机（architecture §5.4）：`review_items` `pending ─[到期+完成]─► done`；答对 `interval_days *=3`(1→3→7)，答错重置为 1。调度复用 launchd 每日扫描（不引入 Celery/Redis）。
 - 数据：attempts(DM-006, 含 quiz_version)、review_items(DM-007)、questions(DM-005)。
-- 薄弱点：章节级 + 知识点级(P2)，每条附 `attempts` 错题依据（拒绝凭空定性，PROG-005）；v1.8.0 起同时纳入**自主练习错题**（`practice_questions`）作为薄弱点/巩固练习输入，**v1.9.0 起练习（已作答）同权重计入掌握度 M**（见本节 M 公式；旧口径「不改 M」已作废）（REQ-PRACTICE-003）。
+- 薄弱点：章节级 + 知识点级(P2)，每条附 `attempts` 错题依据（拒绝凭空定性，PROG-005）；v1.8.0 起同时纳入**自主练习错题**（`practice_questions`）作为薄弱点/巩固练习输入，**v1.9.0 起练习（已作答）计入掌握度 M；UNI-MASTER 起经卡级作答正确率进入**（见本节 M 公式；旧口径「不改 M」「直接对层级计分」均已作废）（REQ-PRACTICE-003）。
 
 ### 3.6 周报（已废弃 → 拆分迁移）— `reports_bp`（L3，REQ-RPT，AI: TUTOR 建议）
 **Functional**
@@ -838,7 +862,7 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 ### 12.20 实现状态回写（v2.0.0，2026-09-08）
 - **MAT 选章 = hub 可滚动多选 list（REQ-KNOW/CHAT 检索范围升级）**：学习主菜单资料库每章加圆形勾选框，列表超屏可滚，已选计数 + 全选/清空，勾选集记忆 localStorage（`aistudy_sel_chapters`）；对话页横滑选章卡撤除，选章统一在学习页。多选集驱动：① 对话 `post_message` 带 `chapter_ids` → 新 `tutor._retrieve_multi` 逐章 RAG 检索、按 chunk_id 去重合并、片段【章名】标注（防跨章资料混淆）；路径提问（askCtx）仍按 session 章节优先。② 知识卡片跨章合并：列表按章分组折叠（点章头展开网格）、「开始复习」置顶跨章复习、deck 每卡标章名；复习进度签名改 `ids`（章集），兼容旧 `{cid}`。
 - **REQ-KNOW-002 翻卡交互动画**：翻转由整页 render 重建改为同一 DOM 切 `is-flipped` class → CSS 3D 过渡真正生效；touch/mouse **跟手拖拽**（横向位移+倾斜、竖向滚动不劫持），超 70px 甩出（右滑=记住了/左滑=没记住）播 `.out-r/.out-l` 飞出动画后提交，未超阈值弹性回位；按钮点击同样先飞后提交；换卡 `.kc-in` 入场动画。
-- **PROG-007 掌握度口径扩展（知识卡计入 M）**：`compute_mastery` JOIN 该章 `knowledge_reviews`（status='mastered' 且 last_review_at 非空）每张按 5 分满分 × 时间衰减权重 w(last_review_at) 计入分子分母，attempts 同步累加；**仅奖不罚**——new/learning/reviewing 卡不进分母，不因未掌握卡拉低 M（示例：quiz 40% + 30 张 mastered 卡 ≈ M 76%）。进度页新增「知识卡片（计入掌握度）」块（`GET /api/knowledge/overview`）：各章已掌握/总数、学习中/未学/今日待复习、进度条 + 百分比徽章。
+- **PROG-007 掌握度口径扩展（知识卡计入 M）** ⚠️ **以下 v1.8.x 口径已被 UNI-MASTER（2026-09-27）作废，仅存历史**：`compute_mastery` JOIN 该章 `knowledge_reviews`（status='mastered' 且 last_review_at 非空）每张按 5 分满分 × 时间衰减权重 w(last_review_at) 计入分子分母，attempts 同步累加；**仅奖不罚**——new/learning/reviewing 卡不进分母，不因未掌握卡拉低 M（示例：quiz 40% + 30 张 mastered 卡 ≈ M 76%）。进度页新增「知识卡片（计入掌握度）」块（`GET /api/knowledge/overview`）：各章已掌握/总数、学习中/未学/今日待复习、进度条 + 百分比徽章。
 
 ### 12.21 实现状态回写（v2.1.0，2026-09-08，用户 9 项真机反馈集中修复）
 - **REQ-KNOW-002 甩出方向反了（bug 修复）**：拖拽判定原为 `dx<0 → reviewKnowledge(true)`，左滑被当成「记住了」向右飞出。改为 `dx > 0 → 记住了（.out-r 右飞）/ dx < 0 → 没记住（.out-l 左飞）`，touch + mouse 双路径一致，与按钮语义及 `.kc-hint` 文案对齐。
