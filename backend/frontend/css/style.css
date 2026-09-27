@@ -404,7 +404,26 @@ select.count-sel{font-size:16px;font-weight:600;font-family:var(--font);color:va
 .notif-b{font-size:13px;color:var(--text-2);line-height:1.45}
 .notif-time{font-size:11px;color:var(--text-3);margin-top:5px}
 
-/* v2.12.0 A — warm-paper component language; structure and interactions unchanged */
+/* v2.12.0 B — learning hub and knowledge deck */
+.home-card{border-radius:16px;border-color:var(--border);background:var(--surface);box-shadow:var(--shadow);padding:15px 16px;margin-bottom:12px}
+.home-ic{border-radius:12px;background:var(--coral-soft);color:var(--coral-strong)}
+.home-ic.alt{background:#F5EFE7;color:var(--coral-strong)}
+.task-card,.remind-card,.lib-card{box-shadow:var(--shadow)}
+.task-bar{height:6px;background:var(--surface-2)}
+.task-bar-fill{background:var(--coral)}
+.task-bar-fill.full{background:var(--green)}
+.chapter{border-radius:14px;padding:13px 14px;margin-bottom:12px;background:var(--surface);border-color:var(--border)}
+.chapter.active{border-color:var(--coral);background:var(--coral-soft)}
+.lib-tools .mini-btn,.mini-btn{border-radius:8px}
+.kc-progress{height:4px;background:var(--border);margin:8px 0 20px}
+.kc-progress i{background:var(--coral)}
+.kc-face{border-radius:16px;border-color:var(--border);box-shadow:0 8px 22px rgba(35,32,22,.10);padding:28px}
+.kc-back{background:var(--coral-soft)}
+.kc-actions{gap:12px}
+.kc-actions .btn{border-radius:14px}
+.kc-hint{color:var(--text-2)}
+.kc-tutor,.kc-quit{border-color:var(--border)}
+
 :root{
   --bg:#FBF7F2; --surface:#FFFDF9; --surface-2:#F5EFE7; --text:#1B1E22; --text-2:#6E6553;
   --text-3:#958B7B; --border:#E5DECC; --coral:#F2714E; --coral-strong:#E25C3A;
