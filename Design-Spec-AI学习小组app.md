@@ -186,6 +186,7 @@
 | QUIZ-009 | teacher | P1 | AI 评分后教师可覆核/改分（graded_by/is_reviewed）|
 | QUIZ-010 | teacher | P1 | 已发布测评按已作答学生查看完整错题与得分 |
 | QUIZ-011 | teacher | P1 | **出题题源严格限定知识卡片（v2.7.4，CR-2026-0922-CARDSCOPE）**：草稿与重出只用该章 `knowledge_cards` 组装题源，**不再对资料做 RAG 检索**；卡片未覆盖的内容一律不出题；该范围无卡片、或卡片不足以支撑所选题量时**报错不出题**（不再用通用模板兜底）|
+| QUIZ-012 | student | **P0** | 测评页承载**薄弱点入口**与**巩固练习闭环**（2026-09-27 从进度页迁入；见 §3.5 PROG-014） |
 
 **Technical**
 - **百分制评分模型（QUIZ-003/005）**：**v1.10.0 起取消问答题（essay）**——题型仅限选择题（choice）与是非题（bool），每题 5 分；`questions.points` 按题型写入，`quizzes.total_points=100`；QUIZZER 默认 PRESET `20c`（20 选择题）凑满 100，另 `20b`（20 是非题）可选，教师亦可自定义 choice/bool 组合使 `config_total` 合计=100（QUIZ-005 校验）。`POINTS` 仍保留 `essay=10` 仅兼容库里旧题数据。学生单题得分 `attempts.score∈[0,points]`。
@@ -263,6 +264,9 @@
 | PROG-010 | 全部 | P1 | 四级 rollup（卡 → 章 → 书 → 学科，同一条公式） |
 | PROG-011 | 全部 | P1 | 练习/测评 → 卡的**主题粒度映射**（卡级作答正确率的唯一通路） |
 | PROG-012 | teacher | P1 | 班级级掌握度聚合口径（学生 M 的算术平均 + 已评估人数） |
+| PROG-013 | student | **P0** | 进度页信息架构重做（三段式：学科数据卡 → 各章节状态 → AI 学习建议；其余模块下线） |
+| PROG-014 | student | **P0** | 测评页承载「薄弱点入口 + 巩固练习闭环」（从进度页迁入，逻辑不变） |
+| PROG-015 | 全部 | **P0** | 前端 UI 机械断言 `scripts/ui_audit.js` + `make ui-audit`（本 app 首次建立） |
 
 **Technical（UNI-MASTER，2026-09-27 Ray 拍板 · 与「个人复习 app」同一套公式）**
 - **L1 卡级**：`state ∈ {new, learning, reviewing, mastered}`（内部值两 app 统一；显示 未学习/学习中/复习中/已掌握）；
@@ -304,6 +308,32 @@
   - **违规处置**：出题不写主题、或按章级分数直接下发给卡 → 缺陷。
   - **机械断言**：`tests/test_topic_mapping.py`（同主题 2 卡 + 2 题作答 → 两卡 `acc` 相同且 = 加权得分率；无题主题 → `acc = null`；
     无主题章 → 不抛异常）+ 反断言：`mastery.py` 不得读取 `questions.chapter_id` 聚合后直接赋给卡。
+- **PROG-013 进度页信息架构重做（2026-09-27 Ray 拍板 · 已过目对抗稿）**：学生端进度页 `Student.viewProgress` **只保留三段、顺序固定**：
+  1. **学科数据卡**（页顶，一个大 data card）：`学科掌握度 M%` + `覆盖率 %` + `已学卡片数` + `总卡片数`；数据全部来自 `GET /api/progress/mastery` 的 `subject`
+     （`m` / `coverage` / `learned` / `cards_total`），**前端零计算**；`m = null`（无已学）时显示 `—` 而非 `0%`。
+  2. **各章节状态**：逐章一行 = 章名 + `掌握度 x% · 覆盖率 y% · 已学 a / 共 b`（`m = null` → `掌握度 —`）+ 四态 tag。
+  3. **AI 学习建议**（页**最底部**，逻辑不变，仍读 `GET /api/progress/advice`）。
+  - **删除清单（进度页不得再渲染）**：四态计数小行（已掌握/进行中/薄弱/未评估 数字行）、本周概况、知识卡片学习进度块、学科/书掌握度卡（并入 ①）、薄弱点入口卡（→ PROG-014）、巩固练习闭环（→ PROG-014）。
+    **后端接口 `weekly-stats` / `knowledge/overview` 保留**（只下线该页面渲染，不删接口）。
+  - **tag 统一尺寸**：同一页内所有章节四态 tag（`.chapter .badge`）渲染宽高必须**各自唯一**（`new Set(widths).size === 1 && new Set(heights).size === 1`）；
+    文字长度差异（薄弱/未评估/已掌握/进行中）**不得**改变盒子大小（`min-width` + `text-align:center` + 同一 `padding`）。
+  - **触发点**：学生端进度页渲染。**覆盖路径**：`backend/frontend/js/student.js::viewProgress`，**无旁路**（不得有第二处渲染被删模块）。
+  - **违规处置**：被删模块重新出现 / tag 尺寸不齐 / 数据卡缺四数字之一 / 前端出现除法或阈值比较 → 缺陷。
+  - **机械断言**：见 PROG-015（结构存在 + 删除清单零命中 + tag 尺寸唯一 + 四态 tag 文本 ∈ 词表）。
+
+- **PROG-014 测评页承载薄弱点与巩固练习闭环（2026-09-27 Ray 拍板）**：`Student.viewQuizList` 内容区顺序 =
+  ① 自主练习入口 + ② 测评列表（**原样不动**）→ ③ **薄弱点入口卡**（`onclick="go('weak')"`）→ ④ **巩固练习闭环**（间隔复习 1→3→7 列表 + 「一键生成巩固练习」按钮 `Student.genReview()`）。
+  - 两块**逻辑与文案零改动**，只换宿主页面；**进度页不得再渲染这两块**。
+  - **触发点**：测评页渲染、进度页渲染。**覆盖路径**：`student.js::viewQuizList` / `viewProgress`，无旁路。
+  - **机械断言**：DOM 顺序（`.content` 内 index 单调递增：自主练习入口 < 测评列表 < 薄弱点卡 < 巩固练习卡）+ 进度页零命中。
+
+- **PROG-015 前端 UI 机械断言（本 app 首次建立）**：新增 `scripts/ui_audit.js`（**无 node 依赖，走本机 `agent-browser` CLI**，照「个人复习 app」同款实现）+ `Makefile` 目标 `ui-audit`（并入 `make all`）。
+  - **口径**：UI 条款没有机械断言 = 未完成；脚本**非零退出码 = 失败**；服务未启动 → 报错退出并提示 `launchctl kickstart -k gui/$(id -u)/com.shuiyanhaha.aistudy`（**不得静默跳过**）。
+  - **覆盖（≥ 两档宽 390 / 1280）**：PROG-013 ①②③ 结构与顺序；删除清单**零命中**；tag 尺寸唯一；
+    PROG-014 两块在测评页、且不在进度页；UNI-MASTER 口径句存在；四态 tag 文本 ∈ {已掌握, 进行中, 薄弱, 未评估}；
+    `document.body.scrollWidth === window.innerWidth`（无横向滚动）；相邻可交互块竖向间隙 ≥ 12px。
+  - **反证要求**：每条新断言必须做「植入违规 → 断言 FAIL」反证，植入前后比 `sha256`，证明脚本真会抓（交付必附反证输出）。
+
 - 间隔复习状态机（architecture §5.4）：`review_items` `pending ─[到期+完成]─► done`；答对 `interval_days *=3`(1→3→7)，答错重置为 1。调度复用 launchd 每日扫描（不引入 Celery/Redis）。
 - 数据：attempts(DM-006, 含 quiz_version)、review_items(DM-007)、questions(DM-005)。
 - 薄弱点：章节级 + 知识点级(P2)，每条附 `attempts` 错题依据（拒绝凭空定性，PROG-005）；v1.8.0 起同时纳入**自主练习错题**（`practice_questions`）作为薄弱点/巩固练习输入，**v1.9.0 起练习（已作答）计入掌握度 M；UNI-MASTER 起经卡级作答正确率进入**（见本节 M 公式；旧口径「不改 M」「直接对层级计分」均已作废）（REQ-PRACTICE-003）。
