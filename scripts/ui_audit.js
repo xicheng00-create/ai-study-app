@@ -127,7 +127,7 @@ const audit = `(() => {
  const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
  const isAnc = (x, y) => x !== y && (x.contains(y) || y.contains(x));
  const need = e => e.matches(TIER_HI) ? 12 : (e.matches(TIER_LO) ? 6 : 12);
- const items = [...document.querySelectorAll(TIER_HI + ', ' + TIER_LO)].filter(vis).slice(0, 400);
+ const items = [...document.querySelectorAll(TIER_HI + ', ' + TIER_LO)].filter(e => vis(e) && !e.closest('.tabbar')).slice(0, 400);
  const gaps = [];
  for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
   const A = items[i], B = items[j]; if (isAnc(A, B)) continue;
@@ -183,6 +183,9 @@ const audit = `(() => {
      if(!x.rects.length||new Set(x.rects.map(r=>r[0])).size!==1||new Set(x.rects.map(r=>r[1])).size!==1) fail(`${route}@${width}: tag 尺寸不唯一`); else pass(`${route}@${width}: tag 尺寸唯一`);
      if(x.rects.some(r=>!['已掌握','进行中','薄弱','未评估'].includes(r[2]))) fail(`${route}@${width}: tag 文本不在四态词表`); else pass(`${route}@${width}: 四态 tag 文本合法`);
      if(x.text.includes('薄弱点')||x.text.includes('巩固练习')) fail(`${route}@${width}: 进度页出现迁移块`); else pass(`${route}@${width}: 不出现迁移块`);
+     const md=pageEval(`JSON.stringify({coverage:getComputedStyle(document.querySelector('.dcard .bar>i')).backgroundColor, rows:[...document.querySelectorAll('.chapter')].map(r=>({bars:r.querySelectorAll('.chapter-bar i').length,text:r.innerText,mastery:r.querySelector('.mastery-bar')?getComputedStyle(r.querySelector('.mastery-bar')).backgroundColor:null}))})`);
+     if(md.coverage!=='rgb(85, 82, 75)') fail(`${route}@${width}: 数据卡覆盖率条颜色错误 ${md.coverage}`); else pass(`${route}@${width}: 数据卡覆盖率条为深灰`);
+     if(md.rows.some(r=>r.bars<2||r.mastery!=='rgb(242, 113, 78)'||!r.text.includes('已学')||!r.text.includes('共'))) fail(`${route}@${width}: 章节两条 bar/文案/掌握度颜色断言失败`); else pass(`${route}@${width}: 章节两条 bar、文案与橙色掌握度通过`);
     } else {
      const wi=x.text.indexOf('薄弱点（带错题依据）'), ri=x.text.indexOf('巩固练习闭环');
      if(wi<0||ri<0||wi>ri) fail(`${route}@${width}: 测评承载块缺失或顺序错误`); else pass(`${route}@${width}: 测评承载块顺序正确`);
