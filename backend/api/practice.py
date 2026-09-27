@@ -138,11 +138,11 @@ def create_practice_session(con, user_id, chapter_ids, count=5, sub_concepts="")
         cid = chapter_ids[i % len(chapter_ids)]
         q = quizzer.norm_question(raw, cid)
         con.execute(
-            "INSERT INTO practice_questions (id, session_id, chapter_id, sub_concept, type,"
+            "INSERT INTO practice_questions (id, session_id, chapter_id, sub_concept, topic, type,"
             " content, options, answer_key, points, content_hash, correct, user_answer, score,"
             " reason, answered_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '', NULL, '', NULL)",
-            (models.new_id(), session_id, cid, q["sub_concept"], q["type"], q["content"],
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '', NULL, '', NULL)",
+            (models.new_id(), session_id, cid, q["sub_concept"], quizzer.assign_topic(con, cid, q), q["type"], q["content"],
              q["options"], q["answer_key"], q["points"], quizzer._content_hash(q["content"])),
         )
     con.commit()

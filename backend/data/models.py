@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS questions (
     quiz_id     TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
     chapter_id  TEXT NOT NULL,
     sub_concept TEXT DEFAULT '',
+    topic       TEXT,
     type        TEXT NOT NULL DEFAULT 'choice' CHECK (type IN ('choice','bool','essay')),
     content     TEXT NOT NULL,
     options     TEXT NOT NULL DEFAULT '[]',
@@ -218,6 +219,7 @@ CREATE TABLE IF NOT EXISTS practice_questions (
     session_id  TEXT NOT NULL REFERENCES practice_sessions(id) ON DELETE CASCADE,
     chapter_id  TEXT NOT NULL,
     sub_concept TEXT DEFAULT '',
+    topic       TEXT,
     type        TEXT NOT NULL DEFAULT 'choice' CHECK (type IN ('choice','bool','essay')),
     content     TEXT NOT NULL,
     options     TEXT NOT NULL DEFAULT '[]',
@@ -374,6 +376,8 @@ def migrate(con) -> None:
     _add_column(con, "quizzes", "total_points", "REAL NOT NULL DEFAULT 100")
     _add_column(con, "quizzes", "config_json", "TEXT NOT NULL DEFAULT '{}'")
     _add_column(con, "questions", "points", "REAL NOT NULL DEFAULT 0")
+    _add_column(con, "questions", "topic", "TEXT")
+    _add_column(con, "practice_questions", "topic", "TEXT")
     # 自主练习同学生跨会话去重：practice_questions 增题干规范化 hash（v1.16.0）
     _add_column(con, "practice_questions", "content_hash", "TEXT NOT NULL DEFAULT ''")
     added_graded_by = _add_column(con, "attempts", "graded_by", "TEXT NOT NULL DEFAULT 'ai'")

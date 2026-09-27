@@ -150,10 +150,10 @@ def create_draft():
         cid = chapter_ids[i % len(chapter_ids)]
         q = quizzer.norm_question(raw, cid)
         con.execute(
-            "INSERT INTO questions (id, quiz_id, chapter_id, sub_concept, type, content,"
+            "INSERT INTO questions (id, quiz_id, chapter_id, sub_concept, topic, type, content,"
             " options, answer_key, points, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (models.new_id(), quiz_id, cid, q["sub_concept"], q["type"], q["content"],
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (models.new_id(), quiz_id, cid, q["sub_concept"], quizzer.assign_topic(con, cid, q), q["type"], q["content"],
              q["options"], q["answer_key"], q["points"], now),
         )
     con.commit()
@@ -237,10 +237,10 @@ def revision_quiz(quiz_id):
         cid = chapter_ids[i % len(chapter_ids)]
         q = quizzer.norm_question(raw, cid)
         con.execute(
-            "INSERT INTO questions (id, quiz_id, chapter_id, sub_concept, type, content,"
+            "INSERT INTO questions (id, quiz_id, chapter_id, sub_concept, topic, type, content,"
             " options, answer_key, points, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (models.new_id(), new_id, cid, q["sub_concept"], q["type"], q["content"],
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (models.new_id(), new_id, cid, q["sub_concept"], quizzer.assign_topic(con, cid, q), q["type"], q["content"],
              q["options"], q["answer_key"], q["points"], now),
         )
     con.execute("UPDATE quizzes SET status='superseded' WHERE id=?", (quiz_id,))
@@ -297,7 +297,7 @@ def get_quiz(quiz_id):
     if g.role == "student" and row["status"] != "published":
         return e_role("该测评尚未发布")
     questions = con.execute(
-        "SELECT id, chapter_id, sub_concept, type, content, options, answer_key, points FROM questions"
+        "SELECT id, chapter_id, sub_concept, topic, type, content, options, answer_key, points FROM questions"
         " WHERE quiz_id=? ORDER BY rowid", (quiz_id,)
     ).fetchall()
     # 学生不可见 answer_key（作答前）；教师可见

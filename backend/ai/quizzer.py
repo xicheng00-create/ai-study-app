@@ -351,3 +351,12 @@ def norm_question(raw: dict, chapter_id: str) -> dict:
         "reason": raw.get("reason", ""),
         "points": POINTS[qtype],
     }
+
+
+def assign_topic(con, chapter_id, question):
+    """只在题干或子概念明确出现唯一主题原值时归属；歧义留空。"""
+    topics = [r["topic"] for r in con.execute(
+        "SELECT DISTINCT topic FROM card_topics WHERE chapter_id=?", (chapter_id,))]
+    text = (question.get("content") or "") + " " + (question.get("sub_concept") or "")
+    matches = [topic for topic in topics if topic and topic in text]
+    return matches[0] if len(matches) == 1 else None
