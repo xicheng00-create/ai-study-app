@@ -60,7 +60,7 @@ def today_stats(con, user_id: str, since: str | None = None):
     weak_names = []
     for ch in chapters:
         m = mastery.compute_mastery(con, user_id, ch["id"])
-        if mastery.mastery_state(m["m"], m["attempts"]) == "weak":
+        if m["state"] == "weak":
             weak_names.append(ch["name"])
     days = (timeutil.shanghai_now().date() - date.fromisoformat(win_since)).days + 1
     return {
@@ -115,7 +115,7 @@ def recent_learning_context(con, user_id: str) -> dict:
     focus = []
     for chapter_id, count in sorted(counts.items(), key=lambda item: (-item[1], names[item[0]])):
         result = mastery.compute_mastery(con, user_id, chapter_id)
-        state = mastery.mastery_state(result["m"], result["attempts"])
+        state = result["state"]
         focus.append({
             "name": names[chapter_id], "activities": count,
             "mastery": mastery.state_label(state),

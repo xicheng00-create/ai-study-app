@@ -45,16 +45,16 @@ def my_mastery():
     counts = {"master": 0, "progress": 0, "weak": 0, "na": 0}
     for ch in chapters:
         m = mastery.compute_mastery(con, g.user_id, ch["id"])
-        state = mastery.mastery_state(m["m"], m["attempts"])
+        state = m["state"]
         counts[state] += 1
         out.append({
             "chapter_id": ch["id"],
             "name": ch["name"],
             "folder": ch["folder"],
             "m": m["m"],
-            "attempts": m["attempts"],
+            "mastery": m,
             "state": state,
-            "state_label": mastery.state_label(state),
+            "state_label": m["state_label"],
         })
     return ok({"chapters": out, "counts": counts})
 
@@ -70,7 +70,7 @@ def weak_points():
     seen = set()
     for ch in chapters:
         m = mastery.compute_mastery(con, g.user_id, ch["id"])
-        if mastery.mastery_state(m["m"], m["attempts"]) != "weak":
+        if m["state"] != "weak":
             continue
         seen.add(ch["id"])
         weak.append({
@@ -179,7 +179,7 @@ def generate_review():
     focus = {}  # chapter_id -> 练习错题子概念（供巩固出题聚焦）
     for ch in chapters:
         m = mastery.compute_mastery(con, g.user_id, ch["id"])
-        if mastery.mastery_state(m["m"], m["attempts"]) == "weak":
+        if m["state"] == "weak":
             weak_ids.append(ch["id"])
         ev = _practice_wrong(con, g.user_id, ch["id"])
         if ev:
@@ -448,7 +448,7 @@ def _weekly_stats(con, user_id):
     weak_names = []
     for ch in chapters:
         m = mastery.compute_mastery(con, user_id, ch["id"])
-        if mastery.mastery_state(m["m"], m["attempts"]) == "weak":
+        if m["state"] == "weak":
             weak_names.append(ch["name"])
 
     return {

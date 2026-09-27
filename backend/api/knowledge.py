@@ -1,5 +1,5 @@
 """共享知识卡片及学生个人间隔复习状态。"""
-from ai import knowledge
+from ai import knowledge, mastery
 from ai.review_sched import next_interval, next_review_at_iso
 from auth.jwt_utils import jwt_required, role_required
 from config import SESSION_DECK_MAX
@@ -77,7 +77,8 @@ def overview():
         due_at = timeutil.shanghai_date(row["next_review_at"]) if row["next_review_at"] else today
         if row["status"] != "mastered" and (row["learn_count"] or 0) > 0 and due_at <= today:
             d["today_due"] += 1
-    return ok({"chapters": [{"chapter_id": cid, "counts": counts} for cid, counts in groups.items()],
+    return ok({"chapters": [{"chapter_id": cid, "counts": counts,
+                          "mastery": mastery.compute_mastery(con, g.user_id, cid)} for cid, counts in groups.items()],
                "deck_max": SESSION_DECK_MAX})
 
 
@@ -106,7 +107,10 @@ def cards(chapter_id):
     for card in shared: _review(con, card["id"])
     con.commit()
     rows = con.execute(f"SELECT {_CARD_COLS} FROM {_CARD_FROM} WHERE kc.chapter_id=? AND kr.user_id=? ORDER BY CASE kr.status WHEN 'new' THEN 0 WHEN 'learning' THEN 1 WHEN 'reviewing' THEN 2 ELSE 3 END,kr.next_review_at", (chapter_id, g.user_id)).fetchall()
-    return ok({"chapter_id": chapter_id, "cards": [_card(r) for r in rows], "deck_max": SESSION_DECK_MAX})
+    card_scores = {c["id"]: {k: c[k] for k in ("m", "acc", "evidence")}
+                   for c in mastery.card_mastery(con, g.user_id, chapter_id)}
+    return ok({"chapter_id": chapter_id, "cards": [dict(_card(r), mastery=card_scores[r["id"]]) for r in rows],
+               "mastery": mastery.compute_mastery(con, g.user_id, chapter_id), "deck_max": SESSION_DECK_MAX})
 
 
 @knowledge_bp.route("/<card_id>/review", methods=["POST"])
@@ -120,6 +124,11 @@ def review(card_id):
     row = _review(con, card_id); remembered = data["remembered"]
     status = ({"new":"learning", "learning":"reviewing", "reviewing":"mastered", "mastered":"mastered"}[row["status"]]
               if remembered else ("new" if row["status"] == "new" else "learning"))
+    if status == "mastered":
+        card = con.execute("SELECT chapter_id FROM knowledge_cards WHERE id=?", (card_id,)).fetchone()
+        scores = {c["id"]: c for c in mastery.card_mastery(con, g.user_id, card["chapter_id"])}
+        if not mastery.can_master_card(scores[card_id]):
+            status = "reviewing"
     interval = next_interval(remembered, row["interval_days"]); now = models.utcnow()
     con.execute("UPDATE knowledge_reviews SET learn_count=learn_count+1,interval_days=?,status=?,next_review_at=?,last_review_at=? WHERE id=?", (interval, status, next_review_at_iso(interval), now, row["id"])); con.commit()
     # 打卡判定触发点：复习提交成功后服务端惰性评估（CHECKIN-004）

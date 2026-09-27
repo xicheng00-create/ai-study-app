@@ -81,7 +81,7 @@ def _mastery_average(con, user_id):
         m = mastery.compute_mastery(con, user_id, ch["id"])
         if m["m"] is not None:
             ms.append(m["m"])
-            if mastery.mastery_state(m["m"], m["attempts"]) == "master":
+            if m["state"] == "master":
                 mastered += 1
     avg = round(sum(ms) / len(ms), 1) if ms else None
     return avg, mastered
@@ -92,7 +92,7 @@ def _weak_names(con, user_id):
     names = []
     for ch in chapters:
         m = mastery.compute_mastery(con, user_id, ch["id"])
-        if mastery.mastery_state(m["m"], m["attempts"]) == "weak":
+        if m["state"] == "weak":
             names.append(ch["name"])
     return names
 

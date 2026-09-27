@@ -100,7 +100,7 @@ def weekly():
     weak_names = []
     for ch in chapters:
         m = mastery.compute_mastery(con, g.user_id, ch["id"])
-        if mastery.mastery_state(m["m"], m["attempts"]) == "weak":
+        if m["state"] == "weak":
             weak_names.append(ch["name"])
 
     stats = {

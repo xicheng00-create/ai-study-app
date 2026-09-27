@@ -24,11 +24,11 @@ def _student_mastery_counts(con, user_id):
     detail = []
     for ch in chapters:
         m = mastery.compute_mastery(con, user_id, ch["id"])
-        state = mastery.mastery_state(m["m"], m["attempts"])
+        state = m["state"]
         counts[state] += 1
         detail.append({
             "chapter_id": ch["id"], "name": ch["name"],
-            "m": m["m"], "state": state, "state_label": mastery.state_label(state),
+            "m": m["m"], "state": state, "state_label": m["state_label"], "mastery": m,
         })
     return counts, detail
 
@@ -56,6 +56,7 @@ def overview():
     common_weak = [name for name, n in chapter_weak_counter.items() if n >= 2]
     return ok({
         "student_count": len(students),
+        "mastery": mastery.class_mastery([mastery.compute_subject_mastery(con, s["id"]) for s in students]),
         "students": students,
         "common_weak_chapters": common_weak,
     })

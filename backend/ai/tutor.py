@@ -32,7 +32,7 @@ def weak_chapter_names(con, user_id: str) -> list[str]:
     names = []
     for r in rows:
         m = mastery.compute_mastery(con, user_id, r["chapter_id"])
-        if m["m"] is not None and m["m"] < mastery.THRESHOLD_PROGRESS:
+        if m["state"] == "weak":
             ch = con.execute("SELECT name FROM chapters WHERE id=?", (r["chapter_id"],)).fetchone()
             if ch:
                 names.append(ch["name"])

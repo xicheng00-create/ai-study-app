@@ -21,7 +21,7 @@ def _practice_chapters(con, user_id) -> list[str]:
     weak = []
     for r in published:
         m = mastery.compute_mastery(con, user_id, r["id"])
-        if mastery.mastery_state(m["m"], m["attempts"]) == "weak":
+        if m["state"] == "weak":
             weak.append(r["id"])
 
     today = timeutil.today_str()
