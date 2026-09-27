@@ -38,3 +38,5 @@ audit/
 
 # 本地库备份（含学生数据，绝不进 git）
 backups/
+# 受保护的执行方案：归档但保持未追踪
+docs/archive/exec-plans/DesignSpec-学生端阶梯提醒-执行方案.md
