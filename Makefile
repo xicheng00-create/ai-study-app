@@ -1,5 +1,5 @@
 # Makefile — lint / test / smoke / deploy / boot / backup（对齐四口之家，端口改 5001）
-.PHONY: lint test smoke deploy boot backup
+.PHONY: lint test smoke ui-audit deploy boot backup
 
 PY=python3
 VENV=.venv
@@ -39,4 +39,7 @@ deploy:
 backup:
 	bash scripts/backup_icloud.sh
 
-all: lint test smoke
+ui-audit:
+	node scripts/ui_audit.js
+
+all: lint test smoke ui-audit
