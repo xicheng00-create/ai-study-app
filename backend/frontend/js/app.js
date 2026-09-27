@@ -73,12 +73,6 @@ const App = {
 };
 
 function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
-function stateOf(m, attempts) {
-  if (m == null) return { key: "na", label: "未评估", cls: "na" };
-  if (m >= 80 && attempts >= 2) return { key: "master", label: "已掌握", cls: "master" };
-  if (m >= 50) return { key: "prog", label: "进行中", cls: "prog" };
-  return { key: "weak", label: "薄弱", cls: "weak" };
-}
 function toast(m) {
   let t = document.getElementById("toast");
   if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "toast"; document.body.appendChild(t); }

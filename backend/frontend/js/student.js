@@ -537,9 +537,14 @@ const Student = {
     return `<span class="badge ${x[0]}">${x[1]}</span>`;
   },
   // 点卡片 → 详情 sheet（正/反面 + 去问 TUTOR）
+  masteryText(v) {
+    if (!v) return "未评估";
+    return `掌握度 ${v.m == null ? "未评估" : v.m + "%"} · 覆盖率 ${v.coverage}% · 已学 ${v.learned} / 共 ${v.cards_total}`;
+  },
   kcDetail(id) {
     const c = this._kcFind(id); if (!c) return;
     openSheet(`<div class="row" style="font-weight:700;cursor:default;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${ic('cards')}知识卡片${c.chName ? `<span class="muted" style="font-size:12px;font-weight:500">${esc(c.chName)}</span>` : ''}${this.kcStatusBadge(c.status)}</div>
+      <div class="muted">掌握度 ${c.mastery ? c.mastery.m + "%" : "未评估"} · ${c.mastery && c.mastery.acc != null ? "作答正确率 " + c.mastery.acc + "%" : "无练习证据"}</div>
       <div class="sheet-txt"><b>${esc(c.front)}</b></div>
       <div class="sheet-txt dim">${esc(c.back)}</div>
       <div class="row" onclick="Student.askKcTutor('${c.id}')">${ic('chat')}去问 TUTOR · 就这个知识点深入讲解</div>
@@ -1270,8 +1275,8 @@ const Student = {
     try { kcOv = await API.get("/api/knowledge/overview"); } catch (e) {}
     const c = mastery.counts || { master: 0, progress: 0, weak: 0, na: 0 };
     const chapList = (mastery.chapters || []).map(ch => {
-      const st = stateOf(ch.m, ch.attempts);
-      return `<div class="chapter"><div><div class="nm">${esc(ch.name)}</div><div class="mt">掌握度 ${ch.m == null ? '—' : ch.m + '%'} · 作答 ${ch.attempts} 次</div></div><span class="badge ${st.cls}">${st.label}</span></div>`;
+      const st = { cls: ch.state, label: ch.state_label };
+      return `<div class="chapter"><div><div class="nm">${esc(ch.name)}</div><div class="mt">${this.masteryText(ch.mastery)}</div></div><span class="badge ${st.cls}">${st.label}</span></div>`;
     }).join('') || '<div class="muted">暂无章节</div>';
     const weakPoints = weak.weak_points || [];
     const weakWrongCount = weakPoints.reduce(function (s, w) { return s + (w.evidence || []).length; }, 0);
@@ -1304,26 +1309,13 @@ const Student = {
       <div class="muted" style="margin-top:6px">薄弱章节：${(weekly.weak_chapters || []).map(esc).join('、') || '无'}</div></div>`;
     // 知识卡片学习进度块：数据 GET /api/knowledge/overview（仅含已产生复习记录的章）
     const kcChs = (kcOv.chapters || []).filter(x => x.counts && x.counts.total > 0);
-    const kcTotal = kcChs.reduce((s, x) => s + x.counts.total, 0);
-    const kcMastered = kcChs.reduce((s, x) => s + x.counts.mastered, 0);
-    const kcHtml = kcChs.length
-      ? `<div class="card"><div class="sec-title">知识卡片（计入掌握度）</div>${kcChs.map(x => {
-          const ct = x.counts;
-          const pct = Math.round(ct.mastered / ct.total * 100);
-          return `<div class="chapter" style="cursor:default"><div><div class="nm">${esc(App.chapterName(x.chapter_id))}</div>
-            <div class="mt">已掌握 ${ct.mastered}/${ct.total} 张 · 学习中 ${ct.learning + ct.reviewing} · 未学 ${ct.new} · 今日待复习 ${ct.today_due}</div>
-            <div class="kc-bar"><i style="width:${pct}%"></i></div></div>
-            <span class="badge ${ct.mastered === ct.total ? 'master' : (ct.mastered ? 'prog' : 'weak')}">${pct}%</span></div>`;
-        }).join('')}
-      <div class="muted" style="font-size:12px;margin-top:6px">已掌握 ${kcMastered}/${kcTotal} 张 · 仅已掌握卡片计入掌握度（5 分/张，复习越近权重越高）</div>
-      <details class="kc-help"><summary>掌握度怎么算？（含知识卡片口径）</summary>
-        <div>掌握度 M =「已得权重分 ÷ 总分 × 100」，把三类学习成果合在一起：<br/>
-        <b>① 测评 / 练习</b>：按每次作答得分加权计入；<br/>
-        <b>② 知识卡片</b>：只有复习到「已掌握」的卡才计入，每张按满分 5 分算；学习中 / 复习中 / 未学的卡既不罚分也不计分；<br/>
-        <b>③ 卡片权重会随时间衰减</b>：距上次复习每满 1 周权重减半（×0.5^周），复习越近贡献越大，很久不复习的已掌握卡权重会趋近 0——所以要常回来翻卡；<br/>
-        <b>④ 等级</b>：M ≥ 80 且有效作答 ≥ 2 次 = 已掌握；50–80 = 进行中；&lt;50 = 薄弱；从未作答 = 未评估。</div></details></div>`
-      : `<div class="card"><div class="sec-title">知识卡片（计入掌握度）</div><div class="muted" style="font-size:12.5px">还没有复习过知识卡片——去「学习」页勾选章节开始翻卡记忆</div></div>`;
+    const kcHtml = `<div class="card"><div class="sec-title">知识卡片</div>${kcChs.map(x =>
+      `<div class="chapter"><div class="nm">${esc(App.chapterName(x.chapter_id))}</div><div class="mt">${this.masteryText(x.mastery)}</div></div>`
+    ).join('') || '尚无卡片'}</div>`;
+    const scopeHtml = `<div class="card"><div class="sec-title">学科</div>${this.masteryText(mastery.subject)}</div>` +
+      (mastery.books || []).map(b => `<div class="card"><div class="sec-title">${esc(b.folder)}</div>${this.masteryText(b.mastery)}</div>`).join('');
     return appbar('进度', '按章节掌握度（仅本人）') + `<div class="content">
+      <div class="muted">掌握度 = 已学卡掌握度平均（卡级 = 50% 状态分 + 50% 作答正确率）；覆盖率 = 已学卡 ÷ 全部卡</div>
       <div class="stat-row"><div class="stat"><div class="v" style="color:var(--green)">${c.master}</div><div class="k">已掌握</div></div>
         <div class="stat"><div class="v" style="color:var(--amber)">${c.progress}</div><div class="k">进行中</div></div>
         <div class="stat"><div class="v" style="color:var(--red)">${c.weak}</div><div class="k">薄弱</div></div>
@@ -1331,6 +1323,7 @@ const Student = {
       <div class="card"><div style="font-weight:700;margin-bottom:10px">AI 学习建议</div>${adviceHtml}</div>
       ${weeklyHtml}
       ${kcHtml}
+      ${scopeHtml}
       <div class="card"><div class="sec-title">各章节状态</div>${chapList}</div>
       <div class="card"><div class="sec-title">薄弱点（带错题依据）</div>${weakHtml}</div>
       <div class="card"><div class="sec-title">巩固练习闭环（间隔复习 1→3→7）</div>${revHtml}

@@ -492,7 +492,9 @@ const Teacher = {
       <div class="stat"><div class="v" style="color:var(--amber);font-size:18px">${s.counts.progress}</div><div class="k">进行中</div></div>
       <div class="stat"><div class="v" style="color:var(--red);font-size:18px">${s.counts.weak}</div><div class="k">薄弱</div></div></div>
       ${(s.weak_chapters || []).length ? `<div class="muted" style="margin-top:10px;font-size:12px">薄弱章节：${s.weak_chapters.map(esc).join('、')}</div>` : ''}</div>`).join('');
+    const cm = overview.mastery || {};
     return appbar('全班进度', '按学生聚合') + `<div class="content">
+      <div class="card">掌握度 ${cm.m == null ? "未评估" : cm.m + "%"} · 覆盖率 ${cm.coverage}% · 已评估 ${cm.assessed} / 全班 ${cm.total} 人<br/>掌握度 = 已学卡掌握度平均（卡级 = 50% 状态分 + 50% 作答正确率）；覆盖率 = 已学卡 ÷ 全部卡</div>
       <div class="card"><div class="sec-title">共性薄弱章节</div>
         ${(overview.common_weak_chapters || []).map(c => `<div class="weak"><span class="badge weak">${esc(c)}</span><div class="muted" style="font-size:12.5px">多名同学待补强</div></div>`).join('') || '<div class="muted">暂无共性薄弱</div>'}</div>
       ${cards}</div>` + tabbar();

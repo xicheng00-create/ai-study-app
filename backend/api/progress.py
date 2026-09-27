@@ -56,7 +56,10 @@ def my_mastery():
             "state": state,
             "state_label": m["state_label"],
         })
-    return ok({"chapters": out, "counts": counts})
+    folders = list(dict.fromkeys(ch["folder"] for ch in chapters))
+    books = [{"folder": f, "mastery": mastery.compute_book_mastery(con, g.user_id, f)} for f in folders]
+    return ok({"chapters": out, "books": books,
+               "subject": mastery.compute_subject_mastery(con, g.user_id), "counts": counts})
 
 
 @progress_bp.route("/weak-points", methods=["GET"])
