@@ -262,6 +262,7 @@
 | PROG-009 | 全部 | P1 | 覆盖率 coverage（已学卡 ÷ 全部卡，与 M 并列） |
 | PROG-010 | 全部 | P1 | 四级 rollup（卡 → 章 → 书 → 学科，同一条公式） |
 | PROG-011 | 全部 | P1 | 练习/测评 → 卡的**主题粒度映射**（卡级作答正确率的唯一通路） |
+| PROG-012 | teacher | P1 | 班级级掌握度聚合口径（学生 M 的算术平均 + 已评估人数） |
 
 **Technical（UNI-MASTER，2026-09-27 Ray 拍板 · 与「个人复习 app」同一套公式）**
 - **L1 卡级**：`state ∈ {new, learning, reviewing, mastered}`（内部值两 app 统一；显示 未学习/学习中/复习中/已掌握）；
@@ -287,6 +288,9 @@
 - **断言**：`tests/test_mastery_unified.py`（4 卡 = mastered/acc100、learning/acc0、new、new → 卡级 `100/20/0/0`；
   章级 `M = 30`、`coverage = 50%`、`evidence_cards = 2`；阈值边界与证据门槛；`learned = 0` 不除零）；
   既有 `test_mastery*.py` 全部按新公式重写期望值（**旧期望值属过期事实，直接改，不留双口径**）。
+- **PROG-012 班级级聚合口径（教师端）**：`班级 M_level` = 班内**该层非 `na`** 学生的 `M_level` **算术平均**；
+  `班级 coverage` = 班内学生 `coverage` 的**算术平均**；同时必须显示 `已评估 {n} / 全班 {N} 人`（`na` 学生不计入平均但计入人数）。
+  **禁止**用「全班卡总数」直接当分母（会把没开始的学生算成 0 而虚低，与 PROG-009「覆盖率独立」口径冲突）。
 - **PROG-011 主题粒度映射（2026-09-27 Ray 拍板 · 卡级作答正确率的唯一通路）**：
   本 app 的测评题 `questions` 与自主练习题 `practice_questions` **只挂到章**（`chapter_id` + `sub_concept`），
   且实测：题目的 `sub_concept` 与卡片 `sub_concept` / `card_topics.topic` **词表对不上**（140 题按 `sub_concept` 仅 53 匹配、
