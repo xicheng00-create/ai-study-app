@@ -1,8 +1,9 @@
 # Python
 __pycache__/
 *.py[cod]
-.venv/
-venv/
+# 不带斜杠：同时覆盖真目录与 worktree 里的符号链接（dev 的 .venv -> 生产 .venv）
+.venv
+venv
 *.egg-info/
 .coverage
 htmlcov/
