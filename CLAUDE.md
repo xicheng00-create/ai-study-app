@@ -2,8 +2,8 @@
 
 ## 1. 项目背景
 - 定位：1 教师 + 3 学生的私有学习小组 Web App「AI 学习小组」（AI Study Group），教师上传资料、学生苏格拉底引导式对话、教师发布测评、间隔复习巩固、进度掌握度、周报。
-- 前端：PWA（H5 + ServiceWorker，离线 App Shell），目录 `frontend/`，设计风格 Apple native minimal + 暖珊瑚 #F2714E（学生）/ 教师靛蓝 #5B5BD6。
-- 后端：单体 **Flask + waitress（单进程/4 线程）** + SQLite WAL + ChromaDB + DeepSeek（三 Agent 提示词），自托管于用户 Mac（24/7），Cloudflare 命名隧道暴露 5001。
+- 前端：PWA（H5 + ServiceWorker，离线 App Shell），目录 `backend/frontend/`，设计风格 Apple native minimal + 暖珊瑚 #F2714E（学生）/ 教师靛蓝 #5B5BD6。
+- 后端：单体 **Flask + waitress（单进程/4 线程）** + SQLite WAL + ChromaDB + DeepSeek（三 Agent 提示词），自托管于用户 Mac（24/7），Cloudflare 命名隧道 `aistudygroup.shuiyanhaha.org` → **5003**（机器真相 = `~/.cloudflared/config.yml`）。**5001 是 root 域旧 Daemon 的遗留端口，不在隧道路径，勿用勿动**；5005 是 dev 实例（`aistudygroupdev.shuiyanhaha.org`）。
 - 同步模型：REST JSON，`/api/*` 前缀；成功 `{code:0,data:...}`，失败 `{code:E,msg:...}`。
 
 ## 2. 核心原则
@@ -61,7 +61,7 @@ backend/   app.py · config.py
            ai/{prompts,rag,tutor,quizzer,grader,review_sched,fallback}.py
            data/{models,chroma_client,seed}.py · middleware/{rate_limit,error_handler,input_validation}.py
            scripts/{launchd_install,backup_rsync,restore_test}.sh
-frontend/  index.html · manifest.webmanifest · sw.js · js/{api,app,learn,quiz,progress,report,admin}.js · css/
+backend/frontend/  index.html · manifest.webmanifest · sw.js · js/{api,app,student,teacher}.js · css/
 tests/     test_*.py（pytest + cov≥70% 目标）
 deploy/    runbook · 备份/自启脚本
 ```
