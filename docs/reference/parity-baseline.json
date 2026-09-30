@@ -1,0 +1,604 @@
+[
+ {
+  "screen": "progress",
+  "comp": "学科掌握度标签",
+  "prop": "__rect",
+  "draft": "348,20",
+  "live": "350,16"
+ },
+ {
+  "screen": "progress",
+  "comp": "学科掌握度标签",
+  "prop": "lineHeight",
+  "draft": "20.125px",
+  "live": "normal"
+ },
+ {
+  "screen": "progress",
+  "comp": "学科掌握度数字",
+  "prop": "__rect",
+  "draft": "348,61",
+  "live": "85,76"
+ },
+ {
+  "screen": "progress",
+  "comp": "三格容器",
+  "prop": "__rect",
+  "draft": "348,99",
+  "live": "350,82"
+ },
+ {
+  "screen": "progress",
+  "comp": "三格容器",
+  "prop": "gap",
+  "draft": "normal",
+  "live": "0px"
+ },
+ {
+  "screen": "progress",
+  "comp": "三格单元",
+  "prop": "__rect",
+  "draft": "116,97",
+  "live": "117,80"
+ },
+ {
+  "screen": "progress",
+  "comp": "区块小标题",
+  "prop": "__rect",
+  "draft": "348,20",
+  "live": "316,21"
+ },
+ {
+  "screen": "progress",
+  "comp": "区块小标题",
+  "prop": "fontSize",
+  "draft": "11.5px",
+  "live": "15px"
+ },
+ {
+  "screen": "progress",
+  "comp": "区块小标题",
+  "prop": "lineHeight",
+  "draft": "20.125px",
+  "live": "normal"
+ },
+ {
+  "screen": "progress",
+  "comp": "区块小标题",
+  "prop": "color",
+  "draft": "rgb(110, 101, 83)",
+  "live": "rgb(27, 30, 34)"
+ },
+ {
+  "screen": "progress",
+  "comp": "区块小标题",
+  "prop": "letterSpacing",
+  "draft": "1.84px",
+  "live": "normal"
+ },
+ {
+  "screen": "progress",
+  "comp": "章节行",
+  "prop": "__rect",
+  "draft": "348,136",
+  "live": "316,163"
+ },
+ {
+  "screen": "progress",
+  "comp": "章节行",
+  "prop": "gap",
+  "draft": "9px",
+  "live": "normal"
+ },
+ {
+  "screen": "progress",
+  "comp": "章节标题",
+  "prop": "__rect",
+  "draft": "91,37",
+  "live": "226,19"
+ },
+ {
+  "screen": "progress",
+  "comp": "章节名副行",
+  "prop": "组件",
+  "draft": "存在",
+  "live": "MISSING(.chapter .nm em)"
+ },
+ {
+  "screen": "progress",
+  "comp": "章节进度条",
+  "prop": "__rect",
+  "draft": "192,4",
+  "live": "164,4"
+ },
+ {
+  "screen": "progress",
+  "comp": "章节条标签",
+  "prop": "__rect",
+  "draft": "52,20",
+  "live": "52,29"
+ },
+ {
+  "screen": "progress",
+  "comp": "章节条标签",
+  "prop": "lineHeight",
+  "draft": "20.125px",
+  "live": "normal"
+ },
+ {
+  "screen": "progress",
+  "comp": "章节条标签",
+  "prop": "letterSpacing",
+  "draft": "1.15px",
+  "live": "normal"
+ },
+ {
+  "screen": "quiz",
+  "comp": "区块小标题",
+  "prop": "__rect",
+  "draft": "348,20",
+  "live": "316,21"
+ },
+ {
+  "screen": "quiz",
+  "comp": "区块小标题",
+  "prop": "fontSize",
+  "draft": "11.5px",
+  "live": "15px"
+ },
+ {
+  "screen": "quiz",
+  "comp": "区块小标题",
+  "prop": "lineHeight",
+  "draft": "20.125px",
+  "live": "normal"
+ },
+ {
+  "screen": "quiz",
+  "comp": "区块小标题",
+  "prop": "color",
+  "draft": "rgb(110, 101, 83)",
+  "live": "rgb(27, 30, 34)"
+ },
+ {
+  "screen": "quiz",
+  "comp": "区块小标题",
+  "prop": "letterSpacing",
+  "draft": "1.84px",
+  "live": "normal"
+ },
+ {
+  "screen": "quiz",
+  "comp": "行块",
+  "prop": "__rect",
+  "draft": "348,92",
+  "live": "350,72"
+ },
+ {
+  "screen": "quiz",
+  "comp": "行块",
+  "prop": "gap",
+  "draft": "14px",
+  "live": "12px"
+ },
+ {
+  "screen": "quiz",
+  "comp": "行标题",
+  "prop": "__rect",
+  "draft": "272,30",
+  "live": "272,21"
+ },
+ {
+  "screen": "quiz",
+  "comp": "行标题",
+  "prop": "fontSize",
+  "draft": "17px",
+  "live": "15px"
+ },
+ {
+  "screen": "quiz",
+  "comp": "行标题",
+  "prop": "lineHeight",
+  "draft": "29.75px",
+  "live": "normal"
+ },
+ {
+  "screen": "quiz",
+  "comp": "行副标题",
+  "prop": "__rect",
+  "draft": "272,25",
+  "live": "272,17"
+ },
+ {
+  "screen": "quiz",
+  "comp": "行副标题",
+  "prop": "fontSize",
+  "draft": "14px",
+  "live": "12.5px"
+ },
+ {
+  "screen": "quiz",
+  "comp": "行副标题",
+  "prop": "lineHeight",
+  "draft": "24.5px",
+  "live": "normal"
+ },
+ {
+  "screen": "quiz",
+  "comp": "主按钮",
+  "prop": "__rect",
+  "draft": "348,102",
+  "live": "316,48"
+ },
+ {
+  "screen": "quiz",
+  "comp": "主按钮",
+  "prop": "backgroundColor",
+  "draft": "rgba(0, 0, 0, 0)",
+  "live": "rgb(242, 113, 78)"
+ },
+ {
+  "screen": "quiz",
+  "comp": "主按钮",
+  "prop": "borderRadius",
+  "draft": "16px",
+  "live": "14px"
+ },
+ {
+  "screen": "quiz",
+  "comp": "主按钮",
+  "prop": "paddingTop",
+  "draft": "20px",
+  "live": "0px"
+ },
+ {
+  "screen": "quiz",
+  "comp": "主按钮",
+  "prop": "paddingRight",
+  "draft": "20px",
+  "live": "13px"
+ },
+ {
+  "screen": "quiz",
+  "comp": "主按钮",
+  "prop": "paddingBottom",
+  "draft": "20px",
+  "live": "0px"
+ },
+ {
+  "screen": "quiz",
+  "comp": "主按钮",
+  "prop": "paddingLeft",
+  "draft": "20px",
+  "live": "13px"
+ },
+ {
+  "screen": "knowledge",
+  "comp": "闪卡外框",
+  "prop": "组件",
+  "draft": "存在",
+  "live": "MISSING(.kc-card)"
+ },
+ {
+  "screen": "knowledge",
+  "comp": "卡面",
+  "prop": "组件",
+  "draft": "存在",
+  "live": "MISSING(.kc-face)"
+ },
+ {
+  "screen": "knowledge",
+  "comp": "提示行",
+  "prop": "组件",
+  "draft": "存在",
+  "live": "MISSING(.kc-hint)"
+ },
+ {
+  "screen": "knowledge",
+  "comp": "主按钮",
+  "prop": "__rect",
+  "draft": "348,81",
+  "live": "318,48"
+ },
+ {
+  "screen": "knowledge",
+  "comp": "主按钮",
+  "prop": "fontWeight",
+  "draft": "800",
+  "live": "700"
+ },
+ {
+  "screen": "knowledge",
+  "comp": "主按钮",
+  "prop": "lineHeight",
+  "draft": "28px",
+  "live": "normal"
+ },
+ {
+  "screen": "knowledge",
+  "comp": "主按钮",
+  "prop": "color",
+  "draft": "rgb(107, 98, 82)",
+  "live": "rgb(255, 255, 255)"
+ },
+ {
+  "screen": "knowledge",
+  "comp": "主按钮",
+  "prop": "backgroundColor",
+  "draft": "rgb(241, 235, 221)",
+  "live": "rgb(242, 113, 78)"
+ },
+ {
+  "screen": "knowledge",
+  "comp": "主按钮",
+  "prop": "paddingTop",
+  "draft": "14px",
+  "live": "0px"
+ },
+ {
+  "screen": "knowledge",
+  "comp": "主按钮",
+  "prop": "paddingBottom",
+  "draft": "14px",
+  "live": "0px"
+ },
+ {
+  "screen": "learn",
+  "comp": "任务行",
+  "prop": "__rect",
+  "draft": "348,96",
+  "live": "318,32"
+ },
+ {
+  "screen": "learn",
+  "comp": "任务行",
+  "prop": "backgroundColor",
+  "draft": "rgb(255, 253, 248)",
+  "live": "rgba(0, 0, 0, 0)"
+ },
+ {
+  "screen": "learn",
+  "comp": "任务行",
+  "prop": "borderRadius",
+  "draft": "14px",
+  "live": "0px"
+ },
+ {
+  "screen": "learn",
+  "comp": "任务行",
+  "prop": "paddingTop",
+  "draft": "18px",
+  "live": "0px"
+ },
+ {
+  "screen": "learn",
+  "comp": "任务行",
+  "prop": "paddingRight",
+  "draft": "16px",
+  "live": "0px"
+ },
+ {
+  "screen": "learn",
+  "comp": "任务行",
+  "prop": "paddingBottom",
+  "draft": "18px",
+  "live": "0px"
+ },
+ {
+  "screen": "learn",
+  "comp": "任务行",
+  "prop": "paddingLeft",
+  "draft": "16px",
+  "live": "0px"
+ },
+ {
+  "screen": "learn",
+  "comp": "任务行",
+  "prop": "gap",
+  "draft": "14px",
+  "live": "normal"
+ },
+ {
+  "screen": "learn",
+  "comp": "任务名",
+  "prop": "__rect",
+  "draft": "204,30",
+  "live": "108,21"
+ },
+ {
+  "screen": "learn",
+  "comp": "任务名",
+  "prop": "fontSize",
+  "draft": "17px",
+  "live": "15px"
+ },
+ {
+  "screen": "learn",
+  "comp": "任务名",
+  "prop": "fontWeight",
+  "draft": "800",
+  "live": "700"
+ },
+ {
+  "screen": "learn",
+  "comp": "任务名",
+  "prop": "lineHeight",
+  "draft": "29.75px",
+  "live": "normal"
+ },
+ {
+  "screen": "learn",
+  "comp": "入口卡",
+  "prop": "__rect",
+  "draft": "348,92",
+  "live": "350,73"
+ },
+ {
+  "screen": "learn",
+  "comp": "入口卡",
+  "prop": "gap",
+  "draft": "14px",
+  "live": "12px"
+ },
+ {
+  "screen": "learn",
+  "comp": "主按钮",
+  "prop": "__rect",
+  "draft": "348,102",
+  "live": "318,48"
+ },
+ {
+  "screen": "learn",
+  "comp": "主按钮",
+  "prop": "backgroundColor",
+  "draft": "rgba(0, 0, 0, 0)",
+  "live": "rgb(242, 113, 78)"
+ },
+ {
+  "screen": "learn",
+  "comp": "主按钮",
+  "prop": "borderRadius",
+  "draft": "16px",
+  "live": "14px"
+ },
+ {
+  "screen": "learn",
+  "comp": "主按钮",
+  "prop": "paddingTop",
+  "draft": "20px",
+  "live": "0px"
+ },
+ {
+  "screen": "learn",
+  "comp": "主按钮",
+  "prop": "paddingRight",
+  "draft": "20px",
+  "live": "13px"
+ },
+ {
+  "screen": "learn",
+  "comp": "主按钮",
+  "prop": "paddingBottom",
+  "draft": "20px",
+  "live": "0px"
+ },
+ {
+  "screen": "learn",
+  "comp": "主按钮",
+  "prop": "paddingLeft",
+  "draft": "20px",
+  "live": "13px"
+ },
+ {
+  "screen": "class",
+  "comp": "打卡行",
+  "prop": "__rect",
+  "draft": "348,92",
+  "live": "316,72"
+ },
+ {
+  "screen": "class",
+  "comp": "打卡行",
+  "prop": "backgroundColor",
+  "draft": "rgb(255, 253, 248)",
+  "live": "rgb(232, 241, 234)"
+ },
+ {
+  "screen": "class",
+  "comp": "打卡行",
+  "prop": "gap",
+  "draft": "14px",
+  "live": "11px"
+ },
+ {
+  "screen": "class",
+  "comp": "排名行",
+  "prop": "__rect",
+  "draft": "348,92",
+  "live": "316,66"
+ },
+ {
+  "screen": "class",
+  "comp": "排名行",
+  "prop": "paddingTop",
+  "draft": "16px",
+  "live": "13px"
+ },
+ {
+  "screen": "class",
+  "comp": "排名行",
+  "prop": "paddingBottom",
+  "draft": "16px",
+  "live": "13px"
+ },
+ {
+  "screen": "class",
+  "comp": "排名行",
+  "prop": "gap",
+  "draft": "14px",
+  "live": "12px"
+ },
+ {
+  "screen": "class",
+  "comp": "排名数字",
+  "prop": "__rect",
+  "draft": "22,26",
+  "live": "28,28"
+ },
+ {
+  "screen": "class",
+  "comp": "排名数字",
+  "prop": "backgroundColor",
+  "draft": "rgba(0, 0, 0, 0)",
+  "live": "rgb(253, 235, 200)"
+ },
+ {
+  "screen": "class",
+  "comp": "排名数字",
+  "prop": "borderRadius",
+  "draft": "0px",
+  "live": "50%"
+ },
+ {
+  "screen": "class",
+  "comp": "徽章/达标",
+  "prop": "__rect",
+  "draft": "22,22",
+  "live": "50,17"
+ },
+ {
+  "screen": "class",
+  "comp": "徽章/达标",
+  "prop": "backgroundColor",
+  "draft": "rgb(242, 113, 78)",
+  "live": "rgba(0, 0, 0, 0)"
+ },
+ {
+  "screen": "class",
+  "comp": "徽章/达标",
+  "prop": "borderTopWidth",
+  "draft": "2px",
+  "live": "0px"
+ },
+ {
+  "screen": "class",
+  "comp": "徽章/达标",
+  "prop": "borderLeftWidth",
+  "draft": "2px",
+  "live": "0px"
+ },
+ {
+  "screen": "class",
+  "comp": "徽章/达标",
+  "prop": "borderBottomWidth",
+  "draft": "2px",
+  "live": "0px"
+ },
+ {
+  "screen": "class",
+  "comp": "徽章/达标",
+  "prop": "borderRadius",
+  "draft": "6px",
+  "live": "0px"
+ }
+]

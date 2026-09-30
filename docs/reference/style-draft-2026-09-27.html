@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>AI 学习小组 · 风格对照稿（对齐个人复习 · 橙色主调）</title>
+<style>
+:root{
+  /* 直接把「个人复习」的令牌搬过来，只把草绿主色槽换成 aistudy 的橙 */
+  --paper:#FAF6ED; --paper-2:#F5EFE1; --card:#FFFDF8;
+  --ink:#1B1E22; --ink-2:#3E3A31; --muted:#6E6553;
+  --hair:#E5DECC; --accent:#F2714E; --accent-deep:#E25C3A; --accent-tint:#FCEBE4;
+  --disabled-ink:#6B6252; --disabled-bg:#F1EBDD;
+  --disp:'Archivo Black','Archivo','Noto Sans SC','PingFang SC',sans-serif;
+  --body:'Archivo','Noto Sans SC','PingFang SC','Hiragino Sans GB',sans-serif;
+  --r-card:16px; --r-btn:14px; --r-chip:8px;
+  --shadow:0 18px 40px rgba(35,32,22,.10), 0 4px 12px rgba(35,32,22,.06);
+  --ease:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box}
+body{margin:0;background:#EFE9DC;color:var(--ink);font:17.5px/1.75 var(--body);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+.sheet{max-width:1360px;margin:0 auto;padding:40px 28px 60px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;border-bottom:1px solid var(--hair);padding-bottom:18px}
+.head h1{font-family:var(--disp);font-weight:900;font-size:34px;line-height:1.1;margin:0}
+.head p{margin:6px 0 0;color:var(--muted);font-size:15px;max-width:64ch}
+.chip{font-size:11.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);
+  border:1px solid var(--hair);border-radius:99px;padding:7px 12px;white-space:nowrap}
+.frames{display:grid;grid-template-columns:repeat(auto-fit,390px);gap:26px;margin-top:30px;justify-content:center}
+.frame{width:390px;background:var(--paper);border:1px solid var(--hair);border-radius:28px;overflow:hidden;
+  box-shadow:var(--shadow);display:flex;flex-direction:column;min-height:844px}
+.cap{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px}
+.cap b{font-size:15px;font-weight:800}
+.cap span{font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:800}
+.col{display:flex;flex-direction:column}
+
+/* —— 顶栏（抄个人复习 .topbar） —— */
+.topbar{background:var(--paper);border-bottom:1px solid var(--hair);flex:none}
+.topbar-inner{padding:15px 20px 12px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:inline-flex;align-items:center;gap:9px;font-weight:800;font-size:16px;letter-spacing:.02em}
+.dot{width:12px;height:12px;border-radius:4px;background:var(--accent)}
+.streak{color:var(--accent-deep);font-weight:800;font-size:13px;letter-spacing:.04em;display:inline-flex;align-items:center;gap:5px}
+.streak .flame{font-size:16px;line-height:1}
+.streak .n{font-family:var(--disp);font-size:17px}
+.body{padding:0 20px 34px;overflow:hidden;flex:1}
+.crumb{font-size:13px;color:var(--muted);padding:14px 0 0}
+.crumb b{color:var(--ink);font-weight:800}
+.crumb .sep{margin:0 6px;color:var(--hair)}
+.display{font-family:var(--disp);font-weight:900;letter-spacing:-.01em;font-size:34px;line-height:1.08;margin:16px 0 6px}
+.sub{color:var(--muted);font-size:15px;margin:0}
+.sectitle{font-size:11.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:26px 0 2px}
+.hairline{border-top:1px solid var(--hair);margin:20px 0}
+
+/* 大数字块（数据看板语义：hairline 分隔的编辑式行，不用嵌套卡） */
+.feature{margin-top:18px}
+.bignum{font-family:var(--disp);font-weight:900;font-size:64px;line-height:.95;letter-spacing:-.02em}
+.bignum i{font-style:normal;font-size:26px;margin-left:2px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);margin-top:14px} /* 底线与竖线相接：竖线顶到底线 */
+.stats div{padding:20px 16px 18px;border-right:1px solid var(--hair)}
+.stats div:first-child{padding-left:0}
+.stats div:last-child{border-right:0;padding-right:0}
+.stats b{display:block;font-family:var(--disp);font-weight:900;font-size:21px}
+.stats span{display:block;font-size:11.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+
+/* —— 行块（抄 .row / .progline：暖纸卡 + 1px hairline + 14 圆角，块间 gap 12） —— */
+.rowlist{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.rowlist.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.rowlist.grid .row{padding:16px}
+.rowlist.grid .row .l>b{font-size:16px}
+.rowlist.grid .row .l>span{font-size:13.5px}
+.pos{font-family:var(--disp);font-size:15px;width:22px;flex:none;color:var(--muted);text-align:right}
+.row.me{background:var(--accent-tint);border-color:var(--accent)}
+/* AI 学习建议生成按钮：可用=橙实心；今天已生成=常显 + 置灰 + 写明原因（禁「稍后/静音」出口） */
+.genrow{display:flex;align-items:center;gap:10px}
+.genrow .btn{flex:1}
+.genrow .btn:not(:disabled){background:var(--accent);border-color:var(--accent);color:#FFFDF8}
+.row.me .l>b{color:var(--accent-deep)}
+.progline{display:flex;flex-direction:column;align-items:stretch;gap:9px;padding:15px;border:1px solid var(--hair);
+  border-radius:var(--r-btn);background:var(--card)}
+.phead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mrow{display:flex;align-items:center;gap:10px}
+.mname{font-size:11.5px;font-weight:800;letter-spacing:.1em;color:var(--muted);width:52px;flex:none}
+.mnum{font-family:var(--disp);font-size:14px;width:52px;text-align:right;flex:none}
+.bar{flex:1;height:4px;background:var(--hair);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;transform-origin:left}
+.f-acc{background:var(--accent)}          /* 掌握度 · 橙 */
+.f-gray{background:#55524B}               /* 覆盖率 · 深灰 */
+.progline .nm{font-weight:800;font-size:15px;line-height:1.25}
+.progline .nm em{display:block;font-style:normal;font-size:13px;color:var(--muted);font-weight:600;margin-top:2px}
+.progline .bar{flex:1;height:3px;background:var(--hair);border-radius:99px;overflow:hidden;min-width:34px}
+.progline .bar i{display:block;height:100%;border-radius:99px;transform-origin:left} /* 颜色交给 .f-acc/.f-gray，避免优先级压盖 */
+.progline .bar{height:4px}
+.progline .num{font-family:var(--disp);font-size:15px;color:var(--ink);white-space:nowrap}
+.tag{font-size:11.5px;font-weight:800;letter-spacing:.06em;border-radius:var(--r-chip);padding:3px 8px;white-space:nowrap}
+.tag.weak{color:var(--accent-deep);background:var(--accent-tint)}
+.tag.none{color:var(--muted);background:var(--paper-2)}
+
+.row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 15px;
+  border:1px solid var(--hair);border-radius:var(--r-btn);background:var(--card)}
+.row .l{display:flex;flex-direction:column;gap:4px;min-width:0}
+.row .l>b{font-size:17px;font-weight:800}
+.row .l>span{font-size:14px;color:var(--muted)}
+.row .r{font-family:var(--disp);font-size:15px;color:var(--muted);white-space:nowrap}
+.row.task{justify-content:flex-start;padding:18px 16px}
+.row.task .l{flex:1 1 auto}
+.row .tick{flex:none;width:22px;height:22px;border:2px solid var(--hair);border-radius:6px;background:var(--card);position:relative}
+.row .tick.on{border-color:var(--accent);background:var(--accent)}
+.row .tick.on::after{content:'';position:absolute;left:6px;top:2px;width:6px;height:11px;border:solid #FFFDF8;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.btn{font:inherit;font-weight:800;font-size:16px;border-radius:var(--r-btn);padding:14px 14px;cursor:pointer;
+  border:1px solid var(--hair);background:transparent;color:var(--ink);text-align:center;white-space:nowrap}
+.btn.act{flex:none;width:auto;padding:11px 14px;font-size:14px}
+.btn.solid{background:var(--accent);border-color:var(--accent);color:#FFFDF8}
+.btn.wide{display:block;width:100%}
+.btn:disabled{color:var(--disabled-ink);background:var(--disabled-bg);border-color:var(--hair);cursor:not-allowed;white-space:normal}
+.btn .why{display:block;margin-top:3px;font-size:11.5px;font-weight:600;color:var(--disabled-ink)}
+.primary{display:block;width:100%;text-align:left;border:0;font:inherit;cursor:pointer;border-radius:var(--r-card);
+  padding:20px;margin:20px 0 0;background:linear-gradient(180deg,var(--accent),var(--accent-deep));color:#FFF9F4;
+  box-shadow:0 12px 26px rgba(226,92,58,.24)}
+.primary b{display:block;font-size:20px;font-weight:800}
+.primary>span{display:block;font-size:14.5px;color:rgba(255,249,244,.88);margin-top:2px}
+.points{margin-top:14px;border-top:1px solid var(--hair)}
+.points li{list-style:none;padding:13px 0;border-bottom:1px solid var(--hair);color:var(--ink-2);font-size:16px}
+.points li b{color:var(--ink)}
+.q{font-size:24px;font-weight:800;line-height:1.35;letter-spacing:-.005em;margin:14px 0 0}
+.ans{font-size:17.5px;line-height:1.75;color:var(--ink-2);margin-top:6px}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+/* —— 闪卡（照抄个人复习 .kc-*：卡片自带 1px hairline 边框 + 16 圆角 + 阴影，点击 3D 翻转，跟手拖拽 + 阈值甩出） —— */
+.kc-scene{perspective:1200px;margin-top:10px}
+.kc-card{position:relative;display:grid;transform-style:preserve-3d;cursor:pointer;transition:transform .45s var(--ease)}
+.kc-card.is-flipped{transform:rotateY(180deg)}
+.kc-face{grid-area:1/1;min-height:240px;padding:24px 22px;overflow-y:auto;border:1px solid var(--hair);
+  border-radius:var(--r-card);background:var(--card);box-shadow:var(--shadow);backface-visibility:hidden;
+  display:flex;flex-direction:column;gap:12px}
+.kc-front{justify-content:center}
+.kc-back{transform:rotateY(180deg);background:var(--accent-tint);justify-content:flex-start}
+.kc-back.flat{transform:none}
+.kc-card.dragging{transition:none;cursor:grabbing}
+.kc-card.out-r{transform:translateX(135%) rotate(16deg);opacity:.35;transition:transform .32s ease-in,opacity .32s ease-in}
+.kc-card.out-l{transform:translateX(-135%) rotate(-16deg);opacity:.35;transition:transform .32s ease-in,opacity .32s ease-in}
+.kc-hint{text-align:center;font-size:12px;color:var(--muted);margin-top:12px}
+.viewhead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:16px 0 12px;border-bottom:1px solid var(--hair)}
+.viewhead .n{font-family:var(--disp);font-size:17px;color:var(--accent-deep)}
+.mlabel{font-size:11.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.hint{font-size:13px;color:var(--muted);margin-top:18px;text-align:center}
+.foot{margin-top:14px;font-size:13px;color:var(--muted);text-align:center}
+.notes{margin-top:34px;border-top:1px solid var(--hair);padding-top:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+.notes h3{font-size:13px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+.notes li{font-size:15px;color:var(--ink-2);margin:0 0 6px;list-style:none;padding-left:14px;position:relative}
+.notes li::before{content:'';position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:2px;background:var(--accent)}
+@media print{body{background:#fff}.frame{box-shadow:none}}
+</style></head>
+<body><div class="sheet">
+
+<div class="head">
+  <div>
+    <h1>AI 学习小组 · 风格对照稿</h1>
+    <p>同一个组件语言（照搬个人复习：暖纸底 + 1px hairline + 编辑式行块 + 大字号 + 独立主行动按钮），
+       只把主色槽从草绿换成你现在的橙 <b>#F2714E</b>。功能与用户旅程不动。</p>
+  </div>
+  <div class="chip">对照稿 · 待你拍板</div>
+</div>
+
+<div class="frames">
+
+  <!-- ================= 屏 1 · 进度页 ================= -->
+  <div class="col">
+    <div class="cap"><b>① 进度页</b><span>v2 对照</span></div>
+    <div class="frame">
+      <div class="topbar"><div class="topbar-inner">
+        <span class="brand"><span class="dot"></span>AI 学习小组</span>
+        <span class="streak"><span class="flame">🔥</span><span class="n">6</span> 天</span>
+      </div></div>
+      <div class="body">
+        <div class="crumb">学习小组<span class="sep">/</span><b>进度</b></div>
+        <h1 class="display">进度</h1>
+        <p class="sub">按章节掌握度（仅本人可见）</p>
+
+        <div class="feature">
+          <div class="mlabel">学科掌握度</div>
+          <div class="bignum">44<i>%</i></div>
+          <div class="stats">
+            <div><b>7%</b><span>覆盖率</span></div>
+            <div><b>289</b><span>已学卡片</span></div>
+            <div><b>4,390</b><span>总卡片</span></div>
+          </div>
+        </div>
+        <div class="mlabel" style="color:var(--muted);margin-top:16px">掌握度 = 已学卡掌握度平均（卡级 = 50% 状态分 + 50% 作答正确率）</div>
+
+        <div class="sectitle">各章节状态</div>
+        <div class="rowlist">
+          <div class="progline">
+            <div class="phead"><span class="nm">第 1 章<em>亲密关系的本质</em></span><span class="tag weak">薄弱</span></div>
+            <div class="mrow"><span class="mname">掌握度</span><span class="bar"><i class="f-acc" style="transform:scaleX(.44)"></i></span><span class="mnum">44%</span></div>
+            <div class="mrow"><span class="mname">覆盖率</span><span class="bar"><i class="f-gray" style="transform:scaleX(1)"></i></span><span class="mnum">100%</span></div>
+          </div>
+          <div class="progline">
+            <div class="phead"><span class="nm">第 2 章<em>吸引与择偶</em></span><span class="tag none">未评估</span></div>
+            <div class="mrow"><span class="mname">掌握度</span><span class="bar"><i class="f-acc" style="transform:scaleX(0)"></i></span><span class="mnum">—</span></div>
+            <div class="mrow"><span class="mname">覆盖率</span><span class="bar"><i class="f-gray" style="transform:scaleX(0)"></i></span><span class="mnum">0%</span></div>
+          </div>
+          <div class="progline">
+            <div class="phead"><span class="nm">第 3 章<em>沟通与冲突</em></span><span class="tag weak">薄弱</span></div>
+            <div class="mrow"><span class="mname">掌握度</span><span class="bar"><i class="f-acc" style="transform:scaleX(.40)"></i></span><span class="mnum">40%</span></div>
+            <div class="mrow"><span class="mname">覆盖率</span><span class="bar"><i class="f-gray" style="transform:scaleX(.07)"></i></span><span class="mnum">7%</span></div>
+          </div>
+          <div class="progline">
+            <div class="phead"><span class="nm">第 4 章<em>依恋类型</em></span><span class="tag none">未评估</span></div>
+            <div class="mrow"><span class="mname">掌握度</span><span class="bar"><i class="f-acc" style="transform:scaleX(0)"></i></span><span class="mnum">—</span></div>
+            <div class="mrow"><span class="mname">覆盖率</span><span class="bar"><i class="f-gray" style="transform:scaleX(0)"></i></span><span class="mnum">0%</span></div>
+          </div>
+        </div>
+
+        <div class="sectitle">AI 学习建议</div>
+        <div class="rowlist" style="margin-top:10px"><div class="genrow">
+          <button class="btn wide" disabled>✦ 今日已生成 · 明天可再生成<span class="why">2026-09-27 生成 · 今日已生成（每天最多一次）</span></button>
+        </div></div>
+        <ul class="points" style="margin:14px 0 0;padding:0">
+          <li><b>先补第 3 章。</b>它在你的薄弱区里覆盖最完整（40% · 7%），练 5 道题最划算。</li>
+          <li>第 1 章已学 44% 但正确率偏低，建议隔天再刷一轮而不是今天加量。</li>
+          <li>第 2、4 章还没起步：从第 2 章开始，20 分钟能过完第一组。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 屏 2 · 测评页 ================= -->
+  <div class="col">
+    <div class="cap"><b>② 测评页</b><span>v2 对照</span></div>
+    <div class="frame">
+      <div class="topbar"><div class="topbar-inner">
+        <span class="brand"><span class="dot"></span>AI 学习小组</span>
+        <span class="streak"><span class="flame">🔥</span><span class="n">6</span> 天</span>
+      </div></div>
+            <div class="body">
+        <div class="crumb">学习小组<span class="sep">/</span><b>测评</b></div>
+        <h1 class="display">测评</h1>
+        <p class="sub">教师发布 · 全班同题</p>
+
+        <div class="sectitle">自主练习</div>
+        <div class="rowlist"><div class="row">
+          <span class="l"><b>自主练习</b><span>根据资料 AI 出题 · 5-10 题自选 · 即答即批</span></span><span class="r">›</span></div></div>
+
+        <div class="sectitle">教师发布 · 全班同题</div>
+        <div class="rowlist">
+          <div class="row"><span class="l"><b>测评 · 第 1 章 · 大模型是什么：概念扫盲</b><span>覆盖：第 1 章 · 大模型是什么：概念扫盲</span></span><span class="r">已完成 90 ›</span></div>
+          <div class="row"><span class="l"><b>测评 · 第 2 章 · AI 产品地图</b><span>覆盖：第 2 章 · AI 产品地图</span></span><span class="r">待完成 ›</span></div>
+        </div>
+
+        <div class="sectitle">薄弱点（带错题依据）</div>
+        <div class="rowlist"><div class="row">
+          <span class="l"><b>薄弱点 · 2 章 · 8 道错题</b><span>按练习 / 测评分组的错题依据</span></span><span class="r">›</span></div></div>
+
+        <div class="sectitle">巩固练习闭环（间隔复习 1 → 3 → 7）</div>
+        <div class="rowlist"><div class="row plain">
+          <span class="l"><b>尚未生成复习计划</b><span>3 道题今天到期 · 5 道题 3 天后 · 3 道题 7 天后</span></span></div></div>
+        <button class="primary"><b>一键生成巩固练习</b><span>按到期顺序出 5 道，含逐题解析</span></button>
+      </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 屏 3 · 闪卡复习 ================= -->
+  <div class="col">
+    <div class="cap"><b>③ 闪卡复习</b><span>v2 对照</span></div>
+    <div class="frame">
+      <div class="topbar"><div class="topbar-inner">
+        <span class="brand"><span class="dot"></span>知识卡片</span>
+        <span class="streak"><span class="flame">🔥</span><span class="n">6</span> 天</span>
+        <span class="mlabel">第 3 / 30 张</span>
+      </div></div>
+      <div class="body">
+        <div class="crumb">学习小组<span class="sep">/</span>知识卡片<span class="sep">/</span><b>复习中</b></div>
+        <div class="crumb">亲密关系 · 第 1 章<span class="sep">/</span><b>复习中</b></div>
+        <div class="viewhead"><span class="mlabel">自我表露</span><span class="n">第 3 / 30 张</span></div>
+
+        <div class="mlabel" style="margin-top:20px">正面 · 点一下翻面</div>
+        <div class="kc-scene"><div class="kc-card"><div class="kc-face kc-front">
+          <div class="q" style="margin:0">为什么「自我表露」的深度比广度更能决定亲密度？</div>
+          <div class="kc-hint" style="margin:0">点击卡片翻面看答案</div>
+        </div></div></div>
+
+        <div class="mlabel" style="margin-top:22px">反面 · 答案</div>
+        <div class="kc-scene"><div class="kc-card"><div class="kc-face kc-back flat">
+          <span class="mlabel" style="color:var(--accent-deep)">答案</span>
+          <div class="ans" style="margin:0">亲密度来自被理解与被接纳的体验，而不仅是信息量。深度表露（脆弱、真实感受）才触发互惠式表露与验证；
+             广度只增加信息交换，不增加被看见的程度。研究显示深度自我表露的即时提升远大于同量的话题广度。</div>
+        </div></div></div>
+
+        <div class="actions">
+          <button class="btn">忘了</button>
+          <button class="btn solid">记得</button>
+        </div>
+        <div class="hint">点击翻面 · 右滑 = 记得 · 左滑 = 忘了（跟手拖拽 + 阈值甩出，照抄个人复习）</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 屏 4 · 学习页 ================= -->
+  <div class="col">
+    <div class="cap"><b>④ 学习页</b><span>v2 对照</span></div>
+    <div class="frame">
+      <div class="topbar"><div class="topbar-inner">
+        <span class="brand"><span class="dot"></span>AI 学习小组</span>
+        <span class="streak"><span class="flame">🔥</span><span class="n">6</span> 天</span>
+      </div></div>
+      <div class="body">
+        <div class="crumb">学习小组<span class="sep">/</span><b>学习</b></div>
+        <h1 class="display">学习</h1>
+        <p class="sub">今日目标：30 张卡 · 5 道题</p>
+
+        <button class="primary"><b>继续复习 · 第 3 / 30 张</b><span>知识卡片 · 亲密关系 · 第 1 章</span></button>
+
+        <div class="sectitle">今日任务</div>
+        <div class="rowlist">
+          <div class="row task"><span class="tick on"></span>
+            <span class="l"><b>复习卡片 · 30 / 30</b><span>已达标</span></span>
+            <span class="r">再来一组</span></div>
+          <div class="row task"><span class="tick"></span>
+            <span class="l"><b>刷练习题 · 4 / 5 题</b><span>还差 1 道题</span></span>
+            <button class="btn act solid">去完成</button></div>
+        </div>
+
+        <div class="sectitle">入口</div>
+        <div class="rowlist grid">
+          <div class="row"><span class="l"><b>资料库</b><span>范围自定：勾选章节后，对话 / 知识卡片 / 今日任务都按这个范围走</span></span></div>
+          <div class="row"><span class="l"><b>知识卡片</b><span>已勾 4 章 · 翻卡记忆，进度计入掌握度</span></span></div>
+          <div class="row"><span class="l"><b>对话</b><span>已勾 4 章 · 向 TUTOR 跨章提问，自动标注来源</span></span></div>
+        </div>
+
+        <div class="rowlist"><div class="row plain">
+          <span class="l"><b>开启提醒，别断连胜</b><span>19:00–23:00 每档催一次</span></span><span class="r">›</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 屏 5 · 班级页 ================= -->
+  <div class="col">
+    <div class="cap"><b>⑤ 班级页</b><span>v2 对照</span></div>
+    <div class="frame">
+      <div class="topbar"><div class="topbar-inner">
+        <span class="brand"><span class="dot"></span>AI 学习小组</span>
+        <span class="streak"><span class="flame">🔥</span><span class="n">6</span> 天</span>
+        <span class="mlabel">高二 3 班</span>
+      </div></div>
+      <div class="body">
+        <div class="crumb">学习小组<span class="sep">/</span><b>班级</b></div>
+        <h1 class="display">班级</h1>
+        <p class="sub">全班学习排行榜 · 仅同班同学可见</p>
+
+        <div class="sectitle">今日打卡 · 4 人</div>
+        <div class="rowlist">
+          <div class="row task"><span class="tick on"></span>
+            <span class="l"><b>我</b><span>30/30 卡 · 4/5 题</span></span><span class="r">达标</span></div>
+          <div class="row task"><span class="tick on"></span>
+            <span class="l"><b>林思远</b><span>42/30 卡 · 5/5 题</span></span><span class="r">达标</span></div>
+          <div class="row task"><span class="tick"></span>
+            <span class="l"><b>陈可</b><span>18/30 卡 · 2/5 题</span></span><span class="r">未达标</span></div>
+          <div class="row task"><span class="tick"></span>
+            <span class="l"><b>王沐</b><span>0/30 卡 · 0/5 题</span></span><span class="r">未达标</span></div>
+        </div>
+
+        <div class="sectitle">排行榜 · 知识卡片（本周）</div>
+        <div class="rowlist">
+          <div class="row"><span class="pos">1</span><span class="l"><b>林思远</b><span>覆盖率 41%</span></span><span class="r">1,802</span></div>
+          <div class="row me"><span class="pos">2</span><span class="l"><b>我</b><span>覆盖率 7%</span></span><span class="r">289</span></div>
+          <div class="row"><span class="pos">3</span><span class="l"><b>陈可</b><span>覆盖率 3%</span></span><span class="r">131</span></div>
+        </div>
+        <div class="rowlist" style="margin-top:12px"><div class="row">
+          <span class="l"><b>更多排行榜</b><span>练习榜 · 掌握度榜</span></span><span class="r">›</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="notes">
+  <div><h3>抄过来的（个人复习）</h3><ul>
+    <li>暖纸底 #FAF6ED / 墨字 / 1px hairline 结构，禁嵌套卡片</li>
+    <li>行块 .row：暖纸卡 + hairline 边 + 14 圆角 + 块间 12px</li>
+    <li>字号四档：34 大标题 / 22 区块题 / 17.5 正文 / 11.5 微标签</li>
+    <li>闪卡 .kc-card：卡片自带 1px 边框 + 16 圆角 + 阴影，点击 3D 翻转、跟手拖拽甩出（原样照抄）</li>
+    <li>章节行两条 bar：掌握度 = 橙 / 覆盖率 = 深灰 #55524B；数据格底线与竖线相接</li>
+    <li>AI 学习建议生成按钮（**线上原本就有**，`POST /api/progress/advice/generate`，当天再点幂等返回同一份）：可用=「✦ 生成今日建议」橙实心；生成中=「正在生成…」置灰；今日已生成=置灰「✦ 今日已生成 · 明天可再生成」+ 小字「2026-09-27 生成 · 今日已生成（每天最多一次）」。**纯样式对齐，不动后端**</li>
+    <li>数字全部 tabular-nums；主行动一个，独立大按钮</li>
+  </ul></div>
+  <div><h3>没动的</h3><ul>
+    <li>功能与用户旅程：底部 5 tab、钻取式页面、闪卡左右滑手势</li>
+    <li>深链路由、起局答题、AI 学习建议的逻辑与文案</li>
+    <li>教师端结构（只换皮）</li>
+  </ul></div>
+  <div><h3>待你拍板</h3><ul>
+    <li>主色：沿用 #F2714E（浅）＋ #E25C3A（深）做渐变与强调</li>
+    <li>状态标签：只保留「薄弱 / 未评估」两态文字标签，其余走中性灰</li>
+    <li>确认后交 CC 全量落地（每屏独立 commit + 门禁 + ui-audit）</li>
+  </ul></div>
+</div>
+
+</div></body></html>
