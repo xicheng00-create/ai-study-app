@@ -18,11 +18,13 @@
 """
 import argparse
 import concurrent.futures as futures
+import hashlib
 import json
 import os
 import re
 import sqlite3
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -62,6 +64,17 @@ def load_env(path: Path) -> dict:
 
 
 ENV = load_env(BASE / ".env")
+
+# ---------------------------------------------------------------- 批量 LLM 成本纪律
+# 四条铁律见共享技能 `llm-batch-cost-discipline`（brain 380 章整编实测，2026-09-28→10-01）：
+#   ① 转换型任务（抽取/归类/摘要）默认关思考；② 每次调用落账本；
+#   ③ 同一输入最多 2 次尝试 + 落 .fail 标记；④ 能脚本就脚本。
+# ① 实测（同一份卡片抽取提示词，2026-10-01）：deepseek-flash 关思考后 completion 1473→180 token、
+#    耗时 6.1s→1.0s，JSON 照样可解析；deepseek-chat 本就默认不开思考，这里显式写死是为了
+#    防「日后把 DEEPSEEK_MODEL 换成 deepseek-flash 就静默烧推理 token」。LLM_THINKING=on 可临时提档。
+MAX_ATTEMPTS = 2
+THINKING_OFF = (ENV.get("LLM_THINKING") or os.environ.get("LLM_THINKING") or "off").strip().lower() != "on"
+FAIL_DIR = Path(os.path.expanduser(os.environ.get("LLM_FAIL_DIR") or "~/.hermes/app-usage/llm-fails"))
 
 SYSTEM_TMPL = """你是「AI 学习小组」的资深教研老师，负责把课件原文拆成**理解型**知识卡片。
 严格输出 JSON，不要任何多余文字。
@@ -107,12 +120,16 @@ def norm_front(s: str) -> str:
     return re.sub(r"[\W_]+", "", (s or "")).lower()
 
 
-def _log_usage(model: str, usage, feature: str = "") -> None:
+def _log_usage(model: str, usage, feature: str = "", input_sha: str = "",
+               thinking: str = "") -> None:
     """把一次成功的 LLM 调用追加到 app-usage JSONL，供 Token 账单看板精确归因。
 
     背景（2026-09-20）：本脚本与 audit_alignment.py 直连 DeepSeek 官方 API 且
     不写任何用量日志，导致 09-18/09-19 账单里 26% 的请求落进「无逐次记录」桶
     （对账哨兵报警）。这里补上逐次记账，与 backend/ai/usage_log.py 同格式。
+    2026-10-01 起额外记 `reasoning_tokens` / `thinking` / `input_sha256`（成本纪律铁律 2）：
+    没有前两者就无法验证「是否有人绕过了关思考的入口」，没有 sha 就算不出重复率
+    （brain 侧 71% 重复率的血案就是无账本可比）。
     任何异常都吞掉，绝不影响主流程。
     """
     try:
@@ -121,6 +138,7 @@ def _log_usage(model: str, usage, feature: str = "") -> None:
                 or os.path.expanduser("~/.hermes/app-usage/aistudy.jsonl"))
         os.makedirs(os.path.dirname(path), exist_ok=True)
         u = usage or {}
+        det = u.get("completion_tokens_details") or {}
         rec = {
             "timestamp": datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds"),
             "model": str(model or "unknown"),
@@ -129,6 +147,9 @@ def _log_usage(model: str, usage, feature: str = "") -> None:
             "prompt_cache_hit_tokens": int(u.get("prompt_cache_hit_tokens") or 0),
             "completion_tokens": int(u.get("completion_tokens") or 0),
             "total_tokens": int(u.get("total_tokens") or 0),
+            "reasoning_tokens": int(det.get("reasoning_tokens") or u.get("reasoning_tokens") or 0),
+            "thinking": thinking or "unknown",
+            "input_sha256": input_sha[:16],
         }
         with open(path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -136,25 +157,74 @@ def _log_usage(model: str, usage, feature: str = "") -> None:
         pass
 
 
-def call_llm_json(system: str) -> dict:
-    """请求模型并解析出 JSON 对象（容错），供卡片抽取与审计复用。"""
+def _prompt_sha(system: str) -> str:
+    return hashlib.sha256((system or "").encode("utf-8")).hexdigest()
+
+
+def _mark_fail(sha: str, err, attempts: int, stage: str) -> None:
+    """铁律 3：同一输入尝试用尽仍失败 → 落 .fail 标记，供护栏与人工看到（绝不无上限重试）。"""
+    try:
+        FAIL_DIR.mkdir(parents=True, exist_ok=True)
+        (FAIL_DIR / f"{stage}-{sha[:16]}.fail").write_text(
+            json.dumps({"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                        "script": os.path.basename(sys.argv[0] or ""), "stage": stage,
+                        "input_sha256": sha, "attempts": attempts, "error": str(err)[:500]},
+                       ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def call_llm_json(system: str, stage: str = "rebuild_cards") -> dict:
+    """请求模型并解析出 JSON 对象（容错），供卡片抽取与审计复用。
+
+    成本纪律（共享技能 `llm-batch-cost-discipline`）：
+    - 铁律 1：默认关思考（`thinking:{"type":"disabled"}`）；上游不认该参数时自动去掉重发一次，
+      所以换 base_url / 换模型都不会因此 400。
+    - 铁律 2：每次成功调用落一行账本（含 reasoning_tokens / thinking / input_sha256）。
+    - 铁律 3：同一输入最多 MAX_ATTEMPTS 次；仍失败（含「返回无有效 JSON」）→ 落 .fail 标记并抛出，
+      绝不无上限重试（brain 侧 71% 重复率的血案就出在这）。
+    """
     import requests
     key = ENV.get("DEEPSEEK_API_KEY", "")
     base = ENV.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
     model = ENV.get("DEEPSEEK_MODEL", "deepseek-chat")
     if not key:
         raise RuntimeError("缺少 DEEPSEEK_API_KEY")
-    resp = requests.post(
-        f"{base}/chat/completions",
-        headers={"Authorization": f"Bearer {key}"},
-        json={"model": model, "messages": [{"role": "system", "content": system}],
-              "temperature": 0.4},
-        timeout=TIMEOUT,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    _log_usage(model, data.get("usage"))
-    return parse_json_obj(data["choices"][0]["message"]["content"])
+    sha = _prompt_sha(system)
+    payload = {"model": model, "messages": [{"role": "system", "content": system}],
+               "temperature": 0.4}
+    if THINKING_OFF:
+        payload["thinking"] = {"type": "disabled"}
+    last = None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            resp = requests.post(
+                f"{base}/chat/completions",
+                headers={"Authorization": f"Bearer {key}"},
+                json=payload, timeout=TIMEOUT,
+            )
+            if resp.status_code == 400 and "thinking" in payload:
+                # 上游不认 thinking 参数：去掉后立刻重发，不占用重试预算
+                payload.pop("thinking", None)
+                resp = requests.post(
+                    f"{base}/chat/completions",
+                    headers={"Authorization": f"Bearer {key}"},
+                    json=payload, timeout=TIMEOUT,
+                )
+            resp.raise_for_status()
+            data = resp.json()
+            _log_usage(model, data.get("usage"), input_sha=sha,
+                       thinking="off" if "thinking" in payload else "unknown")
+            out = parse_json_obj(data["choices"][0]["message"]["content"])
+            if out:
+                return out
+            last = ValueError("模型返回无有效 JSON（空 content 或全烧推理 token）")
+        except Exception as e:  # noqa: BLE001
+            last = e
+        if attempt < MAX_ATTEMPTS:
+            time.sleep(1)
+    _mark_fail(sha, last, MAX_ATTEMPTS, stage)
+    raise RuntimeError(f"LLM 调用失败（已试 {MAX_ATTEMPTS} 次，已落 .fail 标记）：{last}")
 
 
 def call_llm(system: str) -> list[dict]:
@@ -282,23 +352,29 @@ def _mk(source: str, chunks: list) -> dict:
     return {"source": source, "chunks": list(chunks)}
 
 
-def gen_for_piece(job: tuple[dict, str, str]) -> tuple[dict, list[dict], str | None]:
-    piece, goal, tags = job
+def piece_prompt(piece: dict, goal: str, tags: str) -> str:
+    """片组 → 完整 prompt（唯一构造点：`gen_for_prompt` 与「按输入 sha256 去重」都从这里取，
+    两处各拼一次必然漂移）。"""
     body = "\n---\n".join((c["text"] or "")[:MAX_CHUNK_CHARS] for c in piece["chunks"])
     n = max(4, min(14, len(body) // 500))
     shared = any(k in piece["source"] for k in SHARED_MATERIALS)
     rule = RULE_STRICT if shared else RULE_NORMAL
+    return SYSTEM_TMPL.format(source=piece["source"], content=body, goal=goal,
+                              tags=tags, n=n, relevance_rule=rule)
+
+
+def gen_for_prompt(job: tuple[str, dict]) -> tuple[list[dict], str | None]:
+    prompt, piece = job
     fallback_sub = re.sub(r"^教案·", "", piece["source"])[:12] or "本节考点"
     try:
-        cards = call_llm(SYSTEM_TMPL.format(source=piece["source"], content=body, goal=goal,
-                                           tags=tags, n=n, relevance_rule=rule))
+        cards = call_llm(prompt)
         out = []
         for c in cards[:PER_PIECE_CAP]:
             c["sub_concept"] = normalize_label(c.get("sub_concept")) or fallback_sub
             out.append(c)
-        return piece, out, None
+        return out, None
     except Exception as e:  # noqa: BLE001
-        return piece, [], str(e)
+        return [], str(e)
 
 
 def _tokens(s: str) -> set:
@@ -366,17 +442,31 @@ def rebuild_chapter(con, chapter_id: str, name: str, dry: bool) -> dict:
     goal, tags = session_ctx(con, chapter_id)
     print(f"\n[{name}] 片组 {len(pieces)} 个，开始逐片抽取 ...", flush=True)
     raw: list[dict] = []
-    jobs = [(p, goal, tags) for p in pieces]
+    # 铁律 3（幂等按输入内容 sha256）：prompt 完全相同的片组只调一次 LLM，结果复用给所有同 prompt 片组。
+    # 旧实现按片组逐个付费——同一份共用素材在一章里出现两次就白烧一次钱（brain 侧 71% 重复率同源）。
+    plan_by_piece = [(piece_prompt(p, goal, tags), p) for p in pieces]
+    uniq: dict[str, tuple[str, dict]] = {}
+    for q in plan_by_piece:
+        uniq.setdefault(hashlib.sha256(q[0].encode("utf-8")).hexdigest(), q)
+    keys = list(uniq.keys())
+    if len(keys) < len(pieces):
+        print(f"   （按输入 sha256 合并重复片组：{len(pieces)} → {len(keys)} 次调用）", flush=True)
+
+    got: dict[str, tuple[list[dict], str | None]] = {}
     with futures.ThreadPoolExecutor(max_workers=WORKERS) as ex:
-        for i, (piece, cards, err) in enumerate(
-                ex.map(gen_for_piece, jobs), start=1):
-            if err:
-                print(f"   [{i}/{len(pieces)}] {piece['source'][:20]} 失败: {err}", flush=True)
-                continue
-            for c in cards:
-                c["source_chunk_id"] = piece["chunks"][0]["id"]
-            raw.extend(cards)
-            print(f"   [{i}/{len(pieces)}] {piece['source'][:22]:<24} +{len(cards):2d} 卡", flush=True)
+        for key, res in zip(keys, ex.map(gen_for_prompt, list(uniq.values()))):
+            got[key] = res
+
+    for i, (prompt, p) in enumerate(plan_by_piece, start=1):
+        cards, err = got[hashlib.sha256(prompt.encode("utf-8")).hexdigest()]
+        if err:
+            print(f"   [{i}/{len(pieces)}] {p['source'][:20]} 失败: {err}", flush=True)
+            continue
+        for c in cards:
+            c = dict(c)                     # 复用同一 prompt 结果时按片组复制，避免 chunk 绑定互相覆盖
+            c["source_chunk_id"] = p["chunks"][0]["id"]
+            raw.append(c)
+        print(f"   [{i}/{len(pieces)}] {p['source'][:22]:<24} +{len(cards):2d} 卡", flush=True)
 
     cards = dedupe(raw)
     # 止血闸门（KNOW-014）：重建是全量替换，无「已有卡」可比，仅去本批内部重复

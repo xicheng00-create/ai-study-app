@@ -22,10 +22,12 @@
 """
 import argparse
 import concurrent.futures as futures
+import hashlib
 import json
 import os
 import sqlite3
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -59,6 +61,15 @@ def load_env(path: Path) -> dict:
 
 ENV = load_env(BASE / ".env")
 
+# ---------------------------------------------------------------- 批量 LLM 成本纪律
+# 四条铁律见共享技能 `llm-batch-cost-discipline`：
+#   ① 转换型任务（归类/打标）默认关思考；② 每次调用落账本；③ 同一输入最多 2 次 + .fail 标记；④ 能脚本就脚本。
+# 归类是「转换」不是「推理」：实测同提示词下关思考 completion -65%~-91%（deepseek-flash），
+# 而分组结果照样可解析。LLM_THINKING=on 可临时提档（见 references/llm-content-dedup 的成本纪律一节）。
+MAX_ATTEMPTS = 2
+THINKING_OFF = (ENV.get("LLM_THINKING") or os.environ.get("LLM_THINKING") or "off").strip().lower() != "on"
+FAIL_DIR = Path(os.path.expanduser(os.environ.get("LLM_FAIL_DIR") or "~/.hermes/app-usage/llm-fails"))
+
 # 建表：直接复用后端的 schema/migrate（单一真相），避免脚本与 app 的 DDL 漂移。
 # 说明：card_topics 由 backend/data/models.py 定义，app 启动时 init_db 也会建；脚本自建是为了
 # 「独立可跑」（不依赖先启动一次服务），幂等无副作用。
@@ -71,13 +82,19 @@ def ensure_schema(con) -> None:
     models.migrate(con)
 
 
-def log_usage(model: str, usage, feature: str = "kc-topic") -> None:
-    """逐次记账到 app-usage JSONL（与 backend/ai/usage_log.py 同格式）。异常一律吞掉。"""
+def log_usage(model: str, usage, feature: str = "kc-topic", input_sha: str = "",
+              thinking: str = "") -> None:
+    """逐次记账到 app-usage JSONL（与 backend/ai/usage_log.py 同格式）。异常一律吞掉。
+
+    2026-10-01 起额外记 `reasoning_tokens` / `thinking` / `input_sha256`（成本纪律铁律 2）：
+    没有前两个就无法验证「是否有人绕过统一入口」，没有 sha 就算不出重复率。
+    """
     try:
         path = (ENV.get("LLM_USAGE_LOG") or os.environ.get("LLM_USAGE_LOG")
                 or os.path.expanduser("~/.hermes/app-usage/aistudy.jsonl"))
         os.makedirs(os.path.dirname(path), exist_ok=True)
         u = usage or {}
+        det = u.get("completion_tokens_details") or {}
         rec = {
             "timestamp": datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds"),
             "model": str(model or "unknown"),
@@ -86,9 +103,29 @@ def log_usage(model: str, usage, feature: str = "kc-topic") -> None:
             "prompt_cache_hit_tokens": int(u.get("prompt_cache_hit_tokens") or 0),
             "completion_tokens": int(u.get("completion_tokens") or 0),
             "total_tokens": int(u.get("total_tokens") or 0),
+            "reasoning_tokens": int(det.get("reasoning_tokens") or u.get("reasoning_tokens") or 0),
+            "thinking": thinking or "unknown",
+            "input_sha256": input_sha[:16],
         }
         with open(path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _prompt_sha(system: str) -> str:
+    return hashlib.sha256((system or "").encode("utf-8")).hexdigest()
+
+
+def _mark_fail(sha: str, err, attempts: int, stage: str) -> None:
+    """铁律 3：尝试用尽仍失败 → 落 .fail 标记（供护栏与人工看到），绝不无上限重试。"""
+    try:
+        FAIL_DIR.mkdir(parents=True, exist_ok=True)
+        (FAIL_DIR / f"{stage}-{sha[:16]}.fail").write_text(
+            json.dumps({"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                        "script": os.path.basename(sys.argv[0] or ""), "stage": stage,
+                        "input_sha256": sha, "attempts": attempts, "error": str(err)[:500]},
+                       ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
 
@@ -116,24 +153,54 @@ def parse_json_obj(text: str) -> dict:
 
 
 def chat(system: str, feature: str = "kc-topic") -> dict:
-    """一次 LLM 调用 → JSON 对象。temperature=0（归类任务要可复现）。"""
+    """一次 LLM 调用 → JSON 对象。temperature=0（归类任务要可复现）。
+
+    成本纪律（共享技能 `llm-batch-cost-discipline`）：
+    - 铁律 1：默认关思考（`thinking:{"type":"disabled"}`）；上游不认该参数时自动去掉重发一次。
+    - 铁律 2：每次成功调用落一行账本（含 reasoning_tokens / thinking / input_sha256）。
+    - 铁律 3：同一输入最多 MAX_ATTEMPTS 次；仍失败（含「返回无有效 JSON」）→ 落 .fail 标记并抛出，
+      由调用方按批兜底（单批失败不影响其它批，但绝不无上限重试）。
+    """
     import requests
     key = ENV.get("DEEPSEEK_API_KEY", "")
     base = ENV.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
     model = ENV.get("DEEPSEEK_MODEL", "deepseek-chat")
     if not key:
         raise RuntimeError("缺少 DEEPSEEK_API_KEY（.env）")
-    resp = requests.post(
-        f"{base}/chat/completions",
-        headers={"Authorization": f"Bearer {key}"},
-        json={"model": model, "messages": [{"role": "system", "content": system}],
-              "temperature": 0},
-        timeout=TIMEOUT,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    log_usage(model, data.get("usage"), feature)
-    return parse_json_obj(data["choices"][0]["message"]["content"])
+    sha = _prompt_sha(system)
+    payload = {"model": model, "messages": [{"role": "system", "content": system}],
+               "temperature": 0}
+    if THINKING_OFF:
+        payload["thinking"] = {"type": "disabled"}
+    last = None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            resp = requests.post(
+                f"{base}/chat/completions",
+                headers={"Authorization": f"Bearer {key}"},
+                json=payload, timeout=TIMEOUT,
+            )
+            if resp.status_code == 400 and "thinking" in payload:
+                payload.pop("thinking", None)      # 上游不认该参数：去掉重发，不占重试预算
+                resp = requests.post(
+                    f"{base}/chat/completions",
+                    headers={"Authorization": f"Bearer {key}"},
+                    json=payload, timeout=TIMEOUT,
+                )
+            resp.raise_for_status()
+            data = resp.json()
+            log_usage(model, data.get("usage"), feature, input_sha=sha,
+                      thinking="off" if "thinking" in payload else "unknown")
+            out = parse_json_obj(data["choices"][0]["message"]["content"])
+            if out:
+                return out
+            last = ValueError("模型返回无有效 JSON（空 content 或全烧推理 token）")
+        except Exception as e:  # noqa: BLE001
+            last = e
+        if attempt < MAX_ATTEMPTS:
+            time.sleep(1)
+    _mark_fail(sha, last, MAX_ATTEMPTS, feature)
+    raise RuntimeError(f"LLM 调用失败（已试 {MAX_ATTEMPTS} 次，已落 .fail 标记）：{last}")
 
 
 # ---------------------------------------------------------------- 数据读取
