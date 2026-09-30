@@ -20,26 +20,64 @@ def _config(key: str, default):
     return os.environ.get(key, default)
 
 
+def _thinking_off(feature: str) -> bool:
+    """转换型任务默认关思考（成本纪律铁律 1）。
+
+    提档方式（都走配置/环境变量，不改代码）：
+      `LLM_THINKING=on`                     → 全局恢复思考（调试/对比用）
+      `LLM_THINKING_FEATURES=tutor,grader`  → 只给这些 feature 恢复思考
+    默认全关：判重/出题/判分/卡片抽取的输出都是结构化 JSON，思考链只烧钱不改结果。
+    """
+    if str(_config("LLM_THINKING", "") or "").strip().lower() == "on":
+        return False
+    allow = str(_config("LLM_THINKING_FEATURES", "") or "")
+    feats = {x.strip() for x in allow.split(",") if x.strip()}
+    return feature not in feats
+
+
 def _chat(messages: list[dict], feature: str = "unknown") -> str | None:
-    """请求 DeepSeek chat completions；任何异常/超时返回 None。"""
+    """请求 DeepSeek chat completions；任何异常/超时返回 None。
+
+    批量 LLM 成本纪律（统一入口，共享技能 `llm-batch-cost-discipline`）：
+    - 铁律 1（转换型默认关思考）：判重/出题/判分/卡片抽取都是「转换」不是「推理」。本地对照实测
+      （2026-10-01，同一份提示词）：deepseek-flash 不带 thinking → 输出 946 tok、其中推理 516
+      （占 54.5%）、4.2s；加 `thinking=disabled` → 输出 739（−22%）、推理 0、2.8s。
+      deepseek-chat 本就推理 0，所以这道闸的收益是「换模型时防静默烧推理」，不是今天的省钱。
+      `LLM_THINKING=on` 全局提档；`LLM_THINKING_FEATURES=tutor,grader` 只给这些 feature 提档。
+      上游不认识 `thinking` 参数时（换 base_url / 换服务商）自动去掉重发一次，不占用任何重试预算。
+    - 铁律 2（每次成功调用落账本）：账本记 `reasoning_tokens` / `thinking`，护栏据此查「有人绕过入口」。
+    - 铁律 3：这里**不做重试**（失败即返回 None，由调用方降级到固定引导语池）——0 次也好过无上限。
+    """
     api_key = _config("DEEPSEEK_API_KEY", "")
     if not api_key:
         return None
     url = _config("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
     model = _config("DEEPSEEK_MODEL", "deepseek-chat")
+    payload = {"model": model, "messages": messages, "temperature": 0.6}
+    if _thinking_off(feature):
+        payload["thinking"] = {"type": "disabled"}
     try:
         resp = requests.post(
             f"{url}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": model, "messages": messages, "temperature": 0.6},
+            json=payload,
             timeout=TIMEOUT_SECONDS,
         )
+        if resp.status_code == 400 and "thinking" in payload:
+            payload.pop("thinking", None)          # 上游不认该参数：去掉重发一次
+            resp = requests.post(
+                f"{url}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json=payload,
+                timeout=TIMEOUT_SECONDS,
+            )
         if resp.status_code >= 500:
             return None
         resp.raise_for_status()
         data = resp.json()
         # HTTP 成功且拿到 JSON 才记一条用量（失败/超时/异常路径不记）
-        log_usage(model, data.get("usage"), feature)
+        log_usage(model, data.get("usage"), feature,
+                  thinking="off" if "thinking" in payload else "unknown")
         return data["choices"][0]["message"]["content"]
     except (requests.RequestException, ValueError, KeyError, IndexError, TypeError):
         return None

@@ -604,6 +604,17 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 - 越界（请求做题/答案）→ 意图路由分流 QUIZZER / 引导点拨。
 - TUTOR 输出门控：拒绝规则 + 越界检测 + 界面「AI 生成请核对」标注。
 
+### 7.4 LLM 成本纪律（REQ-NFR-LLMCOST-001，2026-10-01 增补，随下一次发版生效）
+
+> 权威做法 = 共享技能 `llm-batch-cost-discipline`（brain 侧 380 章整编实测：推理 token 占输出 66.5%；1232 次调用只对应 358 篇＝重复率 71%，白花 ¥36）。以下四条是**规格条款**，对本项目全部 LLM 调用路径（在线 Agent + 离线批量脚本）一律适用。
+
+- **触发点（覆盖路径）**：任何新增/修改「会调用 LLM」的代码路径。**唯一入口 = `backend/ai/agents.py::_chat`**；离线批量走 `scripts/rebuild_cards.py::call_llm_json` / `scripts/group_cards.py::chat`（与 `_chat` 同规格）。**新写脚本不得自己再写一份 `requests.post`。**
+- **① 转换型任务默认关思考**：TUTOR / QUIZZER / GRADER / KNOWLEDGE / KNOWLEDGE_DUP_CHECK 均属「转换」而非「推理」，默认携带 `thinking:{"type":"disabled"}`；提档只允许配置化 —— `LLM_THINKING=on`（全局）或 `LLM_THINKING_FEATURES=<csv>`（按 feature）。上游不认该参数（HTTP 400，换 base_url/服务商时）必须自动去参**重发一次**（不占用任何重试预算）。
+- **② 每次成功调用落账本**：`ai/usage_log.py` 记 `reasoning_tokens` / `thinking`（必填）；离线脚本另记 `input_sha256`（没有哈希就算不出重复率，护栏无从判违规）。只在成功路径记，失败/超时路径不记。
+- **③ 失败有界重试 + 幂等**：同一输入最多 **2 次**尝试，仍失败落 `.fail` 标记（`~/.hermes/app-usage/llm-fails/`）后跳过该条，**禁止无上限重试**；在线路径维持「失败即 `None` → 两层 Fallback」，不额外重试。幂等键 = **输入内容 sha256**。
+- **④ 机械步骤零 LLM**：召回 / 连通分量 / 微簇切分 / 标签归一 / 守卫校验一律脚本化。
+- **违规处置（机械断言，不是口头约定）**：护栏 `llm_cost_guard.py` —— 推理占比 >15%、重复率 >1.5、存在 `.fail`，任一命中即退出 1；入口行为断言 = `tests/test_agents_thinking.py`（默认关思考 / 全局提档 / feature 白名单 / 400 去参重发一次 / 账本记推理 token，共 5 例）。
+
 ---
 
 ## 八、RAG 流水线（架构再审后实际落地：SQLite 关键词检索，无向量库）
