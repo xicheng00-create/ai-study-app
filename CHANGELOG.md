@@ -1,3 +1,12 @@
+## [2.13.0] - 2026-10-01
+
+- **LLM 成本纪律接入生产（REQ-NFR-LLMCOST-001）**：`backend/ai/agents.py::_chat`（全项目唯一 LLM 入口）对转换型任务（`tutor`/`quizzer`/`grader`/`knowledge`/`knowledge_dup_check`）默认携带 `thinking:{"type":"disabled"}`；提档只允许配置化 —— `LLM_THINKING=on`（全局）或 `LLM_THINKING_FEATURES=<csv>`（按 feature）；上游不认该参数（HTTP 400，换 base_url/服务商时）自动去参重发一次，不占用重试预算。今天行为零变化（`deepseek-chat` 本就推理 0），收益是「换模型/换 base_url 时防静默烧推理」：本地同提示词对照实测关思考后输出 −22%、推理 token 516→0、耗时 −33%。
+- 账本 `~/.hermes/app-usage/aistudy.jsonl` 每行新增 `reasoning_tokens` / `thinking`（在线入口）与 `input_sha256`（离线脚本 `rebuild_cards.py` / `group_cards.py`，同批 `8d83a86`/`d239fa5` 落地）；同一输入最多 2 次尝试、失败落 `.fail` 标记、同 prompt 片组合并为一次调用、门禁 LLM 裁决按输入 sha256 缓存。
+- **新增护栏 `scripts/llm_cost_guard.py`**（此前 §7.4 只有条款、脚本并不存在）：`--days N`（默认 1）读账本，三条判据 —— 推理占比 >15% / 重复率 >1.5（调用数 ÷ 唯一 `input_sha256`）/ 存在未清 `.fail`，任一命中打印明细并退出 1，全通过静默退出 0；缺 `input_sha256` 或缺 `thinking` 的历史记录只统计条数、不参与判据。`make cost-guard` 可直接跑；`tests/test_llm_cost_guard.py` 6 例自证「能失败也能通过」。实测 24h 真实账本：退出 1，明细 `重复率 4.00（56/14）— rebuild_cards.py`。
+- **跨运行续跑：不做**（Ray 2026-10-01 拍板）：同一章重跑不复用已成功片组 —— 理由「重跑通常就是想重新生成更好的卡」，缓存会挡住该意图；单次运行内的重复已由同 prompt 合并消除。代价：重跑后 24h 内护栏会如实报重复率，人工确认即可。
+- 规格回写：Design-Spec §7.4 与实现对齐（护栏路径 / 判据 / 退出码 / 已知取舍 A、B）+ 新增 §12.68 实现状态回写。
+- 版本三件套：`backend/app.py version=2.13.0`、`sw.js CACHE v68→v69`、`index.html ?v=2.13.0`（本轮无前端改动，按同值规则同步以穿透 CF 4h 强缓存）。
+
 ## [2.12.2] - 2026-09-27
 
 - 进度页章节行去重（Ray 拍板）：删除与两条 bar 标签重复的「掌握度 x% · 覆盖率 y%」文字，只保留「已学 n / 共 m」；数值仍在 bar 标签上，信息不丢。

@@ -1,7 +1,7 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.12.2（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
-> 日期：2026-09-27（随代码现状回写）
+> 版本：v2.13.0（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
+> 日期：2026-10-01（随代码现状回写）
 > 状态：设计评审（正文静态章节以**当前生产代码**为准；§12.x 为实现状态回写历史）
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）
 > 方法论：pm-toolkit 架构分层 / 领域建模 / API 契约 / 角色分端 UI 规格 + 架构再审（F1–F10）
@@ -604,7 +604,7 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 - 越界（请求做题/答案）→ 意图路由分流 QUIZZER / 引导点拨。
 - TUTOR 输出门控：拒绝规则 + 越界检测 + 界面「AI 生成请核对」标注。
 
-### 7.4 LLM 成本纪律（REQ-NFR-LLMCOST-001，2026-10-01 增补，随下一次发版生效）
+### 7.4 LLM 成本纪律（REQ-NFR-LLMCOST-001，2026-10-01 增补，**v2.13.0 起生效**）
 
 > 权威做法 = 共享技能 `llm-batch-cost-discipline`（brain 侧 380 章整编实测：推理 token 占输出 66.5%；1232 次调用只对应 358 篇＝重复率 71%，白花 ¥36）。以下四条是**规格条款**，对本项目全部 LLM 调用路径（在线 Agent + 离线批量脚本）一律适用。
 
@@ -613,7 +613,11 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 - **② 每次成功调用落账本**：`ai/usage_log.py` 记 `reasoning_tokens` / `thinking`（必填）；离线脚本另记 `input_sha256`（没有哈希就算不出重复率，护栏无从判违规）。只在成功路径记，失败/超时路径不记。
 - **③ 失败有界重试 + 幂等**：同一输入最多 **2 次**尝试，仍失败落 `.fail` 标记（`~/.hermes/app-usage/llm-fails/`）后跳过该条，**禁止无上限重试**；在线路径维持「失败即 `None` → 两层 Fallback」，不额外重试。幂等键 = **输入内容 sha256**。
 - **④ 机械步骤零 LLM**：召回 / 连通分量 / 微簇切分 / 标签归一 / 守卫校验一律脚本化。
-- **违规处置（机械断言，不是口头约定）**：护栏 `llm_cost_guard.py` —— 推理占比 >15%、重复率 >1.5、存在 `.fail`，任一命中即退出 1；入口行为断言 = `tests/test_agents_thinking.py`（默认关思考 / 全局提档 / feature 白名单 / 400 去参重发一次 / 账本记推理 token，共 5 例）。
+- **违规处置（机械断言，不是口头约定）**：护栏 = **本仓 `scripts/llm_cost_guard.py`**（唯一副本，规格/skill/看板都不另存第二份），跑法 `python3 scripts/llm_cost_guard.py --days 1 [-v]` 或 `make cost-guard [DAYS=n]`；账本 = `$LLM_USAGE_LOG` 或 `~/.hermes/app-usage/aistudy.jsonl`。三条判据按 §7.4 上文：① 推理占比 `reasoning_tokens ÷ completion_tokens` **>15%**（按 feature）；② 重复率 `调用数 ÷ 唯一 input_sha256` **>1.5**（按 feature）；③ 存在未清 `.fail`（`$LLM_FAIL_DIR` 或 `~/.hermes/app-usage/llm-fails/`，**不设时间窗**——未清即红，重跑成功并确认后删标记）。任一命中 → 打印明细 + **退出 1**；全通过 → 静默 **退出 0**（`-v` 时打印统计）；账本不存在/参数错 → 退出 2。
+  **窗口内缺 `input_sha256`（算不出重复率）或缺 `thinking`（看不出是否绕过关思考入口）的历史记录只统计条数、不参与判据**——2026-10-01 之前写入的老记录没有这些字段，若参与判据则护栏永远红（实测 24h 窗口内 255 条中 193 条缺 sha / 192 条缺 thinking，参与判据的只有 62 条）。
+  行为断言 = `tests/test_agents_thinking.py`（默认关思考 / 全局提档 / feature 白名单 / 400 去参重发一次 / 账本记推理 token，5 例）+ `tests/test_llm_cost_guard.py`（护栏自证：重复率、推理占比、`.fail` 三项各自能红；干净账本与只有脏记录的账本能绿；边界 1.50 不算违规，共 6 例）。
+  **已知取舍 A（跨运行续跑：Ray 2026-10-01 拍板「先不做」）**：同一章「失败后重跑 / 想更优结果再重跑」会把已成功片组重新生成——单次运行内的重复已由 `scripts/rebuild_cards.py` 的同 prompt 片组合并消除，**跨运行不消除**。理由：重跑通常就是想重新生成更好的卡，缓存会挡住这个意图。代价：重跑后 24h 内护栏会因重复率命中而退出 1（实测 `rebuild_cards.py` 56 次调用 / 14 个唯一输入 = **4.00**），这是**如实报告而非误判**，人工确认「是有意重跑」即可，**不得为绕过它下调阈值**。
+  **已知取舍 B（重复率的边界噪声）**：铁律 ③ 允许「同一输入最多 2 次尝试」，而 2 次调用 / 1 个唯一输入 = 2.00 > 1.5 —— 小样本下重试对本身就会命中。判定时看明细里的「唯一输入数」与「同一输入最多重复 N 次」：`1 个唯一输入` = 重试对（噪声），`多个唯一输入且比高` = 批量重跑（真违规）。
 
 ---
 
@@ -1809,3 +1813,11 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - 组件映射：进度 `.feature→.dcard`、`.bignum→.dcard .hero .v`、`.stats→.dcard .grid`、`.progline→.chapter`；测评 `.sub→.appbar .sub`、`.row→.card`、`.primary→.btn`；知识卡片 `.kc-face→.kc-face`、`.btn→.kc-actions .btn`、`.kc-hint→.kc-hint`；学习 `.primary→.primary`、`.row.task→.task-card`、`.rowlist.grid .row→.home-card`、`.row.plain→.remind-card`；班级 `.row.task→.checkin-row`、`.row.me→.rank-row.me`、末行→`.btn.ghost`。
 - `scripts/style_parity.js` 使用同一浏览器读取标准稿和线上计算值，逐项比较 rect 与九项样式值；任一差异或组件缺失退出 1。
 - v2.15.0 进度英雄数字目标为 64px/900/墨色；三格横线满宽、竖线与横线端点相接、等宽。审计断言以该目标为准。
+
+## §12.68 v2.13.0 实现状态回写（2026-10-01）：LLM 成本纪律合 main + 护栏落地 + 三项拍板
+
+- **REQ-NFR-LLMCOST-001 状态：已落地（v2.13.0）**，规格条款见 §7.4（含判据、退出码、已知取舍 A/B）。
+- **A. 合 main**：dev 分支 `chore(ai)`（`c2476b0`，`_chat` 接入默认关思考 + 账本补 `reasoning_tokens`/`thinking` + §7.4 条款）以 fast-forward 合入 `main`（`d239fa5` → `c2476b0`），dev 侧另以同一提交对齐（两边同 SHA）。闸门 `make lint test smoke` 全绿（覆盖率门槛 `--cov-fail-under=50` 未下调，实测覆盖率高于门槛）；`tests/test_agents_thinking.py` 5 例通过。版本三件套按 §5：`backend/app.py version=2.13.0` / `CHANGELOG.md [2.13.0]` / 本文档头 `v2.13.0` 三者同值；前端资产同步 `sw.js CACHE v68→v69`、`?v=2.13.0`（本轮无前端改动，按「三件套同值」规则同步，顺带穿透 CF 的 4h 强缓存）。
+- **B. 护栏落地（原来是空话 → 现在是代码）**：新增 **`scripts/llm_cost_guard.py`**（此前 §7.4 只写了条款、脚本在两个 repo 与 `~/.hermes` 全都不存在，属「规格写了、实现没有」）。CLI `--days N`（默认 1），账本 `$LLM_USAGE_LOG` 或 `~/.hermes/app-usage/aistudy.jsonl`，判据/退出码见 §7.4；`make cost-guard` 可直接跑。机械断言 `tests/test_llm_cost_guard.py` 6 例（三项判据各自真红 + 干净账本 / 只有脏记录账本真绿 + 边界 1.50 不违规）。
+- **C. 跨运行续跑（同一章重跑复用已成功片组）＝ 不做**（Ray 2026-10-01 拍板，维持既定建议）：理由「重跑通常就是想重新生成更好的卡」，缓存会挡住该意图；取舍与代价写在 §7.4「已知取舍 A」。**不是遗漏项，是有意不做**。
+- **本次实测（护栏真跑，非演示）**：`--days 1` 对真实账本 → 退出 1，明细 `重复率 4.00（56 次调用 / 14 个唯一输入，rebuild_cards.py）`（与前一轮独立复核的数字一致），脏记录提示 193 条缺 `input_sha256` / 192 条缺 `thinking`；真实账本「违规爆发后」的无违规窗口 → 退出 0。

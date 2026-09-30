@@ -1,5 +1,5 @@
 # Makefile — lint / test / smoke / deploy / boot / backup（对齐四口之家，端口改 5001）
-.PHONY: lint test smoke ui-audit deploy boot backup
+.PHONY: lint test smoke ui-audit deploy boot backup cost-guard
 
 PY=python3
 VENV=.venv
@@ -10,6 +10,7 @@ RUFF=$(VENV)/bin/ruff
 PORT ?= 5001
 SMOKE_PORT ?= 5002
 DATA_DIR ?= /tmp/aistudy_smoke
+DAYS ?= 1
 
 lint:
 	$(RUFF) check backend/
@@ -41,5 +42,9 @@ backup:
 
 ui-audit:
 	UI_AUDIT_SELF_BOOT=1 node scripts/ui_audit.js
+
+# LLM 成本纪律护栏（Design-Spec §7.4 / REQ-NFR-LLMCOST-001）；违规退出 1
+cost-guard:
+	$(PY) scripts/llm_cost_guard.py --days $(DAYS) -v
 
 all: lint test smoke ui-audit
