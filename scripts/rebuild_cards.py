@@ -69,12 +69,27 @@ ENV = load_env(BASE / ".env")
 # 四条铁律见共享技能 `llm-batch-cost-discipline`（brain 380 章整编实测，2026-09-28→10-01）：
 #   ① 转换型任务（抽取/归类/摘要）默认关思考；② 每次调用落账本；
 #   ③ 同一输入最多 2 次尝试 + 落 .fail 标记；④ 能脚本就脚本。
-# ① 实测（同一份卡片抽取提示词，2026-10-01）：deepseek-flash 关思考后 completion 1473→180 token、
-#    耗时 6.1s→1.0s，JSON 照样可解析；deepseek-chat 本就默认不开思考，这里显式写死是为了
-#    防「日后把 DEEPSEEK_MODEL 换成 deepseek-flash 就静默烧推理 token」。LLM_THINKING=on 可临时提档。
+# ① 实测（同一份卡片抽取提示词，2026-10-01 本地对照，/tmp/pm_probe2.py）：
+#    deepseek-flash 不带 thinking → completion 946 tok、其中推理 516（占 54.5%）、4.2s；
+#    加 thinking=disabled → completion 739（−22%）、推理 0、2.8s。deepseek-chat 本就 rt=0，
+#    显式写死是为了防「日后把 DEEPSEEK_MODEL 换成 deepseek-flash 就静默烧推理」。LLM_THINKING=on 可临时提档。
 MAX_ATTEMPTS = 2
 THINKING_OFF = (ENV.get("LLM_THINKING") or os.environ.get("LLM_THINKING") or "off").strip().lower() != "on"
 FAIL_DIR = Path(os.path.expanduser(os.environ.get("LLM_FAIL_DIR") or "~/.hermes/app-usage/llm-fails"))
+DUP_CACHE_DIR = Path(os.path.expanduser(os.environ.get("LLM_DUP_CACHE") or "~/.hermes/app-usage/cache"))
+_dup_cache: dict = {}
+if (DUP_CACHE_DIR / "dup-verdicts.jsonl").exists():
+    try:
+        with open(DUP_CACHE_DIR / "dup-verdicts.jsonl", encoding="utf-8") as _fh:
+            for _line in _fh:
+                try:
+                    _r = json.loads(_line)
+                    if _r.get("input_sha256") and _r.get("verdict"):
+                        _dup_cache[_r["input_sha256"]] = _r["verdict"]
+                except Exception:
+                    continue
+    except Exception:
+        pass
 
 SYSTEM_TMPL = """你是「AI 学习小组」的资深教研老师，负责把课件原文拆成**理解型**知识卡片。
 严格输出 JSON，不要任何多余文字。
@@ -425,12 +440,49 @@ def _gate_cards(cards: list[dict], chapter_id: str, existing_fronts: list[str]) 
 
     filter_new_cards 内部的 LLM 确认走 backend/ai/agents.py，其 `_config` 在无 Flask
     上下文时读 os.environ —— 这里把 .env 里的 DEEPSEEK_* 导出到 os.environ 供其使用。
+
+    成本纪律铁律 3（幂等按输入内容 sha256）：门禁的 LLM 裁决按「(待检卡, 被比对卡) 内容」
+    缓存 —— 实测一次章节重做里门禁调用量是抽取的 5 倍（14 次抽取 vs 77 次裁决），
+    同一对卡在重跑/多路径（rebuild / fill_gaps / fill_orphans）里会反复出现，不该反复付费。
+    只缓存明确结论；降级（LLM 失败/超时 → None）一律不缓存、不落盘。
     """
     os.environ.setdefault("DEEPSEEK_API_KEY", ENV.get("DEEPSEEK_API_KEY", ""))
     os.environ.setdefault("DEEPSEEK_BASE_URL", ENV.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
     os.environ.setdefault("DEEPSEEK_MODEL", ENV.get("DEEPSEEK_MODEL", "deepseek-chat"))
+    from ai import agents as _agents
     from ai.cardgate import filter_new_cards
-    kept, dropped = filter_new_cards(cards, chapter_id, existing_fronts=existing_fronts)
+
+    orig = _agents.knowledge_dup_check
+    stats = {"hit": 0, "miss": 0, "degraded": 0}
+
+    def cached_check(front_a, back_a, front_b, back_b=None):
+        key = hashlib.sha256("\x00".join([front_a or "", back_a or "",
+                                          front_b or "", back_b or ""]).encode("utf-8")).hexdigest()
+        if key in _dup_cache:
+            stats["hit"] += 1
+            return _dup_cache[key]
+        stats["miss"] += 1
+        v = orig(front_a, back_a, front_b, back_b)
+        if v is None:
+            stats["degraded"] += 1          # 降级不缓存
+            return v
+        _dup_cache[key] = v
+        try:
+            DUP_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            with open(DUP_CACHE_DIR / "dup-verdicts.jsonl", "a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"input_sha256": key, "verdict": v}, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+        return v
+
+    _agents.knowledge_dup_check = cached_check
+    try:
+        kept, dropped = filter_new_cards(cards, chapter_id, existing_fronts=existing_fronts)
+    finally:
+        _agents.knowledge_dup_check = orig
+    if stats["hit"] or stats["miss"]:
+        print(f"    [gate] LLM 裁决 命中缓存 {stats['hit']} / 实调 {stats['miss']}"
+              + (f"（降级 {stats['degraded']}）" if stats["degraded"] else ""), flush=True)
     if dropped:
         fronts = [d["front"] for d in dropped]
         print(f"    [gate] 丢弃 {len(dropped)} 张重复卡：{fronts[:3]}{'…' if len(fronts) > 3 else ''}", flush=True)
