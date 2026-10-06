@@ -47,10 +47,15 @@ def _stub_quizzer_source(monkeypatch):
     """
     from ai import agents, quizzer
 
-    def fake_cards(chapter_ids, per_sub=3, max_cards=50):
-        return [{"id": f"card-{cid}-{i}", "chapter_id": cid, "sub_concept": f"子概念{i}",
-                 "front": f"{cid} 的知识点 {i} 是什么", "back": f"{cid} 的知识点 {i} 的解析"}
-                for cid in chapter_ids for i in range(30)]
+    def fake_cards(chapter_ids, per_sub=3, max_cards=50, exclude_sub_concepts=None):
+        """v2.13.1：签名与真实 _retrieve_cards 对齐（含 exclude_sub_concepts），
+        并同样体现「未练过的子概念排在题源前面」。"""
+        excl = exclude_sub_concepts or set()
+        names = [f"子概念{i}" for i in range(30)]
+        names = [n for n in names if n not in excl] + [n for n in names if n in excl]
+        return [{"id": f"card-{cid}-{n}", "chapter_id": cid, "sub_concept": n,
+                 "front": f"{cid} 的知识点 {n} 是什么", "back": f"{cid} 的知识点 {n} 的解析"}
+                for cid in chapter_ids for n in names][:max_cards]
 
     counter = {"n": 0}
 

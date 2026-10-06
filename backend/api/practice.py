@@ -105,13 +105,25 @@ def _history_contents(con, user_id) -> list[str]:
     return [r["content"] for r in rows if r["content"]]
 
 
-def create_practice_session(con, user_id, chapter_ids, count=5, sub_concepts=""):
-    """生成并落库一个自主练习会话（供 /api/practice/generate 与 checkin start-practice 共用）。
+def _insert_questions(con, session_id, chapter_ids, raw_qs):
+    """把出好的题落库到指定会话（建会话与续答补题共用）。"""
+    for i, raw in enumerate(raw_qs):
+        cid = chapter_ids[i % len(chapter_ids)]
+        q = quizzer.norm_question(raw, cid)
+        con.execute(
+            "INSERT INTO practice_questions (id, session_id, chapter_id, sub_concept, topic, type,"
+            " content, options, answer_key, points, content_hash, correct, user_answer, score,"
+            " reason, answered_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '', NULL, '', NULL)",
+            (models.new_id(), session_id, cid, q["sub_concept"], quizzer.assign_topic(con, cid, q), q["type"],
+             q["content"], q["options"], q["answer_key"], q["points"], quizzer._content_hash(q["content"])),
+        )
 
-    复用 QUIZZER 出题（difficulty=hard、choice/bool、同学生跨会话去重）；LLM 返空返回 None。
-    """
+
+def _generate_for(con, user_id, chapter_ids, count, sub_concepts=""):
+    """调 QUIZZER 出题（difficulty=hard、同学生跨会话去重）。返回 (题目, 请求题数)。"""
     try:
-        count = max(5, min(int(count or 5), 10))
+        count = max(1, min(int(count or 5), quizzer.MAX_PRACTICE_QUESTIONS))
     except (TypeError, ValueError):
         count = 5
     raw_qs = quizzer.generate_practice_questions(
@@ -119,10 +131,32 @@ def create_practice_session(con, user_id, chapter_ids, count=5, sub_concepts="")
         exclude_contents=_history_contents(con, user_id),
         exclude_sub_concepts=_history_sub_concepts(con, user_id, chapter_ids), count=count,
     )
+    return (raw_qs or [])[:count], count
+
+
+def _sync_session_totals(con, session_id):
+    """按题目实际分值与题型重算会话 total_points / config_json（补题后必须同步）。"""
+    rows = con.execute(
+        "SELECT type, points FROM practice_questions WHERE session_id=?", (session_id,)
+    ).fetchall()
+    total = sum(int(r["points"] or 0) for r in rows)
+    config = {t: sum(1 for r in rows if r["type"] == t) for t in quizzer.POINTS}
+    con.execute(
+        "UPDATE practice_sessions SET total_points=?, config_json=? WHERE id=?",
+        (total, json.dumps(config, ensure_ascii=False), session_id),
+    )
+    return total
+
+
+def create_practice_session(con, user_id, chapter_ids, count=5, sub_concepts=""):
+    """生成并落库一个自主练习会话（供 /api/practice/generate 与 checkin start-practice 共用）。
+
+    复用 QUIZZER 出题（difficulty=hard、choice/bool、同学生跨会话去重）；LLM 返空返回 None。
+    v2.13.1 起 `count` 允许 1–10（今日任务按「未完成题数」出题，不再强制最少 5 道）。
+    """
+    raw_qs, count = _generate_for(con, user_id, chapter_ids, count, sub_concepts)
     if not raw_qs:
         return None
-    if len(raw_qs) > count:
-        raw_qs = raw_qs[:count]
     total = sum(quizzer.POINTS[q["type"]] for q in raw_qs)
 
     session_id = models.new_id()
@@ -134,17 +168,7 @@ def create_practice_session(con, user_id, chapter_ids, count=5, sub_concepts="")
         (session_id, user_id, json.dumps(chapter_ids, ensure_ascii=False),
          total, json.dumps(config, ensure_ascii=False), now),
     )
-    for i, raw in enumerate(raw_qs):
-        cid = chapter_ids[i % len(chapter_ids)]
-        q = quizzer.norm_question(raw, cid)
-        con.execute(
-            "INSERT INTO practice_questions (id, session_id, chapter_id, sub_concept, topic, type,"
-            " content, options, answer_key, points, content_hash, correct, user_answer, score,"
-            " reason, answered_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, '', NULL, '', NULL)",
-            (models.new_id(), session_id, cid, q["sub_concept"], quizzer.assign_topic(con, cid, q), q["type"], q["content"],
-             q["options"], q["answer_key"], q["points"], quizzer._content_hash(q["content"])),
-        )
+    _insert_questions(con, session_id, chapter_ids, raw_qs)
     con.commit()
 
     rows = con.execute(
@@ -158,6 +182,20 @@ def create_practice_session(con, user_id, chapter_ids, count=5, sub_concepts="")
         "config": config,
         "questions": [_question_dict(r) for r in rows],
     }
+
+
+def append_practice_questions(con, user_id, session_id, chapter_ids, count, sub_concepts=""):
+    """向未答完的会话补题（CHECKIN-006，v2.13.1）：「点练习 = 拿到今日还差的题数」。
+
+    返回实际补入的题数；LLM 出题失败返回 0（调用方按原样续答，不阻塞）。
+    """
+    raw_qs, _ = _generate_for(con, user_id, chapter_ids, count, sub_concepts)
+    if not raw_qs:
+        return 0
+    _insert_questions(con, session_id, chapter_ids, raw_qs)
+    _sync_session_totals(con, session_id)
+    con.commit()
+    return len(raw_qs)
 
 
 @practice_bp.route("/generate", methods=["POST"])

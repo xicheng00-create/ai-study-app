@@ -1,5 +1,7 @@
 """每日打卡与连胜 Blueprint（CHECKIN-001~008，学生端）。"""
-from ai import mastery
+import json
+
+from ai import mastery, quizzer
 from auth.jwt_utils import jwt_required, role_required
 from config import TASK_CARDS_REQUIRED, TASK_QUESTIONS_REQUIRED
 from data import checkin, timeutil
@@ -9,6 +11,15 @@ from middleware.errors import e_forbidden, e_input, ok
 from middleware.rate_limit import rate_limit
 
 checkin_bp = Blueprint("checkin_bp", __name__, url_prefix="/api/checkin")
+
+
+def _parse_session_chapters(raw) -> list[str]:
+    """解析 practice_sessions.chapter_ids（JSON 数组字符串）→ 章节 id 列表。"""
+    try:
+        val = json.loads(raw or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return [str(x) for x in val] if isinstance(val, list) else []
 
 
 def _practice_chapters(con, user_id) -> list[str]:
@@ -124,7 +135,12 @@ def nudge():
 @role_required("student")
 @rate_limit(limit=60)
 def start_practice():
-    """今日练习自动装配（CHECKIN-006）：当天有未答完 session 优先续答，否则生成 5 道。"""
+    """今日练习自动装配（CHECKIN-006 / v2.13.1）：
+
+    出题数 = **今日还差的题数**（TASK_QUESTIONS_REQUIRED − 今日已答题数），不再是固定一组。
+    例：今日已答 1 道 → 本次出 4 道；今日一题未答 → 出 5 道；今日已达标 → 仍给一整组（加练）。
+    当天未答完的 session 优先续答；若其余量不足「今日还差」，则**补题补齐**到该数（不再只甩 1 道）。
+    """
     con = get_db()
 
     # v2.6.5（CHECKIN-013）：范围由学生自定——前端可带 chapter_ids；只在勾选范围内续答/出题
@@ -137,23 +153,42 @@ def start_practice():
             return e_input("所选章节暂无可练习内容")
     in_scope = " AND pq.chapter_id IN ({})".format(",".join("?" * len(want))) if want else ""
 
+    # 今日还差几道（counts_today = 今日已作答的 distinct 练习题数，与打卡口径同源）
+    done_today = checkin.counts_today(con, g.user_id)["questions"]
+    need = TASK_QUESTIONS_REQUIRED - done_today
+    if need <= 0:
+        need = TASK_QUESTIONS_REQUIRED  # 今日已达标：仍给一整组，不挡学生加练
+    need = max(1, min(need, quizzer.MAX_PRACTICE_QUESTIONS))
+
     row = con.execute(
-        "SELECT ps.id, COUNT(pq.id) AS remain"
+        "SELECT ps.id, ps.chapter_ids, COUNT(pq.id) AS remain"
         " FROM practice_sessions ps JOIN practice_questions pq ON pq.session_id=ps.id"
         " WHERE ps.user_id=? AND pq.answered_at IS NULL" + in_scope +
         " GROUP BY ps.id ORDER BY ps.created_at DESC LIMIT 1",
         (g.user_id, *want),
     ).fetchone()
+
+    from api.practice import append_practice_questions, create_practice_session
+
+    if row and row["remain"] >= need:
+        return ok({"session_id": row["id"], "reused": True, "count": row["remain"], "need": need})
+
     if row:
-        return ok({"session_id": row["id"], "reused": True, "count": row["remain"]})
+        # 续答但余量不足今日还差 → 在原会话上补题补齐（保持历史连贯，不留半截会话）
+        sess_chapters = [c for c in _parse_session_chapters(row["chapter_ids"])] or want or None
+        if sess_chapters:
+            added = append_practice_questions(con, g.user_id, row["id"], sess_chapters,
+                                              need - row["remain"])
+            if added:
+                return ok({"session_id": row["id"], "reused": True,
+                           "count": row["remain"] + added, "need": need, "topped_up": added})
+        return ok({"session_id": row["id"], "reused": True, "count": row["remain"], "need": need})
 
     chapter_ids = want or _practice_chapters(con, g.user_id)
     if not chapter_ids:
         return e_input("暂无可用章节")
 
-    from api.practice import create_practice_session
-
-    result = create_practice_session(con, g.user_id, chapter_ids, count=TASK_QUESTIONS_REQUIRED)
+    result = create_practice_session(con, g.user_id, chapter_ids, count=need)
     if not result:
         return e_input("练习生成失败，请稍后重试")
-    return ok({"session_id": result["id"], "reused": False, "count": len(result["questions"])})
+    return ok({"session_id": result["id"], "reused": False, "count": len(result["questions"]), "need": need})

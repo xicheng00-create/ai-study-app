@@ -443,3 +443,112 @@ def test_start_practice_respects_student_scope(client, teacher_headers, monkeypa
 
     r3 = client.post("/api/checkin/start-practice", json={}, headers=h)
     assert r3.status_code == 200
+
+
+# ---- v2.13.1：今日练习出题数 = 今日还差的题数（2026-10-06 用户实报「一题一题地出」） ----
+
+
+def _mock_practice_dynamic(monkeypatch, sizes):
+    """按调用次序返回指定题数：sizes[i] 用完后按调用方请求的 count 出题。
+
+    sizes 里给一个小子 = 复现「LLM 只出 1~2 道」的老 bug 场景。
+    """
+    calls = {"n": 0}
+
+    def fake(chapter_ids, sub_concepts="", exclude_contents=None, exclude_sub_concepts=None, count=5):
+        i = calls["n"]
+        calls["n"] += 1
+        n = sizes[i] if i < len(sizes) else count
+        return [{"type": "choice", "content": f"第{i}批-题{j}", "options": ["A", "B"], "answer": "0",
+                 "reason": "", "sub_concept": ""} for j in range(n)]
+
+    monkeypatch.setattr(quizzer, "generate_practice_questions", fake)
+    return calls
+
+
+def _start(client, h, c1):
+    r = client.post("/api/checkin/start-practice", json={"chapter_ids": [c1]}, headers=h)
+    assert r.status_code == 200, r.get_json()
+    return r.get_json()["data"]
+
+
+def _questions(client, h, sid):
+    return client.get(f"/api/practice/{sid}", headers=h).get_json()["data"]["questions"]
+
+
+def test_start_practice_generates_today_remaining(client, teacher_headers, monkeypatch):
+    """答 1 道 → 应再出 4 道；答满 5 道 → 再点仍给一整组（加练）。"""
+    h = _student(client, teacher_headers, "remain_count")
+    c1 = _chapter(client, teacher_headers, "剩余甲")
+    _mock_practice_dynamic(monkeypatch, [1])  # 首次只出 1 道（老 bug 场景，不得因此报错）
+
+    d = _start(client, h, c1)
+    assert d["need"] == TASK_QUESTIONS_REQUIRED and d["count"] == 1
+    sid = d["session_id"]
+    _submit(client, h, sid, [{"question_id": _questions(client, h, sid)[0]["id"], "answer": "0"}])
+
+    # 已答 1 道 → 点练习再出「今日还差」的 4 道（而非再来 1 道）
+    d2 = _start(client, h, c1)
+    assert d2["need"] == TASK_QUESTIONS_REQUIRED - 1
+    assert d2["count"] == TASK_QUESTIONS_REQUIRED - 1
+    assert d2["session_id"] != sid and not d2.get("reused")
+
+    # 答完这 4 道 → 今日达标 → 再点仍给一整组（加练，不挡学生）
+    _submit(client, h, d2["session_id"],
+            [{"question_id": q["id"], "answer": "0"} for q in _questions(client, h, d2["session_id"])])
+    assert _today(client, h)["progress"]["questions"] == TASK_QUESTIONS_REQUIRED
+    d3 = _start(client, h, c1)
+    assert d3["need"] == TASK_QUESTIONS_REQUIRED and d3["count"] == TASK_QUESTIONS_REQUIRED
+    assert not d3.get("reused")
+
+
+def test_start_practice_tops_up_unfinished_session(client, teacher_headers, monkeypatch):
+    """未答完会话余量 < 今日还差 → 在原会话补题补齐（不甩半截会话给前端）。"""
+    h = _student(client, teacher_headers, "top_up")
+    c1 = _chapter(client, teacher_headers, "补题甲")
+    _mock_practice_dynamic(monkeypatch, [2])  # 首次只出 2 道
+
+    d = _start(client, h, c1)
+    sid = d["session_id"]
+    assert d["count"] == 2
+    _submit(client, h, sid, [{"question_id": _questions(client, h, sid)[0]["id"], "answer": "0"}])
+
+    d2 = _start(client, h, c1)
+    # 余 1 道 < 今日还差 4 道 → 同会话补 3 道，学生一次拿到 4 道（未答数 = 今日还差）
+    assert d2["session_id"] == sid and d2["reused"] is True
+    assert d2["topped_up"] == 3 and d2["count"] == TASK_QUESTIONS_REQUIRED - 1
+    with client.application.app_context():
+        from data.db import get_db
+        con = get_db()
+        remain = con.execute(
+            "SELECT COUNT(*) AS n FROM practice_questions WHERE session_id=? AND answered_at IS NULL",
+            (sid,)).fetchone()["n"]
+        total = con.execute("SELECT SUM(points) AS t FROM practice_questions WHERE session_id=?",
+                            (sid,)).fetchone()["t"]
+        assert remain == TASK_QUESTIONS_REQUIRED - 1
+        assert con.execute("SELECT total_points FROM practice_sessions WHERE id=?",
+                           (sid,)).fetchone()["total_points"] == total
+
+
+def test_start_practice_resume_keeps_scope_and_never_short(client, teacher_headers, monkeypatch):
+    """续答路径同样满足「够今日还差」：未答完会话余量 ≥ 需要 → 直接续答，题数不少于需要。"""
+    h = _student(client, teacher_headers, "resume_ok")
+    c1 = _chapter(client, teacher_headers, "续答甲")
+    c2 = _chapter(client, teacher_headers, "续答乙")
+    _mock_practice_dynamic(monkeypatch, [])
+
+    d = _start(client, h, c1)
+    assert d["count"] == TASK_QUESTIONS_REQUIRED
+    _submit(client, h, d["session_id"],
+            [{"question_id": _questions(client, h, d["session_id"])[0]["id"], "answer": "0"}])
+
+    d2 = _start(client, h, c1)
+    assert d2["session_id"] == d["session_id"] and d2["reused"] is True
+    assert d2["count"] == TASK_QUESTIONS_REQUIRED - 1
+    with client.application.app_context():
+        from data.db import get_db
+        con = get_db()
+        chaps = {r["chapter_id"] for r in con.execute(
+            "SELECT DISTINCT chapter_id FROM practice_questions WHERE session_id=?", (d["session_id"],)).fetchall()}
+    assert chaps == {c1} and c2 not in chaps
+

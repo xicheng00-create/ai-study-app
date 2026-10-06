@@ -116,11 +116,18 @@ def _missing(qs: list[dict], config: dict) -> dict:
 
 
 def _retrieve_cards(chapter_ids: list[str], per_sub: int = 3,
-                    max_cards: int = MAX_SOURCE_CARDS) -> list[dict]:
+                    max_cards: int = MAX_SOURCE_CARDS,
+                    exclude_sub_concepts: set | None = None) -> list[dict]:
     """取章节知识卡片作为**唯一题源**（v2.7.4 教研定调）。
 
     与旧 `_retrieve_chunks`（资料切片 RAG）的区别：资料原文不再入题，
     杜绝「不基于卡片、直接从资料出题」。按 sub_concept 轮转取卡，避免热门知识点挤掉其他。
+
+    `exclude_sub_concepts`（v2.13.1，CHECKIN-006 修复）：**优先只取「学生没练过」的子概念卡片**。
+    老实现只按 (sub_concept, created_at) 确定性排序取前 max_cards 张，而学生练过的子概念
+    恰好是字典序最靠前的那批 → 模型每次只看到已练过的卡、又被禁止出这些子概念 →
+    大批候选题在 `_cap_to_max` 被丢光，练习只能出 1 道（2026-10-06 用户实报）。
+    未练过的卡不足 max_cards 时才回落到已练过的卡（题源仍是卡片，只是换角度出题）。
     """
     con = get_db()
     rows: list[dict] = []
@@ -133,9 +140,13 @@ def _retrieve_cards(chapter_ids: list[str], per_sub: int = 3,
     groups: dict[str, list[dict]] = {}
     for r in rows:
         groups.setdefault((r.get("sub_concept") or "").strip() or "未归类", []).append(r)
+    excl = exclude_sub_concepts or set()
+    keys = sorted(groups)
+    # 未练过的子概念排前面：轮转时先被取到，已练过的只作兜底
+    order = [k for k in keys if k not in excl] + [k for k in keys if k in excl]
     out: list[dict] = []
     for round_no in range(max(1, per_sub)):
-        for key in sorted(groups):
+        for key in order:
             bucket = groups[key]
             if round_no < len(bucket) and len(out) < max_cards:
                 out.append(bucket[round_no])
@@ -234,14 +245,25 @@ def _avoid_block(exclude_contents: list[str]) -> str:
 
 def _practice_system(chapter_ids: list[str], sub_concepts: str, cards_txt: str,
                      exclude_contents: list[str] | None = None,
-                     exclude_sub_concepts: set | None = None, count: int = 5) -> str:
+                     exclude_sub_concepts: set | None = None,
+                     count: int = 5, relaxed: bool = False) -> str:
+    """练习提示词。`relaxed=True` = 兜底档：已练过的知识点允许换新角度再出题（v2.13.1）。"""
     spec = (f"出 {count} 道题，每题来自一个【不同】的子概念（知识点）——从知识卡片里挑 {count} 个不同的知识点各出一题；"
-            f"只允许选择题（choice）和是非题（bool），难度 hard")
+            f"只允许选择题（choice）和是非题（bool），难度 hard；"
+            f"sub_concept 字段必须原样照抄卡片里「[知识点]」的名称，不得自创")
     excl = ""
     if exclude_sub_concepts:
-        excl = ("\n\n【必须遵守 · 跨会话知识点不重复】以下子概念该学生【已练过】，本次【禁止】再出这些子概念。"
-                "请从卡片中其它子概念里，尽量挑【不同】且【不在清单内】的子概念出题，凑满 " + str(count)
-                + " 道：\n- " + "\n- ".join(sorted(exclude_sub_concepts)))
+        head = ("\n\n【优先避开 · 已练过子概念】以下子概念该学生【已练过】，本次优先跳过它们，"
+                "从卡片里未练过的子概念中挑不同的出题。"
+                "若卡片里未练过的子概念确实不足以凑满 " + str(count) + " 道，"
+                "允许对已练过的知识点换【新场景 / 新角度】出题（考点可重复，题干必须不同），"
+                "不得因避让而少出题：\n- "
+                if relaxed else
+                "\n\n【必须遵守 · 跨会话知识点不重复】以下子概念该学生【已练过】，本次【禁止】再出这些子概念"
+                "（含同义或近似写法），也不得把它们写成 sub_concept。"
+                "请从卡片中其它子概念里，尽量挑【不同】且【不在清单内】的子概念出题，凑满 "
+                + str(count) + " 道：\n- ")
+        excl = head + "\n- ".join(sorted(exclude_sub_concepts))
     return QUIZZER_SYSTEM.format(
         chapter_ids=",".join(chapter_ids),
         sub_concepts=sub_concepts or "不限",
@@ -254,38 +276,43 @@ def _practice_system(chapter_ids: list[str], sub_concepts: str, cards_txt: str,
 def generate_practice_questions(chapter_ids: list[str], sub_concepts: str = "",
                                 exclude_contents: list[str] | None = None,
                                 exclude_sub_concepts: set | None = None, count: int = 5) -> list[dict]:
-    """自主练习出题（difficulty=hard，最多 5 道 choice/bool，**题源=知识卡片**，同学生跨会话不重复）。
+    """自主练习出题（difficulty=hard，1–10 道 choice/bool，**题源=知识卡片**，同学生跨会话不重复）。
 
     v2.7.4 起不再检索资料切片：卡片是该范围内唯一可考内容。
+    v2.13.1 起分两档，杜绝「卡在半中央只出 1 道」（2026-10-06 用户实报）：
+      ① 严格档：题源只用**未练过**子概念的卡片，禁止再出已练过的子概念；
+      ② 兜底档：①凑不满时，题源放宽到该范围全部卡片，已练过的知识点允许换新场景/新角度出题
+        （题干仍与历史去重）——「题库跑尽」时仍由 LLM 从知识卡片出题，绝不停在半路。
     无卡片或模型出不出题时返回空列表，由调用方提示，不再硬塞通用模板。
     """
     try:
-        count = max(5, min(int(count or 5), MAX_PRACTICE_QUESTIONS))
+        count = max(1, min(int(count or 5), MAX_PRACTICE_QUESTIONS))
     except (TypeError, ValueError):
         count = 5
-    cards = _retrieve_cards(chapter_ids)
-    if not cards:
-        return []  # 无卡片＝无可考内容：不调模型、不出题
-    cards_txt = _cards_text(cards)
     exclude_contents = exclude_contents or []
     exclude_hashes = {_content_hash(c) for c in exclude_contents}
-
     exclude_sub_concepts = exclude_sub_concepts or set()
-    system = _practice_system(chapter_ids, sub_concepts, cards_txt, exclude_contents, exclude_sub_concepts, count)
-    qs = [_norm_practice(q) for q in (agents.quizzer_generate(system) or [])]
-    if not qs:
-        return []
-    cap = _cap_to_max(qs, exclude_hashes=exclude_hashes,
-                      exclude_sub_concepts=exclude_sub_concepts, max_q=count)
-    # LLM 常聚在热门子概念；排除已练后需重试逼它挖更多【不同】子概念，凑满 count。
+
+    cards = _retrieve_cards(chapter_ids, exclude_sub_concepts=exclude_sub_concepts)
+    if not cards:
+        return []  # 无卡片＝无可考内容：不调模型、不出题
+
+    def _tier(fresh_only: bool) -> list[dict]:
+        pool = cards if fresh_only else _retrieve_cards(chapter_ids)
+        system = _practice_system(chapter_ids, sub_concepts, _cards_text(pool), exclude_contents,
+                                  exclude_sub_concepts, count, relaxed=not fresh_only)
+        qs = [_norm_practice(q) for q in (agents.quizzer_generate(system) or [])]
+        return _cap_to_max(qs, exclude_hashes=exclude_hashes,
+                           exclude_sub_concepts=exclude_sub_concepts if fresh_only else set(),
+                           max_q=count)
+
+    cap = _tier(fresh_only=True)
+    # 严格档不足 → 兜底档重试（最多 2 次），保证「今日练习」一次给够题数
     for _ in range(2):
         if len(cap) >= count:
             break
-        retry = _practice_system(chapter_ids, sub_concepts, cards_txt, exclude_contents,
-                                 exclude_sub_concepts, count)
-        extra = [_norm_practice(q) for q in (agents.quizzer_generate(retry) or [])]
-        cap = _cap_to_max(cap + extra, exclude_hashes=exclude_hashes,
-                          exclude_sub_concepts=exclude_sub_concepts, max_q=count)
+        cap = _cap_to_max(cap + _tier(fresh_only=False), exclude_hashes=exclude_hashes,
+                          max_q=count)
     return cap
 
 

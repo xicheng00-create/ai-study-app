@@ -7,7 +7,13 @@
   · 干净账本 → 退出 0（含「缺 input_sha256 / 缺 thinking 的历史记录不参与判据」，否则永远红）
 
 一律用 subprocess 真跑脚本（退出码是契约的一部分，不能在进程内 import 掉）。
+
+⚠️ 账本时间戳必须**动态取当前时间**（2026-10-06 修）：护栏按 `--days N` 滚动窗口过滤账本，
+写死 `2026-10-01` 的记录在窗口滑走后会被整批跳过 → 判据全部不触发、本该红的用例变绿
+（`test_fail_repeat_ratio` / `test_fail_reasoning_ratio` 就是这么在 10-02 起静默烂掉的）。
+「窗口外记录不参与判据」由 `test_pass_record_outside_window_not_judged` 显式断言，不再靠时间碰运气。
 """
+import datetime
 import json
 import os
 import subprocess
@@ -15,12 +21,23 @@ import sys
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "llm_cost_guard.py"
-TS = "2026-10-01T02:00:00+08:00"
+TZ8 = datetime.timezone(datetime.timedelta(hours=8))
+
+
+def _now_ts():
+    """当前时间（+08:00，秒级）——永远落在护栏的 --days 1 窗口内。"""
+    return datetime.datetime.now(TZ8).replace(microsecond=0).isoformat()
+
+
+def _old_ts(days=30):
+    """窗口外的旧时间戳（用于断言「窗口外记录不参与判据」）。"""
+    return (datetime.datetime.now(TZ8) - datetime.timedelta(days=days)).replace(
+        microsecond=0).isoformat()
 
 
 def _rec(feature="rebuild_cards.py", *, sha=None, thinking: "str | None" = "off",
-         comp=100, reason=0, ts=TS):
-    r = {"timestamp": ts, "model": "deepseek-chat", "feature": feature,
+         comp=100, reason=0, ts=None):
+    r = {"timestamp": ts or _now_ts(), "model": "deepseek-chat", "feature": feature,
          "prompt_tokens": 10, "completion_tokens": comp, "total_tokens": 10 + comp,
          "reasoning_tokens": reason}
     if thinking is not None:
@@ -85,3 +102,18 @@ def test_repeat_ratio_boundary_not_flagged(tmp_path):
     rc, out = _run(tmp_path, [_rec(sha="c" * 16), _rec(sha="c" * 16),
                               _rec(sha="d" * 16)])
     assert rc == 0, out
+
+
+def test_pass_record_outside_window_not_judged(tmp_path):
+    """窗口外（30 天前）的违规记录不参与判据 → 0：窗口语义显式断言，避免又变成「时间碰运气」。"""
+    rc, out = _run(tmp_path, [_rec(sha="e" * 16, thinking="on", comp=100, reason=60,
+                                   ts=_old_ts(30))
+                              for _ in range(4)])
+    assert rc == 0, out
+
+
+def test_fail_repeat_ratio_inside_window_not_stale(tmp_path):
+    """同一输入 4 次（**当前时间戳**）→ 1：时间戳动态化后不会再随窗口滑走而静默变绿。"""
+    rc, out = _run(tmp_path, [_rec(sha="f" * 16) for _ in range(4)])
+    assert rc == 1, out
+    assert "重复率 4.00" in out

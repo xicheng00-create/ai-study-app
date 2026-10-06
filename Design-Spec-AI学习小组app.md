@@ -391,7 +391,7 @@
   - **REQ-CHECKIN-THRESHOLD-001（v2.6.3）阈值单点 + 后端下发**：阈值唯一定义在 `backend/config.py` 的 `TASK_CARDS_REQUIRED` / `TASK_QUESTIONS_REQUIRED`；后端 `data/checkin.py`、`api/checkin.py`、`ai/reminder_copy.py`、`scripts/checkin_reminder.py` 均为**动态引用**，且 `GET /api/checkin/today`（`task.cards_required` / `task.questions_required`）与 `GET /api/checkin/class`（`required`）**把阈值随响应下发**，前端一律读字段、**禁止硬编码**。调阈值 = 只改 config 一处（含副本口径）。见 §12.33。
   - **REQ-CHECKIN-PROGRESS-002（v2.6.3）进度只增不减**：进度显示口径 = `max(实时计数, 当日打卡快照)`（`data.checkin.progress_today()`）——`daily_checkins` 是达标瞬间的不可变快照，卡片库重建会重置 `knowledge_reviews` 导致实时计数回落，若直接展示实时值会出现「4/30 卡」却「✓ 今日已完成」的同屏矛盾。达标判定仍走 `counts_today`（纯净实时），不受此口径影响。见 §12.33。
 - **CHECKIN-003（P0）连胜模型（Duolingo 式存活）**：达标日 +1；出现空档日归零；**今天未达标但昨天达标 → 连胜存活**（`state=pending`，天数沿用昨日值）；`longest_streak` 只增不减。 ✅
-- **CHECKIN-005 / CHECKIN-006（P0）自动安排学习任务**：今日卡组（**装配优先级见 CHECKIN-009/010**，**跨章**，上限 30（v2.6.3 起，见 REQ-CHECKIN-THRESHOLD-001）与今日练习（5 道；当天已有未答完的 session 优先续答）**全部由服务端自动装配**，学生只需点「继续」。 ✅ v2.4.0 首版「到期复习卡优先 → 未学新卡按章节补齐」存在口径与兜底缺陷，已被 **CHECKIN-009/010/011** 取代，见 §12.27。
+- **CHECKIN-005 / CHECKIN-006（P0）自动安排学习任务**：今日卡组（**装配优先级见 CHECKIN-009/010**，**跨章**，上限 30（v2.6.3 起，见 REQ-CHECKIN-THRESHOLD-001）与今日练习（**题数 = 今日还差的题数**，见 CHECKIN-006 追加条款；当天已有未答完的 session 优先续答，余量不足则原位补题）**全部由服务端自动装配**，学生只需点「继续」。 ✅ v2.4.0 首版「到期复习卡优先 → 未学新卡按章节补齐」存在口径与兜底缺陷，已被 **CHECKIN-009/010/011** 取代，见 §12.27。
 - **CHECKIN-007（P0）顶部常驻连胜条**：学生端**所有页面**常驻（🔥 图标 + 连胜天数 + 今日进度 `x/30 卡 · y/5 题` + 状态文案 `今天还没打卡` / `✓ 今日已完成`）；达标瞬间条变色 + toast「🔥 连胜 +1，已连续 N 天」。教师端不显示。 ✅
 - **CHECKIN-008（P0）班级「今日打卡」区块**：班级页**置顶**（先于现有排行榜卡），按「已打卡优先」排列，每人一行：头像 + 名字 + `🔥 N 天` + `x/30 卡 · y/5 题`（达标行绿色高亮、自己标 `me`）；未打卡同学行尾「提醒 TA」按钮（→ NOTIF-006）。 ✅
 - **CHECKIN-009（P0）「未学习」口径修正 + 任务优先发未学习卡**（CR-2026-0919-DECK）：「未学习」= **`learn_count = 0`（从未真正翻过卡）**，**不是**「没有 `knowledge_reviews` 行」——因为学生只要点开某章「知识卡片」浏览一次，`GET /api/knowledge/<chapter_id>` 就会为该章**全量**懒建 review 行（`status='new'`、`learn_count=0`、`next_review_at=now`）。现状把这类「只看过一眼」的卡误判为「已建行 → 不是新卡」，同时又因 `next_review_at=now ≤ today` 被塞进「到期复习」桶 → **学生永远在复习从没学过的卡，课程进度推不动**。修正后今日任务**优先发未学习卡**（按 `chapters.folder, order_no, name, kc.rowid` 课程顺序推进），再补到期复习卡。 ✅
@@ -519,7 +519,7 @@ users ─< practice_sessions ─< practice_questions >─ chapters   (自主练�
 | questions | id, quiz_id, chapter_id, sub_concept, type, content, answer_key, +points(选择/是非5；v1.10.0 取消问答，essay=10 仅兼容旧数据) | DM-005 | 掌握度溯源；单题满分 |
 | attempts | id, user_id, quiz_id, question_id, chapter_id, **+quiz_version(F3)**, correct, score(实际得分点), +graded_by('ai'/'teacher'), +is_reviewed, +reviewed_score, created_at | DM-006 | M 数据源之一；评分权双轨 |
 | review_items | id, user_id, chapter_id, question_id(NULL), next_review_at, interval_days, status | DM-007 | 间隔复习状态机 |
-| practice_sessions | id, user_id, chapter_ids(JSON), difficulty('hard', v1.9.0 隐藏不展示), total_points(实际各题分之和，v1.16.0 起非固定 100), config_json | REQ-PRACTICE-001 | 学生个人即席生成；**题数 5–10 道（默认 5，上限 MAX_PRACTICE_QUESTIONS=10）**；v1.9.0 起已作答计入 M |
+| practice_sessions | id, user_id, chapter_ids(JSON), difficulty('hard', v1.9.0 隐藏不展示), total_points(实际各题分之和，v1.16.0 起非固定 100), config_json | REQ-PRACTICE-001 | 学生个人即席生成；**题数 1–10 道（v2.13.1 起下限放开到 1：今日任务按「今日还差」出题，上限 MAX_PRACTICE_QUESTIONS=10；`/api/practice/generate` 前端仍给 5–10 选）**；v1.9.0 起已作答计入 M |
 | practice_questions | id, session_id, chapter_id, sub_concept, type, content, options, answer_key, points, content_hash(题干规范化 hash，v1.16.0), correct(可空), user_answer, score(可空), reason, answered_at | REQ-PRACTICE-001/002 | 作答结果留痕；v1.16.0 起 content_hash 供同学生跨会话去重；v1.9.0 起已作答计入 M；错题供薄弱点/巩固 |
 | reports | +user_id | DM-008 | 周报归属（v1.9.0 废弃，表保留） |
 | daily_advice | id, user_id, advice_date(UTC+8 日历日), stats(JSON), advice, created_at, UNIQUE(user_id, advice_date) | RPT-003(改每日) | 每日建议，每人每天一条 |
@@ -1821,3 +1821,19 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **B. 护栏落地（原来是空话 → 现在是代码）**：新增 **`scripts/llm_cost_guard.py`**（此前 §7.4 只写了条款、脚本在两个 repo 与 `~/.hermes` 全都不存在，属「规格写了、实现没有」）。CLI `--days N`（默认 1），账本 `$LLM_USAGE_LOG` 或 `~/.hermes/app-usage/aistudy.jsonl`，判据/退出码见 §7.4；`make cost-guard` 可直接跑。机械断言 `tests/test_llm_cost_guard.py` 6 例（三项判据各自真红 + 干净账本 / 只有脏记录账本真绿 + 边界 1.50 不违规）。
 - **C. 跨运行续跑（同一章重跑复用已成功片组）＝ 不做**（Ray 2026-10-01 拍板，维持既定建议）：理由「重跑通常就是想重新生成更好的卡」，缓存会挡住该意图；取舍与代价写在 §7.4「已知取舍 A」。**不是遗漏项，是有意不做**。
 - **本次实测（护栏真跑，非演示）**：`--days 1` 对真实账本 → 退出 1，明细 `重复率 4.00（56 次调用 / 14 个唯一输入，rebuild_cards.py）`（与前一轮独立复核的数字一致），脏记录提示 193 条缺 `input_sha256` / 192 条缺 `thinking`；真实账本「违规爆发后」的无违规窗口 → 退出 0。
+
+## §12.69 v2.13.1 今日练习「按还差的题数出题」+ 出题不再卡半中央（CHECKIN-006 追加，2026-10-06）
+
+- **用户实报**：每次生成练习都「一题一题地出」，今日任务明明是 5 道。变更请求号 `CR-2026-1006-REMAIN`。
+- **口径（对后续一律适用）**：`POST /api/checkin/start-practice` 的出题数 = `TASK_QUESTIONS_REQUIRED − counts_today(questions)`（今日还差的题数），不是固定一组。
+- **触发点**：任何「今日任务 → 练习」入口（学生端学习页任务卡 / 打卡引导）。
+- **覆盖路径**：`backend/api/checkin.py::start_practice`（唯一装配点）、`backend/api/practice.py::create_practice_session` / `append_practice_questions`、`backend/ai/quizzer.py::generate_practice_questions` 与 `_retrieve_cards`。
+- **约束**：
+  1. 今日一题未答 → 出 5 道；已答 n 道 → 出 `5−n` 道；已达标（n≥5）→ 仍给一整组（加练，不得因此报错或返回 0 道）。
+  2. 当天未答完的会话：余量 ≥ 需要 → 直接续答；余量 < 需要 → **在原会话原位补题**补齐（不得另开半截会话，也不得只把余量甩给前端）。补题后 `practice_sessions.total_points / config_json` 必须按题目实际分值重算。
+  3. 题源 = 知识卡片（REQ-PRACTICE-001 铁律不变）。**严格档只喂未练过子概念的卡片**；凑不满时切兜底档（全量卡片 + 已练过知识点换新角度，题源仍是卡片）——**任何情况下不得因「避重」而少出题或中断**。
+  4. 题干与历史的去重在两档中都是硬约束（`content_hash`）；「子概念不重复」在兜底档降级为「优先避开」，这是唯一被放宽的口径。
+- **违规处置**：`make lint test smoke` 任一红即不得交付；`tests/test_quizzer.py::test_practice_source_card_prefers_unpracticed` 与 `tests/test_checkin.py::test_start_practice_generates_today_remaining` 为机械断言，删改即视为绕过（须附「植入违规 → FAIL」证据）。
+- **反证（本轮实跑）**：临时把 `_retrieve_cards` 改回「不排除已练子概念」（= 老实现），`test_practice_source_card_prefers_unpracticed` 退出 1 报 `旧0题干 in calls[0]`；还原后全绿。
+- **实现状态**：已落地（v2.13.1）。真实题库 + 真实 LLM 实测：请求 5 道 → 5 道、请求 4 道 → 4 道；「798 个子概念全标为已练过」的极端场景请求 5 道 → 5 道（严格档 0 道 → 兜底档补满）。
+- **根因记录（防止回退成老实现）**：老 `_retrieve_cards` 按 `(sub_concept, created_at)` 确定性排序取前 50 张，练过的子概念恰是字典序最靠前者 → 约 70% 的题源卡是已练过的；提示词又硬禁止出这些子概念 → `_cap_to_max` 全部丢弃 → 多次调用后只剩 1~2 道。**「题源要优先未练过的子概念」与「提示词禁止已练过的子概念」必须成对出现**，缺一即退化成打脸逻辑。
