@@ -1936,4 +1936,18 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
   4. 前端：卡片复习态存在「AI 视频讲解」按钮；点击未生成卡 → 页面出现「生成中」文案且库中新增 `queued` 行（**不静默**）；列表页不含非 ready 视频。
   5. 通知：ready 后该视频对全部学生各产生 1 条 `card_video_ready` 通知，`ref_id` = video_id。
   6. 反证：临时关掉 UNIQUE 幂等 / 去掉 Range 支持 → 对应断言必须真红（记录退出码）。
-- **实现状态**：**待实现**（M1 数据+API / M2 worker+出片 / M3 前端+断言；每段独立 commit + `make lint test smoke ui-audit` 门禁）。已完成的可行性实测（2026-10-08，真实卡片）：导演 1 次 LLM 调用 $0.0039 → 7 拍 228 字；渲染 29.5s（edge-tts 14.0s + manim 13.4s + 拼接 2.1s）；成片 47.8s / 1080×1920 / 2.05MB。
+- **实现状态**：**已落地并上线 v2.15.0 → v2.15.4（2026-10-09）**，端到端真片验收通过。三段 CC 交付：`316ac38`（M1 数据表＋幂等 API＋Range 媒体路由）、`db907c4`（M2 独立 worker＋本地出片管线）、`d517e2a`（M3 卡片按钮／学习页列表／全屏播放器／通知直达）；Hermes 收尾 `2.15.3`：worker 调导演补 `--tries 3`（原默认 1 次，LLM 偶尔只出 282 字 < 300 字门限即硬失败）、新增 `_run()` 把子进程 stdout/stderr 末 600 字写进 `card_videos.error`（原来只留 exit code，无法定位）、补齐 `deploy/run-video-worker.sh` + `deploy/com.aistudy.video-worker.plist`（label `com.aistudy.video-worker`，RunAtLoad + KeepAlive 单实例）。
+- **真片实测（真库真卡，2026-10-09 00:40）**：核心卡「Qdrant 向量数据库的特点是什么？」（第 3 章 · AIPM vs 传统 PM）→ worker 全自动出片 **89.1s / 1080×1920 / 3.07MB**；挂载 **11 张卡**（核心 1＋辐射 10）；通知 **4 条 / 4 名学生**；`curl -r 0-1023` → **HTTP 206 + `Content-Range: bytes 0-1023/3220859`**（无 Range 时 200/全量，非 mp4 后缀 404）；`/api/videos` 只含 ready 且含本卡；**另一名学生（Winnie）读同卡拿到同一 `video_id`**（全局共享成立）。
+- **反证（真跑，记录退出码/观测值）**：① Range：媒体路由 `conditional=True` → `False` 后 `-r 0-1023` 返回 **200 ＋ 全量 3220859 字节、无 `Content-Range`**（断言会红），还原后 206；② 幂等：副本库把 `core_card_id UNIQUE` 从建表语句摘掉后同一卡连插 2 次得 **3 行**（「行数=1」断言会红），真库同卡 3 次请求仍 **1 行**；③ 上述两条已固化为 `make ui-audit` 断言（「幂等：3 次请求仅 1 行」/「媒体路由支持 Range（206 + Content-Range）」）。
+- **CC 受阻项（如实）**：launchd 模板创建、幂等/Range 反证被其权限策略拦下 → 全部由 Hermes 补齐（见上）。
+
+
+## 12.76 复习态操作按钮布局（REQ-UI-016，Ray 2026-10-09 口径）
+
+- **口径**：知识卡片**复习态**的四个操作按钮固定为**二乘二**、间距相等 —— 第一行「记住了 / 没记住」，第二行「问 TUTOR / AI 视频讲解」；左右拉开，**不再「上面一个下面一个」**（整行单按钮视为违规）。
+- **量化不变量**：四按钮 = 2 行 × 2 列；**横向间距 = 纵向间距**（当前 12px）；**行内两按钮等高**（差 ≤1px）；按钮文案**不得溢出、不得换行截断**（`scrollWidth ≤ clientWidth + 1`）。
+- **文案约束（半宽可用）**：按钮文案必须短到能在半宽（390 宽下约 161px）内单行显示；`AI 视频讲解` 四态文案 = `▶ AI 视频讲解`（未生成）/ `生成中，请稍后回看`（排队/生成中，**此串为固定口径，不得改写**）/ `▶ 视频 · 已就绪`（可播）/ `↻ 重试生成视频`（失败，可重试）。
+- **覆盖路径（对后续一律适用）**：任何**新增**复习态操作按钮（收藏、标记、跳过、分享…）必须并入同一网格并按**成对增行**（保持 2 列等距），禁止退化为整行单按钮；任何**改动**该区域布局（flex/grid 切换、gap、字号、加图标）都必须重跑 `make ui-audit` 的 REQ-UI-016 断言。
+- **违规处置**：出现「上一下一」、横纵间距不等、行内不等高、文案溢出/换行 → 该 commit 回滚重做。
+- **机械断言**（`scripts/ui_audit.js`，REQ-UI-016 块）：复习态取 `.kc-actions .btn` 的 `getBoundingClientRect()` → 断言「按钮 4 个 / 2 行 / 2 列」、「`|横向间距 − 纵向间距| ≤ 1px`」、「行内高度差 ≤ 1px」、「无 `scrollWidth > clientWidth`」。**反证真跑（v2.15.4）**：把 `.kc-actions` 的 `grid-template-columns` 由 `1fr 1fr` 改成 `1fr`（单列）→ `make ui-audit` **EXIT=2**、真红 `✗ 复习态按钮不是二乘二：按钮 4 个 / 4 行 / 1 列`；还原后 EXIT=0 全绿。
+- **实现状态**：**已落地并上线 v2.15.4（2026-10-09）**。实现：`.kc-actions` 由 `flex` 改 `grid-template-columns:1fr 1fr;gap:12px`，`问 TUTOR`／`AI 视频讲解` 从独立整行移入同一容器，`.kc-tutor{margin-top:0}`；实测 390 宽下 `✓ 复习态四按钮二乘二（横 12px = 纵 12px，行内等高）`。版本三件套：`app.py 2.15.4`、`sw.js CACHE v82`、`index.html ?v=2.15.4`。

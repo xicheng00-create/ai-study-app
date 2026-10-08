@@ -226,6 +226,21 @@ print(json.dumps(dict(r)))
    ab(['wait','--fn',"document.querySelector('.kc-video')!==null"]);
    if(!pageEval(`JSON.stringify(document.querySelector('.kc-video').innerText.includes('AI 视频讲解'))`)) fail('复习态视频按钮缺失');
    else pass('复习态视频按钮存在');
+   // REQ-UI-016：复习态四个按钮必须是二乘二（记住了/没记住、问 TUTOR/AI 视频讲解），且横向间距 = 纵向间距、行内等高、文字不溢出。
+   const g=pageEval(`JSON.stringify((()=>{
+     const bs=[...document.querySelectorAll('.kc-actions .btn')];
+     const m=bs.map(b=>{const r=b.getBoundingClientRect();return {t:Math.round(r.top),l:Math.round(r.left),r:Math.round(r.right),b:Math.round(r.bottom),h:Math.round(r.height),ovf:b.scrollWidth>b.clientWidth+1,txt:b.innerText.trim()};});
+     const rows=[...new Set(m.map(x=>x.t))].sort((a,b)=>a-b), cols=[...new Set(m.map(x=>x.l))].sort((a,b)=>a-b);
+     const inRow=v=>m.filter(x=>x.t===v), inCol=v=>m.filter(x=>x.l===v);
+     const colGap=cols.length>1?cols[1]-Math.max(...inCol(cols[0]).map(x=>x.r)):-1;
+     const rowGap=rows.length>1?rows[1]-Math.max(...inRow(rows[0]).map(x=>x.b)):-1;
+     const rowSpread=Math.max(...rows.map(v=>{const h=inRow(v).map(x=>x.h);return Math.max(...h)-Math.min(...h);}));
+     return {n:m.length,rows:rows.length,cols:cols.length,colGap,rowGap,rowSpread,ovf:m.filter(x=>x.ovf).length,hs:m.map(x=>x.h),txt:m.map(x=>x.txt)};})())`);
+   if(g.n!==4||g.rows!==2||g.cols!==2) fail(`复习态按钮不是二乘二：按钮 ${g.n} 个 / ${g.rows} 行 / ${g.cols} 列`);
+   else if(Math.abs(g.colGap-g.rowGap)>1) fail(`二乘二间距不等：横向 ${g.colGap}px vs 纵向 ${g.rowGap}px`);
+   else if(g.rowSpread>1) fail(`二乘二行内按钮不等高（最大差 ${g.rowSpread}px）：${g.hs.join('/')}`);
+   else if(g.ovf) fail(`二乘二按钮文字溢出（${g.ovf} 个）：${g.txt.join(' | ')}`);
+   else pass(`复习态四按钮二乘二（横 ${g.colGap}px = 纵 ${g.rowGap}px，行内等高）`);
    ab(['eval', `document.querySelector('.kc-video').click()`]);
    ab(['wait','--fn',"document.body.innerText.includes('生成中')"]);
    const queued=spawnSync(ROOT+'/.venv/bin/python', ['-c', `import os,sqlite3,sys; c=sqlite3.connect(os.environ['DATABASE_PATH']);print(c.execute("SELECT count(*) FROM card_videos WHERE core_card_id=? AND status='queued'",(sys.argv[1],)).fetchone()[0])`,card.id],{cwd:ROOT,encoding:'utf8',env:process.env});
@@ -235,6 +250,20 @@ print(json.dumps(dict(r)))
    if(!result.button) fail('点击后未出现生成中');
    const queuedList=await fetch(`${BASE}/api/videos`,{headers:{Authorization:'Bearer '+tk}}).then(r=>r.json());
    if((queuedList.data||[]).some(v=>v.core_card_id===card.id)) fail('queued 视频混入列表'); else pass('queued 视频未混入列表');
+   // 幂等（REQ-VID-002）：同一卡再连点 2 次，库里仍只能 1 行。
+   for(let i=0;i<2;i++) await fetch(`${BASE}/api/videos/card/${card.id}/request`,{method:'POST',headers:{Authorization:'Bearer '+tk}});
+   const idem=spawnSync(ROOT+'/.venv/bin/python', ['-c', `import os,sqlite3,sys; c=sqlite3.connect(os.environ['DATABASE_PATH']);print(c.execute("SELECT count(*) FROM card_videos WHERE core_card_id=?",(sys.argv[1],)).fetchone()[0])`,card.id],{cwd:ROOT,encoding:'utf8',env:process.env});
+   if(idem.status || idem.stdout.trim()!=='1') fail(`幂等断言失败：3 次请求后该卡 ${(idem.stdout||'').trim()||'(空)'} 行`);
+   else pass('幂等：3 次请求仅 1 行');
+   // Range（REQ-VID 机械断言 3）：媒体路由必须支持断点续传 —— 用临时小文件，不依赖真片存在。
+   const rng=path.join(ROOT,'instance/media/videos','audit-range.mp4');
+   fs.writeFileSync(rng, Buffer.alloc(2048,1));
+   try {
+     const r0=await fetch(`${BASE}/media/videos/audit-range.mp4`,{headers:{Range:'bytes=0-99'}});
+     const cr=r0.headers.get('content-range')||'';
+     if(r0.status!==206||!/^bytes 0-99\/2048$/.test(cr)) fail(`Range 断言失败：HTTP ${r0.status} Content-Range=${cr||'(空)'}`);
+     else pass('媒体路由支持 Range（206 + Content-Range）');
+   } finally { fs.rmSync(rng,{force:true}); }
    // 副本库 stub ready，浏览器实际打开播放器；清理 stub 后不污染后续断言。
    const stub=spawnSync(ROOT+'/.venv/bin/python', ['-c', `import os,sqlite3,sys; c=sqlite3.connect(os.environ['DATABASE_PATH']);c.execute("UPDATE card_videos SET status='ready',file_name='audit-stub.mp4' WHERE core_card_id=?",(sys.argv[1],));c.commit()`,card.id],{cwd:ROOT,encoding:'utf8',env:process.env});
    if(stub.status) throw new Error(stub.stderr);

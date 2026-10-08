@@ -48,6 +48,15 @@ def neighbours(con, card):
         return []
 
 
+def _run(cmd, timeout, label):
+    """跑子进程；失败时把 stdout/stderr 带进异常（失败必须留痕，不许只报 exit code）。"""
+    r = subprocess.run(cmd, timeout=timeout, capture_output=True, text=True, check=False)
+    if r.returncode != 0:
+        detail = (r.stderr or r.stdout or "").strip()[-600:]
+        raise ValueError(f"{label} 失败(exit {r.returncode})：{detail}")
+    return r
+
+
 def render(con, row):
     card = con.execute("SELECT kc.*,ch.name AS chapter_name,COALESCE(ct.topic,'') AS topic FROM knowledge_cards kc JOIN chapters ch ON ch.id=kc.chapter_id LEFT JOIN card_topics ct ON ct.card_id=kc.id WHERE kc.id=?", (row["core_card_id"],)).fetchone()
     if not card:
@@ -61,8 +70,8 @@ def render(con, row):
         note = work / "note.md"
         note.write_text(f"# {card['front']}\n\n子概念：{card['sub_concept']}\n答案：{card['back']}\n\n资料证据（仅以下内容可作为依据；不确定不要编造）：\n" + "\n".join(r["text"][:900] for r in excerpts), encoding="utf-8")
         script = work / "card.json"
-        subprocess.run([str(ROOT / ".venv/bin/python"), str(VIDEO / "director.py"), "--page", str(note), "--out", str(script), "--title", card["front"][:120], "--source", card["chapter_name"], "--neighbours", ",".join(linked)], check=True, timeout=180, capture_output=True, text=True)
-        subprocess.run([str(ROOT / ".venv/bin/python"), str(VIDEO / "daily_video.py"), str(script), "--project", str(work / "project"), "--out-dir", str(work / "out"), "--name-prefix", row["id"]], check=True, timeout=1200, capture_output=True, text=True)
+        _run([str(ROOT / ".venv/bin/python"), str(VIDEO / "director.py"), "--page", str(note), "--out", str(script), "--title", card["front"][:120], "--source", card["chapter_name"], "--neighbours", ",".join(linked), "--tries", "3"], timeout=600, label="导演")
+        _run([str(ROOT / ".venv/bin/python"), str(VIDEO / "daily_video.py"), str(script), "--project", str(work / "project"), "--out-dir", str(work / "out"), "--name-prefix", row["id"]], timeout=1200, label="渲染")
         files = list((work / "out").glob("*.mp4"))
         if len(files) != 1:
             raise ValueError("渲染器未产出唯一 mp4")

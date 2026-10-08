@@ -1,3 +1,21 @@
+## [2.15.4] - 2026-10-09
+
+- **复习态四按钮改二乘二（REQ-UI-016，Ray 2026-10-09 口径）**：`记住了 / 没记住`（第一行）、`问 TUTOR / AI 视频讲解`（第二行），横向拉开、横向间距 = 纵向间距（12px），行内等高，不再「上面一个下面一个」。
+  - 实现（手术式）：`.kc-actions` 由 `flex` 改 `grid-template-columns:1fr 1fr;gap:12px`；`问 TUTOR` 与 `AI 视频讲解` 两个按钮从独立整行移入同一容器；`.kc-tutor{margin-top:0}`。
+  - 半宽按钮文案压缩（避免换行溢出）：`▶ 视频 · 已就绪` / `↻ 重试生成视频` / `生成中，请稍后回看`（原「生成失败，点击重试 AI 视频讲解」等长文案删掉）；`💬 问 TUTOR 这张卡` → `💬 问 TUTOR`。
+  - 机械断言（`scripts/ui_audit.js` 新增）：复习态取 4 个 `.kc-actions .btn` 的 `getBoundingClientRect()` → 断言按钮 4 个 / 2 行 / 2 列、横向间距与纵向间距差 ≤1px、行内高度差 ≤1px、无 `scrollWidth > clientWidth` 溢出。**反证真跑**：把 `grid-template-columns` 改回 `1fr`（单列）→ `make ui-audit` **EXIT=2**、真红「复习态按钮不是二乘二：按钮 4 个 / 4 行 / 1 列」；还原后全绿。
+  - 版本三件套：`app.py 2.15.4`、`sw.js CACHE v82`、`index.html ?v=2.15.4`。
+
+## [2.15.3] - 2026-10-09
+
+- REQ-VID 收尾（Hermes 验收批次）：CC 交付三段后，真机端到端出片跑通并补齐受阻项。
+  - **导演重试**：worker 调 `director.py` 补 `--tries 3`（原默认 1 次，LLM 偶尔只出 282 字 < 300 字门限即硬失败 → 任务置 failed，学生端永远等不到片）。
+  - **失败留痕**：新增 `_run()` 包装，子进程失败时把 stdout/stderr 末 600 字写进 `card_videos.error` 与日志（原来只留 `returned non-zero exit status 1`，无法定位）。
+  - **launchd 补齐**（CC 侧被权限策略拦下）：`deploy/run-video-worker.sh` + `deploy/com.aistudy.video-worker.plist`（RunAtLoad + KeepAlive，单实例串行），label `com.aistudy.video-worker`。
+  - 真片验收：核心卡「Qdrant 向量数据库的特点是什么？」→ 89.1s / 1080×1920 / 3.07MB；挂载 11 张卡（核心 1 + 辐射 10）；通知 4/4 名学生；`Range` → 206 + Content-Range；另一学生读同卡同 video_id。
+  - 反证两轮：媒体路由 `conditional=False` → Range 退化为 200 全量（会红）；副本库去掉 `core_card_id UNIQUE` → 同卡 3 行（断言会红）。
+  - 版本三件套：`app.py 2.15.3`、`sw.js CACHE v81`、`index.html ?v=2.15.3`。
+
 ## [2.15.2] - 2026-10-09
 
 - REQ-VID M3：复习卡生成/重试及 15s 轮询、学习页章节视频列表、全屏 sheet 播放器关闭卸载与通知直达。资源版本 v80。

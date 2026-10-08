@@ -731,9 +731,7 @@ const Student = {
         <div class="kc-face kc-back"><small>${esc(chTxt)} · 答案与解析</small><b>${esc(c.back)}</b></div>
       </div></div>
     <div class="kc-hint">拖动卡片：右滑 = 记住了 · 左滑 = 没记住</div>
-    <div class="kc-actions"><button class="btn ghost" onclick="Student.reviewKnowledge(false)">${ic('cross')}没记住</button><button class="btn" onclick="Student.reviewKnowledge(true)">记住了${ic('check')}</button></div>
-    <button class="btn ghost kc-video" onclick="Student.openCardVideo('${c.id}')">${esc(this.videoStates[c.id] === 'failed' ? '生成失败，点击重试 AI 视频讲解' : this.videoStates[c.id] === 'ready' ? '▶ AI 视频讲解 · 已就绪' : this.videoStates[c.id] ? '生成中，请稍后回看' : '▶ AI 视频讲解')}</button>
-    <button class="btn ghost kc-tutor" onclick="Student.askCurrentKcTutor()">💬 问 TUTOR 这张卡</button>
+    <div class="kc-actions"><button class="btn ghost kc-rate" onclick="Student.reviewKnowledge(false)">${ic('cross')}没记住</button><button class="btn kc-rate" onclick="Student.reviewKnowledge(true)">记住了${ic('check')}</button><button class="btn ghost kc-tutor" onclick="Student.askCurrentKcTutor()">💬 问 TUTOR</button><button class="btn ghost kc-video" onclick="Student.openCardVideo('${c.id}')">${esc(this.videoStates[c.id] === 'failed' ? '↻ 重试生成视频' : this.videoStates[c.id] === 'ready' ? '▶ 视频 · 已就绪' : this.videoStates[c.id] ? '生成中，请稍后回看' : '▶ AI 视频讲解')}</button></div>
     <button class="btn ghost kc-quit" onclick="Student.pauseKnowledge()">${ic('back')}暂停退出（保存进度）</button></div>` + tabbar();
   },
   async enterVideos() {

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>com.aistudy.video-worker</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/xicheng/WorkBuddy/AI学习小组app/deploy/run-video-worker.sh</string>
+	</array>
+	<key>WorkingDirectory</key><string>/Users/xicheng/WorkBuddy/AI学习小组app</string>
+	<key>RunAtLoad</key><true/>
+	<key>KeepAlive</key><true/>
+	<!-- 出片要 1–3 分钟/条，别被系统当卡死回收；单实例由脚本自身串行保证 -->
+	<key>ThrottleInterval</key><integer>10</integer>
+	<key>StandardOutPath</key><string>/tmp/aistudy/video-worker.log</string>
+	<key>StandardErrorPath</key><string>/tmp/aistudy/video-worker.err.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key><string>/Users/xicheng</string>
+		<key>PATH</key><string>/Users/xicheng/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>FLASK_ENV</key><string>production</string>
+	</dict>
+</dict>
+</plist>
