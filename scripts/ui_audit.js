@@ -206,6 +206,32 @@ const audit = `(() => {
     }
    }
   }
+  /* REQ-UI-015：学习页（资料库展开）勾选章节 = 同视图原地重绘 → 不得把页面拉回顶端；
+     切页（go）→ 仍必须回顶端。冷载 #learn + localStorage 记忆展开态，断言可重跑。 */
+  try {
+   ab(['set','viewport','390','900']);
+   ab(['open', `${BASE}/?cb=${Date.now()}#learn`]);
+   ab(['eval', `localStorage.setItem('aistudy_token',${JSON.stringify(tk)});localStorage.setItem('aistudy_lib_open','1')`]);
+   ab(['open', `${BASE}/?cb=${Date.now()}#learn`]);
+   ab(['wait','--fn',"document.querySelectorAll('.chapter').length>0"]);
+   ab(['wait','700']);
+   // 先把页面滚到实际可达的最大位置（390x900 下 max≈345，硬编码 520 会被浏览器钳制 → 断言假红）
+   const pre = pageEval(`JSON.stringify((()=>{const s=document.getElementById('screen');s.scrollTop=520;return{before:s.scrollTop,max:s.scrollHeight-s.clientHeight,rows:document.querySelectorAll('.chapter').length,sel:JSON.parse(localStorage.getItem('aistudy_sel_chapters')||'[]').length};})())`);
+   if (pre.before < 200) fail(`#learn 保滚动：页面滚动余量不足（max ${pre.max}px），断言无法执行`);
+   else {
+    ab(['eval', `(()=>{document.querySelectorAll('.chapter')[1].click();return 1})()`]);
+    ab(['wait','1000']);
+    const aft = pageEval(`JSON.stringify((()=>{const s=document.getElementById('screen');return{top:s.scrollTop,sel:JSON.parse(localStorage.getItem('aistudy_sel_chapters')||'[]').length};})())`);
+    if (aft.sel === pre.sel) fail(`#learn 保滚动：勾选未生效（sel ${pre.sel}→${aft.sel}），断言无效`);
+    else if (aft.top !== pre.before) fail(`#learn 勾选章节后页面被拉回顶端（scrollTop ${aft.top}，应保持 ${pre.before}）`);
+    else pass(`#learn 勾选章节：滚动位置保持 ${aft.top}px（勾选 ${pre.sel}→${aft.sel} 生效）`);
+    ab(['eval', `(()=>{document.getElementById('screen').scrollTop=${pre.before};go('path');return 1})()`]);
+    ab(['wait','900']);
+    const nav = pageEval(`JSON.stringify({hash:location.hash,top:document.getElementById('screen').scrollTop})`);
+    if (nav.hash !== '#path' || nav.top !== 0) fail(`#learn 切页后未回顶端（hash=${nav.hash} top=${nav.top}）`);
+    else pass('#learn 切页（#path）：仍回顶端');
+   }
+  } catch (e) { fail(`#learn 保滚动断言异常：${e.message.split('\n')[0]}`); }
  } catch(e) { fail(`agent-browser/页面断言异常：${e.message.split('\n')[0]}`); }
  try { ab(['close']); } catch (_) {}
  try { fs.unlinkSync('/tmp/aistudy-ui-token'); } catch (_) {}

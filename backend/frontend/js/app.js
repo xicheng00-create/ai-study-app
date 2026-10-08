@@ -52,6 +52,8 @@ const App = {
   unread: 0,          // 通知未读数（铃铛角标，NOTIF-008）
   checkin: null,      // GET /api/checkin/today 结果（学生端连胜条数据源）
   prefs: null,        // GET /api/notifications/prefs 结果（提醒开关 + 订阅状态，NOTIF-010）
+  _sig: "",           // 上次渲染的视图指纹（同视图原地重绘时保住滚动位置，REQ-UI-015）
+  _forceTop: false,   // 显式切页（go()）→ 强制回到顶端
 
   chapterName(id) {
     const c = this.chapters.find(x => x.id === id);
@@ -153,7 +155,18 @@ function tabbar() {
   // 学习 tab：再次点击（已在学习区子视图：对话/知识卡片）→ 回学习主菜单
   return `<div class="tabbar">${tabs.map(([k, l, ic]) => `<button class="tab ${h === k ? 'active' : ''}" onclick="${k === 'learn' ? 'Student.goLearn()' : `go('${k}')`}">${ic}<span>${l}</span></button>`).join('')}</div>`;
 }
-function go(h) { App.state.hash = h; if (h === "quiz") App.activeQuiz = null; location.hash = h; render(); }
+function go(h) { App.state.hash = h; if (h === "quiz") App.activeQuiz = null; App._forceTop = true; location.hash = h; render(); }
+
+/* 视图指纹（REQ-UI-015）：同一视图内的原地重绘（勾选章节 / 展开折叠 / 刷新数据）指纹不变 →
+   渲染后恢复 #screen 的滚动位置；指纹变化（切页 / 进子视图）→ 回顶端。
+   展开类状态（libOpen / weakOpen / kcardOpen / knowledgeGroupOpen）属同一视图，故意不进指纹。 */
+function viewSig() {
+  const s = (App.state.role === "teacher") ? (window.Teacher || {}) : (window.Student || {});
+  return [App.state.role || "", App.state.hash, App.activeQuiz || "",
+    s.learnChat ? "chat" : "", s.knowledgeIdx ? "ki" : "", s.knowledgeDeck ? "kd" : "",
+    s.quiz ? "qz" : "", s.result ? "res" : "", s.practice ? "pr" : "",
+    s.practiceResult ? "prs" : "", s.practiceView ? "pv" : "", s.kcardChapterId || ""].join("|");
+}
 
 async function loadChapters() {
   try { const d = await API.get("/api/chapters"); App.chapters = d.chapters || []; if (d.daily_cards) App.dailyCards = d.daily_cards; } catch (e) { App.chapters = []; }
@@ -350,8 +363,13 @@ async function render() {
   const root = document.getElementById("screen");
   if (!App.state.role) {
     root.innerHTML = viewLogin();
+    App._sig = viewSig();
     return;
   }
+  // REQ-UI-015：同视图原地重绘保住滚动位置（勾选章节/展开折叠不再把页面拉回顶端）
+  const sig = viewSig();
+  const keepTop = (App._forceTop || App._sig !== sig) ? 0 : root.scrollTop;
+  App._forceTop = false;
   try {
     let html = "";
     if (App.state.hash === "settings") {
@@ -364,11 +382,13 @@ async function render() {
       html = await Teacher.render();
     }
     root.innerHTML = html;
-    root.scrollTop = 0;
+    root.scrollTop = keepTop;
+    App._sig = sig;
     // 知识卡片全屏态：新卡入场后按卡面内容自适应卡高（v2.6.2，长答案不裁切）
     if (window.Student && Student.knowledgeDeck) requestAnimationFrame(() => Student.kcFit());
   } catch (e) {
     root.innerHTML = `<div class="note"><div class="big">${ic('warn')}</div>${esc(e.message)}<br><button class="btn ghost sm" style="margin-top:14px" onclick="render()">重试</button></div>`;
+    App._sig = sig;
   }
   refreshUnread();
 }
