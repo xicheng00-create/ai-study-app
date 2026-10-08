@@ -1837,3 +1837,24 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **反证（本轮实跑）**：临时把 `_retrieve_cards` 改回「不排除已练子概念」（= 老实现），`test_practice_source_card_prefers_unpracticed` 退出 1 报 `旧0题干 in calls[0]`；还原后全绿。
 - **实现状态**：已落地（v2.13.1）。真实题库 + 真实 LLM 实测：请求 5 道 → 5 道、请求 4 道 → 4 道；「798 个子概念全标为已练过」的极端场景请求 5 道 → 5 道（严格档 0 道 → 兜底档补满）。
 - **根因记录（防止回退成老实现）**：老 `_retrieve_cards` 按 `(sub_concept, created_at)` 确定性排序取前 50 张，练过的子概念恰是字典序最靠前者 → 约 70% 的题源卡是已练过的；提示词又硬禁止出这些子概念 → `_cap_to_max` 全部丢弃 → 多次调用后只剩 1~2 道。**「题源要优先未练过的子概念」与「提示词禁止已练过的子概念」必须成对出现**，缺一即退化成打脸逻辑。
+
+## §12.70 v2.14.0 连胜冰冻（REQ-CHECKIN-013，2026-10-08 用户下达，本条款对后续一律适用）
+
+- **用户实报（同日）**：「周大维尼反映他昨天有打卡，但是今天连胜清零了」+ 「每一个玩家都可以有两个冰冻功能使用次数，一旦他们有一天没有打卡，就可以消耗一次冰冻功能，把连胜的数字锁定住，不要直接清零。每连胜 5 天就可以获得 1 个冰冻次数。前端做成冰冻的符号在右上角，和小火焰并排。然后显示剩余的使用次数。每次冰冻的时候都要弹出一个动画效果，就是把数字冰冻的一个动画效果。」
+- **需求**：① 每名学生初始 **2 次**冰冻；② 每连胜满 5 天 **+1 次**（5/10/15/… 各 +1，跨连胜段重复计）；③ 漏卡日（未达标）**自动消耗**冰冻锁住连胜数字，不直接清零；④ 余额不足或缺口天数 > 余额 → 不消耗、连胜按原规则归零；⑤ 前端：冰冻符号与连胜火焰**并排显示在右上角**，并显示剩余次数；⑥ 每次发生冰冻 → 播一次「数字被冰封」动画。
+- **触发点**：① 任何调用 `GET /api/checkin/today` 的入口（学生端首页/学习页/班级页刷新）→ 惰性结算缺卡日；② 当日达标写入 `daily_checkins` 时（`evaluate_and_maybe_complete`）→ 结算 + 发放判定；③ 前端首次看到 `just_frozen` 非空且本地未播过 → 播动画（每天最多一次）。
+- **覆盖路径**：`backend/data/models.py`（新表 DDL）、`backend/data/checkin.py`（唯一判定点：`freeze_status()` / `settle_freezes()`，`streak_info()` 必须走它）、`backend/api/checkin.py`（`/today` 的 `streak.freezes`、`/class` 每行 `freezes.available`）、`backend/frontend/js/app.js`（连胜条渲染）、`backend/frontend/js/student.js`（冰冻 sheet + 动画）、`backend/frontend/css/style.css`。
+- **数据与算法（口径，不得自由发挥）**：
+  1. 表 `streak_freezes(id TEXT PK, user_id, freeze_date TEXT, streak_kept INTEGER, created_at TEXT)`，`UNIQUE(user_id, freeze_date)`；**只记录已消耗的冰冻**（发放不落表）。
+  2. `granted = 2 + COUNT(daily_checkins WHERE streak_after % 5 = 0)`；`used = COUNT(streak_freezes)`；`available = max(0, granted − used)`。
+  3. `gap = (shanghai_today − MAX(checkin_date)).days − 1`（无任何打卡 → gap 视为 0，不结算）。
+  4. `gap ≥ 1` 且 `available ≥ gap` → 为每个缺口日写 1 行 `streak_freezes`（`streak_kept` = 该生当前 `MAX(streak_after)`），连胜保持 `MAX(streak_after)`，`state` 仍按「今日是否达标」给 `done`/`pending`；`gap ≥ 1` 且 `available < gap` → **一行都不写**、`state=broken`、`streak=0`（部分覆盖不算保住）。
+  5. 幂等：同一 `(user_id, freeze_date)` 重复结算不得重复扣（`INSERT OR IGNORE` + 先查）。
+  6. 结算**只在服务端**，请求参数不得影响扣减；前端不得上报冰冻。
+- **前端口径**：
+  - 右上角连胜条内：`#freezeChip`（❄ 图形）+ `#freezeCount`（剩余次数数字），与火焰 🔥 **同一行并排**；余额为 0 时**常显且置灰**（不得隐藏），旁注「冰冻已用完，漏卡将清空连胜」。
+  - 点击 `#freezeChip` → sheet：规则三条 + 最近 3 条冰冻记录（日期 + 保住的连胜数）+ 当前余额。
+  - 动画：`#freezeAnim` 全屏覆盖层，用 CSS keyframes 做「火焰结冰 → 冰晶扫过 → 连胜数字被冰封」，时长 1.2–1.8s，可点击跳过；同一 `freeze_date` 只播一次（`localStorage['aistudy_freeze_seen_'+date]`）；播放中不得阻塞任何接口调用。
+- **违规处置**：手动改库补连胜数字、或前端自行上报冰冻、或把已消耗的冰冻「退还」→ 该 commit 回滚重做。
+- **机械断言**：`tests/test_streak_freeze.py` 7 例 —— ①初始可用 2；②连胜到 5 / 10 各 +1（`granted=4`）；③gap=1 且可用 ≥1 → 扣 1、连胜不变、`streak_freezes` 恰 1 行且 `freeze_date` = 缺口日；④重复调用不重复扣（行数不变）；⑤可用 0 且 gap=1 → `streak=0` 且不写行；⑥gap=3、可用 2 → `streak=0` 且不写行；⑦`available` 下限 0（used > granted 的异常账本不减成负数）。反证：把 `available >= gap` 改成 `available >= 1` → 用例⑥必须真红。
+- **实现状态**：待落地（v2.14.0 目标）。落地后在本节回写：真实库实测数字（周大维尼 11 天连胜 + 10-07 缺口结算）+ `make lint test smoke` 结果 + 前端 `?v=` 与 `sw.js CACHE` 新值。
