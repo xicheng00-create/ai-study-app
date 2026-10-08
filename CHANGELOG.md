@@ -1,3 +1,11 @@
+## [2.14.3] - 2026-10-08
+
+- **修复 REQ-PROG-016 两处版式缺陷**（2.14.2 上线后**真机验收**发现：生产、390 宽、水炎哈哈账号）：
+  - 第 4 章「掌握度 未评估」在窄栏里被强行逐字竖排（掌/握/度/未/评/估）→ `.cc-rate-txt>b`、`.cc-rate-txt>span` 加 `white-space:nowrap`，`.cc-rate`/`.cc-rate-txt`/`.cc-stars` 加 `flex:0 0 auto`（不许被压窄换行）。
+  - 长章节名（如「第 3 章 · AIPM vs 传统 PM」）被单行省略号裁掉 → `.chapter.kpi .nm` 改 2 行钳制（`-webkit-line-clamp:2`），标题行改 `align-items:flex-start`。
+  - 机械断言 +2：① 每卡 `.cc-rate-txt>b` 必须 `getClientRects().length === 1` 且 `white-space: nowrap`；② 每卡 `.nm` 的 `-webkit-line-clamp` 必须为 `2`。反证真跑：临时去掉 nowrap + 钳制改成 1 → 两条真红，还原后全绿。
+  - 版本三件套：`backend/app.py version=2.14.3`、`sw.js CACHE=aistudy-shell-v74`、`index.html ?v=2.14.3`（CSS 改动必须换 URL 穿透 CF 4h 静态缓存）。
+
 ## [2.14.2] - 2026-10-08
 
 - **新增 REQ-PROG-016「进度页章节卡 = 覆盖率环 + 五星掌握度」**（起因：Ray 2026-10-08 下达 UI 口径——章节卡里的横向 bar 与覆盖率环表达重复，删横条、保留灰小字、星加大并收掉环↔星空档）：

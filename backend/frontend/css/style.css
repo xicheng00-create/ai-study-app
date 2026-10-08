@@ -429,9 +429,9 @@ select.count-sel{font-size:16px;font-weight:600;font-family:var(--font);color:va
    原掌握度/覆盖率两条横向 bar 已删（与环表达重复，Ray 2026-10-08 口径）；本章卡是 .chapter 的 kpi 修饰类，
    不影响 .chapter 在别处（章节多选 / 自主练习选章 / 资料库列表）的原有姿态。 */
 .chapter.kpi{display:block;padding:13px 14px 16px;cursor:default}
-.chapter.kpi .chapter-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-.chapter.kpi .nm{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.chapter.kpi .chapter-metrics{flex:0 0 auto;margin-top:0;font-size:11.5px;font-variant-numeric:tabular-nums}
+.chapter.kpi .chapter-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.chapter.kpi .nm{flex:1 1 auto;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.chapter.kpi .chapter-metrics{flex:0 0 auto;margin-top:0;font-size:11.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .chapter.kpi .chapter-body{display:flex;align-items:center;justify-content:flex-start;gap:16px;margin-top:14px}
 .cc-ring{position:relative;flex:0 0 88px;width:88px;height:88px}
 .cc-ring svg{display:block;transform:rotate(-90deg)}
@@ -441,12 +441,12 @@ select.count-sel{font-size:16px;font-weight:600;font-family:var(--font);color:va
 .cc-ring-txt>span{font-size:11px;color:var(--text-2)}
 .cc-ring-txt>b{margin-top:5px;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
 .cc-ring-txt>b>i{font-style:normal;font-size:10.5px;font-weight:600;margin-left:1px}
-.cc-rate{display:flex;align-items:center;gap:11px}
-.cc-stars{display:flex;gap:4px}
+.cc-rate{display:flex;align-items:center;gap:11px;flex:0 0 auto}
+.cc-stars{display:flex;gap:4px;flex:0 0 auto}
 .cc-stars svg{display:block;width:26px;height:26px}
-.cc-rate-txt{display:flex;flex-direction:column;gap:4px;line-height:1.1}
-.cc-rate-txt>b{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
-.cc-rate-txt>span{font-size:12px;color:var(--text-3);font-variant-numeric:tabular-nums}
+.cc-rate-txt{display:flex;flex-direction:column;gap:4px;line-height:1.1;flex:0 0 auto}
+.cc-rate-txt>b{font-size:13px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.cc-rate-txt>span{font-size:12px;color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums}
 .cc-rate-txt>span>i{font-style:normal;color:#F2714E;margin-left:1px}
 .dcard .grid{padding-top:16px;margin-top:16px}
 .chapter .badge.master{background:var(--green-soft);color:var(--green)}

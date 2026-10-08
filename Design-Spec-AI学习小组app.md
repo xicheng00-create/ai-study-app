@@ -1881,6 +1881,7 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
   3. 换算**只在**这两处：满星数 = `floor(掌握度 / 20)`；`掌握度 = 未评估` → 0 星、第二行 `— ★`；环长 = `覆盖率%`，`stroke-dashoffset = 226.19 × (1 − 覆盖率/100)`。
   4. **间距口径**：390 宽下「环右缘 → 星左缘 ≤ 26px」「星块右缘 → 卡右缘 ≤ 22px」——环与星之间只留栏距，不留空档。
   5. 章节卡用 `.chapter.kpi` 修饰类实现，**不得**改动 `.chapter` 基类在别处（章节多选 / 自主练习选章 / 资料库列表）的姿态；原 `.chapter-bar*` 六条死规则随本次删除。
+  6. **不得出现文字被压窄换行**：`掌握度 XX%` / `X.X ★` 行必须 `white-space:nowrap` 且渲染为单行（`未评估` 态曾逐字竖排成一列）；`.cc-rate`/`.cc-rate-txt`/`.cc-stars` 一律 `flex:0 0 auto`（宁可让标题让位，也不压窄这两栏）。章节标题改 2 行钳制（`-webkit-line-clamp:2`）——长章名（如「第 3 章 · AIPM vs 传统 PM」）不得被单行省略号裁掉信息。
 - **违规处置**：章节卡重新引入横向 bar，或把掌握度/覆盖率任一信息拆成两处显示 → 该 commit 回滚重做；改坏 `.chapter` 基类导致其它页面错位 → 立即回滚。
 - **机械断言**：`scripts/ui_audit.js`（`make ui-audit`；390/1280 双宽度 × `#progress`/`#quiz`）—— ① 章节卡 `.chapter-bar` 计数必须为 0；② 每卡恰 1 个 `.cc-ring` + 5 个 `.cc-stars svg`，环弧 `stroke` = `rgb(242, 113, 78)`；③ 环 `stroke-dashoffset` 与圈内百分比自洽（±1.5px，C=226.19）；④ 满星数 = `floor(掌握度/20)`；⑤ `掌握度`/`覆盖率` 字样各 1 次；⑥ 章节小字匹配 `/^已学 \d+ \/ 共 \d+ · (已掌握|进行中|薄弱|未评估)$/`；⑦ 390 宽下环↔星 gap ≤26px、尾距 ≤22px。`.cc-ring`/`.cc-stars` 已加入横向/纵向间隙扫描的 TIER_HI（≥12px）。
 - **实现状态**：**已落地并上线 v2.14.2（2026-10-08）**。真实核查：`make lint test smoke ui-audit` 退出 0（覆盖率 **80.59%**、UI 机械断言 **33 条全绿**，含上述 7 组新断言）；**反证真跑**：临时把 `ccStars` 循环改成 4 颗 + 往卡里塞回一个 `.chapter-bar` → `make ui-audit` **EXIT=2、真红 5 项**（`章节卡仍有横向 bar`、`环/星结构或颜色不符`、`环↔星空档过大 gap=32 > 26`，390/1280 各一组），还原后全绿 = 断言具备失败能力。版本三件套：`backend/app.py version=2.14.2`、`sw.js CACHE=aistudy-shell-v73`、`index.html ?v=2.14.2`（6 处）。
