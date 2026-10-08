@@ -2,7 +2,8 @@
 
 - **新增 REQ-OBS-014「`/api/*` 缓存口径 + 逐次访问日志」**（起因：学生坚称 10-07 晚已打卡、服务端各内容表零记录，而服务器侧没有任何请求日志，无法区分「客户端没发请求」与「发了没落库」；且 `/api/*` 无任何 `Cache-Control`，旧「已打卡」态可能被缓存重放）：
   - 所有 `/api/*` 响应统一加 `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` + `Pragma: no-cache`（`app.py::after_request` 一处施加，新增路由自动覆盖）。
-  - 新增逐次访问日志 `instance/logs/api_access_<上海日期>.log`，固定 8 列（上海时间 / method / path?query / status / 耗时ms / user_id / XFF 首跳 / UA 前 48 字）；写入失败静默，绝不影响业务响应；不落任何凭据。目录可用 `API_LOG_DIR` 覆盖（测试用）。
+  - 新增逐次访问日志 `instance/logs/api_access_<上海日期>.log`，固定 8 列（上海时间 / method / path?query / status / 耗时ms / user_id / 客户端 IP / UA 前 48 字）；写入失败静默，绝不影响业务响应；不落任何凭据。目录可用 `API_LOG_DIR` 覆盖（测试用）。客户端 IP **优先取 `CF-Connecting-IP`**（隧道部署下 `remote_addr`/`XFF` 恒为 127.0.0.1，无取证价值）。
+  - **日志纯度**：测试请求不得写进生产日志目录 —— `tests/conftest.py` 新增 autouse fixture `_isolate_api_access_log`（与既有 `_isolate_card_gate_log` 同做法）。实测：首次上线当天一次 `make test` 曾灌入 650 行 `UA=Werkzeug` 测试行（占当日 777 行的 84%），隔离后跑全量 suite 生产日志**零新增**（当日日志已剔除测试行，原始全量留 `api_access_2026-10-08.log.test-noise.bak`）。
   - 复查口径：争议时先查该日志 —— 有该路径行 = 请求到达过，无行 = 客户端未发出；再查内容表判断落库。
   - 机械断言：`tests/test_observability.py` **3 例**（no-store 头 / 一次请求落 8 列行 / 非 `/api/` 不落行）。反证（真跑）：把日志写入改为写空串 → 第 2 例必须真红，还原后 3 例全绿。
 - 本版**不改任何前端逻辑**；仅因缓存口径与资源版本一致，`sw.js CACHE v71→v72`（`V=2.14.1`）、`index.html ?v=2.14.1`。

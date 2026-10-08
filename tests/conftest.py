@@ -85,6 +85,19 @@ def _stub_quizzer_source(monkeypatch):
     monkeypatch.setattr(agents, "quizzer_generate", fake_generate)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_api_access_log(tmp_path, monkeypatch):
+    """全局隔离 /api/* 访问日志，避免测试请求写进真实 instance/logs/api_access_<日期>.log。
+
+    REQ-OBS-014 的访问日志是「客户端到底发过没发过请求」的取证通道；而 pytest 的测试客户端
+    自身就会打大量 /api/auth/login|register（每次全量 suite 数百次），UA=Werkzeug、IP=127.0.0.1
+    ——2026-10-08 首次上线当天实测：一次 `make test` 就往当日日志灌了 ~700 行（占当日全部行），
+    使真实设备行为无法辨认。需要断言日志内容的测试（tests/test_observability.py）自行
+    setenv 覆盖即可，测试级覆盖在此之后生效。
+    """
+    monkeypatch.setenv("API_LOG_DIR", str(tmp_path / "api_access"))
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     # 测试专用临时库 + 禁用 LLM（走兜底，确定性）

@@ -101,7 +101,10 @@ def create_app(env=None):
             t0 = getattr(g, "_api_t0", None)
             dur = f"{int((_time.perf_counter() - t0) * 1000)}ms" if t0 else "-"
             now = _dt.now(_tz.utc)
-            fwd = request.headers.get("X-Forwarded-For") or request.remote_addr or "-"
+            # 真实客户端 IP：隧道部署下 remote_addr/XFF 恒为 127.0.0.1，真 IP 在 CF-Connecting-IP
+            ip = (request.headers.get("CF-Connecting-IP")
+                  or (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+                  or request.remote_addr or "-")
             line = "\t".join([
                 now.astimezone(_sh_tz).strftime("%Y-%m-%d %H:%M:%S"),
                 request.method,
@@ -109,7 +112,7 @@ def create_app(env=None):
                 str(resp.status_code),
                 dur,
                 str(getattr(g, "user_id", "-") or "-"),
-                fwd.split(",")[0].strip(),
+                ip,
                 (request.headers.get("User-Agent") or "")[:48].replace("\t", " "),
             ])
             os.makedirs(_log_dir, exist_ok=True)
