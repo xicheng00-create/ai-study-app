@@ -126,11 +126,15 @@ function streakBar() {
   // 阈值由后端下发（config.TASK_*_REQUIRED 单一真相），前端不硬编码；缺字段时兜底旧值
   const need = (c.task && c.task.cards_required) || 10;
   const needQ = (c.task && c.task.questions_required) || 5;
-  return `<button class="streak-bar ${done ? 'done' : ''}" onclick="go('learn')">
-    <span class="streak-flame">🔥</span>
-    <span class="streak-num">${c.streak}</span><span class="streak-days">天</span>
-    <span class="streak-meta"><span class="streak-cap">${Math.min(c.progress.cards, need)}/${need} 卡 · ${Math.min(c.progress.questions, needQ)}/${needQ} 题</span><span class="streak-status">${status}</span></span>
-  </button>`;
+  const f = c.freezes || { available: 2 };
+  return `<div class="streak-bar ${done ? 'done' : ''}">
+    <button class="streak-main" onclick="go('learn')" aria-label="查看今日学习任务">
+      <span class="streak-flame">🔥</span><span class="streak-num">${c.streak}</span><span class="streak-days">天</span>
+      <span class="streak-meta"><span class="streak-cap">${Math.min(c.progress.cards, need)}/${need} 卡 · ${Math.min(c.progress.questions, needQ)}/${needQ} 题</span><span class="streak-status">${status}</span></span>
+    </button>
+    <button id="freezeChip" class="freeze-chip ${f.available ? '' : 'empty'}" onclick="Student.showFreezeSheet()" aria-label="冰冻余额 ${f.available}${f.available ? '' : '，冰冻已用完，漏卡将清空连胜'}" title="${f.available ? '查看冰冻记录' : '冰冻已用完，漏卡将清空连胜'}">❄ <span id="freezeCount">${f.available}</span></button>
+    ${f.available ? '' : '<span class="freeze-empty">冰冻已用完，漏卡将清空连胜</span>'}
+  </div>`;
 }
 function appbar(title, sub, onBack) {
   const back = onBack ? `<button class="ab-back" onclick="${onBack}" aria-label="返回">${ic('back')}</button>` : '';
@@ -390,7 +394,7 @@ async function refreshUnread() {
 /* 学生端连胜条数据：boot 时拉一次；review/submit 成功后由 student.js 调 refreshCheckin() 刷新 */
 async function refreshCheckin() {
   if (App.state.role !== "student") { App.checkin = null; return null; }
-  try { App.checkin = await API.get("/api/checkin/today"); } catch (e) { App.checkin = null; }
+  try { App.checkin = await API.get("/api/checkin/today"); if (window.Student) Student.maybeFreezeAnim(App.checkin); } catch (e) { App.checkin = null; }
   return App.checkin;
 }
 

@@ -26,6 +26,27 @@ function fmtWrongCard(w) {
 }
 
 const Student = {
+  showFreezeSheet() {
+    const f = (App.checkin && App.checkin.freezes) || { available: 0 };
+    const rows = (f.records || []).slice(0, 3).map(r => `<div class="row" style="cursor:default">${esc(r.freeze_date)} · 保住 ${r.streak_kept} 天</div>`).join('');
+    openSheet(`<div class="row" style="font-weight:700;cursor:default">❄ 连胜冰冻 · 余额 ${f.available}</div>
+      <div class="row" style="cursor:default">初始 2 次</div><div class="row" style="cursor:default">每连胜 5 天 +1 次</div>
+      <div class="row" style="cursor:default">漏卡自动消耗一次锁住连胜</div>${rows || '<div class="row muted" style="cursor:default">暂无冰冻记录</div>'}
+      <div class="row cancel" onclick="closeSheet()">关闭</div>`);
+  },
+  maybeFreezeAnim(data) {
+    const dates = data && data.freezes && data.freezes.just_frozen || [];
+    for (const day of dates) {
+      const key = 'aistudy_freeze_seen_' + day;
+      try { if (localStorage.getItem(key)) continue; } catch (e) { continue; }
+      const layer = document.createElement('div'); layer.id = 'freezeAnim';
+      layer.innerHTML = `<div class="freeze-scene" onclick="this.parentNode.remove()"><div class="freeze-flame">🔥 → ❄</div><div class="freeze-sweep">✦ ❄ ✦</div><div class="freeze-number">${data.streak} 天连胜冰封</div><small>点击跳过</small></div>`;
+      document.body.appendChild(layer);
+      layer.addEventListener('click', () => layer.remove());
+      setTimeout(() => layer.remove(), 1600);
+      try { localStorage.setItem(key, '1'); } catch (e) {}
+    }
+  },
   convId: null,
   messages: [],
   turn: 0,

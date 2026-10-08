@@ -1,3 +1,13 @@
+## [2.14.0] - 2026-10-08
+
+- **新增「连胜冰冻」（REQ-CHECKIN-013，用户下达）**：每名学生初始 **2 次**冰冻，每累计连胜满 5 天 **+1 次**（`granted = 2 + COUNT(daily_checkins WHERE streak_after % 5 = 0)`，发放不落表、由历史推导）；漏卡日**自动消耗**冰冻锁住连胜数字（`streak_freezes` 按 `(user_id, freeze_date)` 唯一记账、`INSERT OR IGNORE` 幂等），余额不足以覆盖**全部**缺口日时一行都不扣、连胜按原规则归零。判定唯一入口 `data/checkin.py::settle_freezes()`，`streak_info()` / `evaluate_and_maybe_complete()` 均先结算再判定。`GET /api/checkin/today` 下发 `freezes{available,granted,used,last_frozen_date,just_frozen,records}`，`GET /api/checkin/class` 每行带 `freezes.available`。
+- **口径澄清（PMC 复验修正）**：被冰冻保住的连胜数字 = **最后一次打卡行的 `streak_after`**（不是历史最大值 `longest`）；缺口被冻住后首次补卡，`streak_after` = 被保住的连胜 + 1（不跳回 1）。
+- **前端（原生 JS，零依赖）**：连胜条右侧常显 `❄ #freezeCount`（与 🔥 并排；余额 0 时置灰并标注「冰冻已用完，漏卡将清空连胜」，不隐藏、常显）；点冰冻符号 → sheet（规则三条 + 最近 3 条冰冻记录 `records`）；`#freezeAnim` 全屏冰封动画（火焰结冰 → 冰晶扫过 → 数字被冰封，1.6s，点击可跳过，`prefers-reduced-motion` 降级为 0.3s 淡出，按 `freeze_date` 走 `localStorage` 每天只播一次，不阻塞接口）。
+- **真实库副本实测**：周大维尼（11 天连胜、最后打卡 2026-10-06、10-07 漏卡）→ 结算消耗 1 次（`freeze_date=2026-10-07`、`streak_kept=11`），连胜显示 **11**（不再清零），余额 4 → 3；其余学生 10-07 缺口超余额 → 不变（仍按原规则归零）。
+- 机械断言：`tests/test_streak_freeze.py` **7 例**（覆盖 8 条判据 —— 初始 2 / 里程碑 +1（`granted=4`）/ 完整缺口结算一次且连胜保留 + 幂等不重复扣（同一用例）/ 无余额不扣并归零 / gap 3 余额 2 不部分扣 / 余额下限 0 / **保住的连胜取最后一次连胜而非历史最长**）。反证（真跑，均退出 1）：`available >= len(needed)` 改 `available >= 1` → `test_gap_three_with_two_balance_not_partially_recorded` 真红；`int(prev["streak_after"])` 改回 `longest` → `test_frozen_streak_uses_last_run_not_longest` 真红；还原后 7 例全绿。
+- 独立验收：`scripts/verify_streak_freeze.py --base http://127.0.0.1:5006 --db <生产库副本>` 退出 0（前端标记 5 项 / `freezes` 三值与库推导一致 / 结算幂等 / 缺口 1 天被冻住且 `streak` = 最后一次打卡行值）；浏览器 DOM 实测：`❄ #freezeCount`=「3」与 🔥 同排、sheet 三条规则 + 「2026-10-07 · 保住 11 天」、`#freezeAnim` fixed 覆盖层 `freezeFade 1.6s`（数字 `freezeSeal`）、余额 0 时 chip 常显置灰 + 文案「冰冻已用完，漏卡将清空连胜」。`make lint test smoke` 全绿（覆盖 80.49%）。
+- 版本三件套：`backend/app.py version=2.14.0`、`sw.js CACHE v70→v71`、`index.html ?v=2.14.0`。
+
 ## [2.13.1] - 2026-10-06
 
 - **修「练习一题一题地出」（CHECKIN-006 / REQ-PRACTICE-001）**：今日练习出题数改为 **今日还差的题数**（`TASK_QUESTIONS_REQUIRED − 今日已答题数`）——一题未答出 5 道（原本就 5 道）、已答 1 道出 4 道、已答 3 道出 2 道；今日已达标仍给一整组（加练，不挡学生）。当天未答完的会话优先续答，**余量不足「今日还差」时在原会话补题补齐**（不再把 1 道甩给前端）。接口 `POST /api/checkin/start-practice` 响应新增 `need` / `count` / `topped_up` 字段。出题数下限由「强制 ≥5」放开到 1（`quizzer.MAX_PRACTICE_QUESTIONS=10` 上限不变）。

@@ -75,6 +75,7 @@ def today():
         "longest": info["longest"],
         "alive": info["alive"],
         "state": info["state"],
+        "freezes": info["freezes"],
         "today": info["today"],
     })
 

@@ -83,72 +83,114 @@ def days_since_last_checkin(con, user_id) -> int:
     return (timeutil.shanghai_now().date() - last).days
 
 
-def streak_info(con, user_id) -> dict:
-    """连胜存活模型：done（今日达标）/ pending（昨日达标待续）/ broken（断连归零）。"""
-    today = timeutil.today_str()
-    longest_row = con.execute(
-        "SELECT MAX(streak_after) AS m FROM daily_checkins WHERE user_id=?", (user_id,)
+def freeze_status(con, user_id) -> dict:
+    """Balance is derived from completed milestones and consumed dates, never credited manually."""
+    granted = 2 + con.execute(
+        "SELECT COUNT(*) FROM daily_checkins WHERE user_id=? AND streak_after % 5 = 0",
+        (user_id,),
+    ).fetchone()[0]
+    row = con.execute(
+        "SELECT COUNT(*) AS used, MAX(freeze_date) AS last FROM streak_freezes WHERE user_id=?",
+        (user_id,),
     ).fetchone()
-    longest = int(longest_row["m"] or 0)
+    recs = con.execute(
+        "SELECT freeze_date, streak_kept FROM streak_freezes WHERE user_id=?"
+        " ORDER BY freeze_date DESC LIMIT 3", (user_id,),
+    ).fetchall()
+    return {"available": max(0, granted - row["used"]), "granted": granted,
+            "used": row["used"], "last_frozen_date": row["last"] or "", "just_frozen": [],
+            "records": [{"freeze_date": r["freeze_date"], "streak_kept": int(r["streak_kept"])}
+                        for r in recs]}
 
+
+def settle_freezes(con, user_id) -> dict:
+    """Atomically cover an entire missed gap, or none of it; repeated calls are idempotent."""
+    last = con.execute(
+        "SELECT checkin_date AS d, streak_after AS kept FROM daily_checkins WHERE user_id=?"
+        " ORDER BY checkin_date DESC LIMIT 1", (user_id,),
+    ).fetchone()
+    if not last or not last["d"]:
+        return {"consumed": [], "available": 2}
+    gap = (date.fromisoformat(timeutil.today_str()) - date.fromisoformat(last["d"])).days - 1
+    status = freeze_status(con, user_id)
+    consumed = []
+    if gap >= 1:
+        missing = [(date.fromisoformat(last["d"]) + timedelta(days=i)).isoformat()
+                   for i in range(1, gap + 1)]
+        existing = {r["freeze_date"] for r in con.execute(
+            "SELECT freeze_date FROM streak_freezes WHERE user_id=? AND freeze_date IN (" +
+            ",".join("?" for _ in missing) + ")", (user_id, *missing)).fetchall()}
+        needed = [d for d in missing if d not in existing]
+        if status["available"] >= len(needed):
+            for d in needed:
+                cur = con.execute(
+                    "INSERT OR IGNORE INTO streak_freezes (id,user_id,freeze_date,streak_kept,created_at)"
+                    " VALUES (?,?,?,?,?)", (models.new_id(), user_id, d, int(last["kept"] or 0), models.utcnow()))
+                if cur.rowcount:
+                    consumed.append(d)
+    con.commit()
+    return {"consumed": consumed, "available": freeze_status(con, user_id)["available"]}
+
+
+def streak_info(con, user_id, _consumed=None) -> dict:
+    """Settle before determining whether today's streak is done, pending, or broken."""
+    settled = settle_freezes(con, user_id) if _consumed is None else {"consumed": _consumed}
+    freezes = freeze_status(con, user_id)
+    freezes["just_frozen"] = settled["consumed"]
+    today = timeutil.today_str()
+    longest = int(con.execute(
+        "SELECT MAX(streak_after) FROM daily_checkins WHERE user_id=?", (user_id,)
+    ).fetchone()[0] or 0)
     row_today = con.execute(
-        "SELECT * FROM daily_checkins WHERE user_id=? AND checkin_date=?", (user_id, today)
+        "SELECT streak_after FROM daily_checkins WHERE user_id=? AND checkin_date=?", (user_id, today)
     ).fetchone()
     if row_today:
-        return {
-            "done": True, "state": "done", "streak": int(row_today["streak_after"]),
-            "longest": longest, "alive": True, "today": today,
-        }
-
-    row_yesterday = con.execute(
-        "SELECT * FROM daily_checkins WHERE user_id=? AND checkin_date=?",
-        (user_id, _yesterday_str()),
+        return {"done": True, "state": "done", "streak": int(row_today["streak_after"]),
+                "longest": longest, "alive": True, "today": today, "freezes": freezes}
+    prev = con.execute(
+        "SELECT checkin_date, streak_after FROM daily_checkins WHERE user_id=?"
+        " ORDER BY checkin_date DESC LIMIT 1", (user_id,)
     ).fetchone()
-    if row_yesterday:
-        return {
-            "done": False, "state": "pending", "streak": int(row_yesterday["streak_after"]),
-            "longest": longest, "alive": True, "today": today,
-        }
-    return {
-        "done": False, "state": "broken", "streak": 0,
-        "longest": longest, "alive": False, "today": today,
-    }
+    alive = bool(prev and (prev["checkin_date"] == _yesterday_str() or
+                          (prev["checkin_date"] < _yesterday_str() and all(
+                              con.execute("SELECT 1 FROM streak_freezes WHERE user_id=? AND freeze_date=?",
+                                          (user_id, (date.fromisoformat(prev["checkin_date"]) +
+                                                     timedelta(days=i)).isoformat())).fetchone()
+                              for i in range(1, (date.fromisoformat(today) -
+                                                 date.fromisoformat(prev["checkin_date"])).days)))))
+    return {"done": False, "state": "pending" if alive else "broken",
+            "streak": int(prev["streak_after"]) if alive else 0, "longest": longest,
+            "alive": alive, "today": today, "freezes": freezes}
 
 
 def evaluate_and_maybe_complete(con, user_id) -> dict:
-    """惰性幂等评估：达到阈值则写入当日打卡行（单日只记一次）并触发 streak_done 通知。"""
+    """Settle missed days before inserting today's immutable achievement."""
+    settled = settle_freezes(con, user_id)
     today = timeutil.today_str()
     existing = con.execute(
         "SELECT id FROM daily_checkins WHERE user_id=? AND checkin_date=?", (user_id, today)
     ).fetchone()
     if existing:
-        return streak_info(con, user_id)
-
+        return streak_info(con, user_id, settled["consumed"])
     c = counts_today(con, user_id)
     if c["cards"] < TASK_CARDS_REQUIRED or c["questions"] < TASK_QUESTIONS_REQUIRED:
-        return streak_info(con, user_id)
-
+        return streak_info(con, user_id, settled["consumed"])
     prev = con.execute(
         "SELECT streak_after FROM daily_checkins WHERE user_id=? AND checkin_date=?",
         (user_id, _yesterday_str()),
     ).fetchone()
-    streak_after = (int(prev["streak_after"]) + 1) if prev else 1
+    kept = streak_info(con, user_id, settled["consumed"])["streak"]
+    streak_after = int(prev["streak_after"]) + 1 if prev else (kept + 1 if kept else 1)
     con.execute(
         "INSERT INTO daily_checkins (id, user_id, checkin_date, cards_done, questions_done,"
         " streak_after, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (models.new_id(), user_id, today, c["cards"], c["questions"], streak_after, models.utcnow()),
     )
     con.commit()
-
-    # 首次达标 → 本人即时通知（NOTIF-007）
     from services.notify import notify_users
-
-    notify_users(
-        con, [user_id], "streak_done",
-        "🔥 连胜 +1", f"已连续打卡 {streak_after} 天",
-        image="", ref_kind="checkin", ref_id=today,
-    )
-    return streak_info(con, user_id)
+    notify_users(con, [user_id], "streak_done", "🔥 连胜 +1",
+                 f"已连续打卡 {streak_after} 天", image="", ref_kind="checkin", ref_id=today)
+    return streak_info(con, user_id, settled["consumed"])
 
 
 def build_today_deck(con, user_id, limit=None, mode="task", rng=None, chapter_ids=None) -> dict:
@@ -307,6 +349,7 @@ def class_today(con, me_uid) -> dict:
             "cards": min(c["cards"], TASK_CARDS_REQUIRED),
             "questions": min(c["questions"], TASK_QUESTIONS_REQUIRED),
             "streak": info["streak"],
+            "freezes": {"available": info["freezes"]["available"]},
             "state": info["state"],
             "can_nudge": (not checked_in) and uid != me_uid,
         })

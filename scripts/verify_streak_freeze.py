@@ -139,7 +139,7 @@ def main() -> int:
     print("B /api/checkin/today 的 freezes 与库推导值一致")
     data = jget(a.base, "/api/checkin/today", tk)
     streak = data.get("streak") or {}
-    fz = streak.get("freezes")
+    fz = data.get("freezes") or (streak.get("freezes") if isinstance(streak, dict) else None)
     if not isinstance(fz, dict):
         fail("streak.freezes 缺失（接口未按 REQ-CHECKIN-013 下发）")
         return 1
@@ -158,6 +158,12 @@ def main() -> int:
             ok(f"freezes.{k}={got}（与库一致）")
         else:
             fail(f"freezes.{k}={got} 但库推导={want}")
+    recs = db_all(db, "SELECT freeze_date, streak_kept FROM streak_freezes WHERE user_id=?"
+                      " ORDER BY freeze_date DESC LIMIT 3", (uid,))
+    if fz.get("records") == recs:
+        ok(f"freezes.records 与库一致（{len(recs)} 条）")
+    else:
+        fail(f"freezes.records={fz.get('records')} 但库={recs}")
 
     # ---------- C 幂等 ----------
     print("C 结算幂等（连打两次不重复扣）")
@@ -169,7 +175,11 @@ def main() -> int:
         ok(f"第二次调用未新增冰冻行（{before} → {after}）")
     else:
         fail(f"重复调用重复扣冰冻：{before} → {after}")
-    jf2 = ((data2.get("streak") or {}).get("freezes") or {}).get("just_frozen") or []
+    fz2 = data2.get("freezes")
+    if not isinstance(fz2, dict):
+        _s2 = data2.get("streak")
+        fz2 = _s2 if isinstance(_s2, dict) else {}
+    jf2 = fz2.get("just_frozen") or []
     if not jf2:
         ok("第二次 just_frozen 为空（幂等，前端不会重复播动画）")
     else:
@@ -177,12 +187,13 @@ def main() -> int:
 
     # ---------- D / E 状态一致性 ----------
     print("D/E 状态与缺口口径")
-    st = streak.get("state")
+    st = data.get("state")
     if st in ("done", "pending", "broken"):
         ok(f"streak.state={st}")
     else:
         fail(f"streak.state 非法：{st!r}")
-    last = db_row(db, "SELECT MAX(checkin_date) d, MAX(streak_after) s FROM daily_checkins WHERE user_id=?", (uid,))
+    last = db_row(db, "SELECT checkin_date d, streak_after s FROM daily_checkins WHERE user_id=?"
+                      " ORDER BY checkin_date DESC LIMIT 1", (uid,))
     started = data.get("today") or data.get("date")
     gap = 0
     if last and last["d"]:
@@ -191,21 +202,22 @@ def main() -> int:
         today = datetime.date.fromisoformat(str(data.get("today") or datetime.date.today().isoformat()))
         gap = max(0, (today - datetime.date.fromisoformat(last["d"])).days - 1)
     avail = int(fz.get("available") or 0)
-    if streak.get("state") == "broken":
-        if int(streak.get("streak") or 0) == 0:
+    shown = int(data.get("streak") or 0)
+    if data.get("state") == "broken":
+        if shown == 0:
             ok("broken ⇒ streak=0")
         else:
-            fail(f"broken 但 streak={streak.get('streak')}")
+            fail(f"broken 但 streak={shown}")
     if gap >= 1 and avail >= gap and last and last["s"]:
-        if int(streak.get("streak") or 0) == int(last["s"]):
-            ok(f"缺口 {gap} 天被冰冻保住，streak={streak.get('streak')}（= MAX(streak_after)）")
+        if shown == int(last["s"]):
+            ok(f"缺口 {gap} 天被冰冻保住，streak={shown}（= 最后一次打卡行的 streak_after）")
         else:
-            fail(f"缺口已可覆盖（avail={avail} ≥ gap={gap}）但 streak={streak.get('streak')} ≠ {last['s']}")
+            fail(f"缺口已可覆盖（avail={avail} ≥ gap={gap}）但 streak={shown} ≠ {last['s']}")
     if gap > avail:
-        if int(streak.get("streak") or 0) == 0:
+        if shown == 0:
             ok(f"gap={gap} > available={avail} ⇒ streak=0（且不得消耗）")
         else:
-            fail(f"gap={gap} > available={avail} 却仍显示 streak={streak.get('streak')}")
+            fail(f"gap={gap} > available={avail} 却仍显示 streak={shown}")
         if after > before:
             fail("未覆盖的缺口仍被扣了冰冻")
 

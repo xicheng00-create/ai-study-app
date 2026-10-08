@@ -278,6 +278,15 @@ CREATE TABLE IF NOT EXISTS daily_checkins (
 );
 CREATE INDEX IF NOT EXISTS idx_checkins_user ON daily_checkins(user_id, checkin_date);
 
+CREATE TABLE IF NOT EXISTS streak_freezes (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  freeze_date TEXT NOT NULL,
+  streak_kept INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  UNIQUE(user_id, freeze_date)
+);
+
 -- Web Push 订阅（VAPID）
 CREATE TABLE IF NOT EXISTS push_subscriptions (
   id TEXT PRIMARY KEY,
