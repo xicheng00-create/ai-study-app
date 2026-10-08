@@ -428,38 +428,36 @@ select.count-sel{font-size:16px;font-weight:600;font-family:var(--font);color:va
 .kpi .chapter-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .kpi .nm{flex:1 1 auto;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:600;font-size:14.5px}
 .kpi .chapter-metrics{flex:0 0 auto;margin-top:0;font-size:11.5px;color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
-.kpi .chapter-body{display:flex;align-items:center;justify-content:flex-start;gap:14px;margin-top:12px}
+.kpi .chapter-body{display:flex;align-items:center;justify-content:flex-start;gap:12px;margin-top:12px}
 .chapter.kpi{padding:13px 14px 16px}
 .dcard.kpi{padding:16px 18px 18px}
-/* v2.14.4 溢出修复：原「环 88 + 星 26×5 + 文字」在 390 宽下总宽 333 > 卡片内容宽 288 → 掌握度文字溢出卡外。
-   按 Ray 口径「空间不足就缩小星星或圆圈」，收成 环 68 + 星 20 + 字号一档，总宽 ≈ 277 ≤ 288。 */
-.cc-ring{position:relative;flex:0 0 68px;width:68px;height:68px}
-.cc-ring svg{display:block;width:68px;height:68px;transform:rotate(-90deg)}
-@media (max-width:380px){.cc-ring svg{width:60px;height:60px}}
+/* v2.14.4 溢出修复 + v2.14.5 环放大（Ray：空间不足先缩星，环要醒目）
+   390 宽卡片内容宽 288px：环 76 + 间距 12 + 星行 102 + 7 + 掌握度文字 75 = 272 ≤ 288（留 16px 给 Safari 字体差异）。
+   窄屏 ≤380 再收一档：环 62 / 星 16 / 字号一档 → ≈242 ≤ 273。 */
+.cc-ring{position:relative;flex:0 0 76px;width:76px;height:76px}
+.cc-ring svg{display:block;width:76px;height:76px;transform:rotate(-90deg)}
 .cc-ring .rt{fill:none;stroke:var(--surface-2);stroke-width:9}
 .cc-ring .rv{fill:none;stroke:#F2714E;stroke-width:9;stroke-linecap:round}
 .cc-ring-txt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;text-align:center}
-.cc-ring-txt>span{font-size:9.5px;color:var(--text-2)}
-.cc-ring-txt>b{margin-top:4px;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
-.cc-ring-txt>b>i{font-style:normal;font-size:9px;font-weight:600;margin-left:1px}
-.cc-rate{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.cc-ring-txt>span{font-size:10px;color:var(--text-2)}
+.cc-ring-txt>b{margin-top:4px;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+.cc-ring-txt>b>i{font-style:normal;font-size:9.5px;font-weight:600;margin-left:1px}
+.cc-rate{display:flex;align-items:center;gap:7px;flex:0 0 auto}
 .cc-stars{display:flex;gap:3px;flex:0 0 auto}
-.cc-stars svg{display:block;width:20px;height:20px}
+.cc-stars svg{display:block;width:18px;height:18px}
 .cc-rate-txt{display:flex;flex-direction:column;gap:3px;line-height:1.1;flex:0 0 auto}
 .cc-rate-txt>b{font-size:12px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
 .cc-rate-txt>span{font-size:11px;color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums}
 .cc-rate-txt>span>i{font-style:normal;color:#F2714E;margin-left:1px}
-/* 窄屏（≤380）再收一档：375/360 宽设备同样零溢出 */
 @media (max-width:380px){
-  .kpi .chapter-body{gap:12px}
-  .cc-ring{flex:0 0 60px;width:60px;height:60px}
-  .cc-ring .rt,.cc-ring .rv{stroke-width:10}
-  .cc-ring-txt>span{font-size:8.5px}
-  .cc-ring-txt>b{font-size:13px}
-  .cc-ring-txt>b>i{font-size:8px}
-  .cc-stars svg{width:17px;height:17px}
-  .cc-rate{gap:7px}
-  .cc-rate-txt>b{font-size:11px}
+  .kpi .chapter-body{gap:10px}
+  .cc-ring{flex:0 0 62px;width:62px;height:62px}
+  .cc-ring svg{width:62px;height:62px}
+  .cc-ring-txt>b{font-size:14px}
+  .cc-ring-txt>span{font-size:9px}
+  .cc-rate{gap:6px}
+  .cc-stars svg{width:16px;height:16px}
+  .cc-rate-txt>b{font-size:11.5px}
   .cc-rate-txt>span{font-size:10.5px}
 }
 .chapter .badge.master{background:var(--green-soft);color:var(--green)}
