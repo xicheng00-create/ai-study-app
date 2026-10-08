@@ -6,11 +6,11 @@
 import os
 
 from config import config_map
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, g, jsonify, request, send_from_directory
 from middleware.errors import e_internal
 
 # 版本号诚实规则：任何入 CHANGELOG 的改动必须同步 bump 此常量
-version = "2.14.0"
+version = "2.14.1"
 
 
 def create_app(env=None):
@@ -71,6 +71,56 @@ def create_app(env=None):
         if isinstance(exc, HTTPException):
             return jsonify({"code": f"E_HTTP_{exc.code}", "msg": exc.description}), exc.code
         return e_internal()
+
+    # ---- REQ-OBS-014（v2.14.1）：/api/* 缓存口径 + 逐次访问日志 ----
+    # 为什么存在：出现「学生说打卡了 / 服务端查不到」时，必须能回答两件事——
+    #   ① 客户端有没有把请求发到服务端（此前无任何访问日志，只能靠内容表反推）；
+    #   ② 客户端会不会把上一次的旧状态当成今天（此前 API 响应无 Cache-Control，
+    #      浏览器/边缘缓存理论上可重放「已打卡」态）。
+    # 成本纪律：每请求 1 行、按上海日期分文件、失败静默（绝不影响业务响应）。
+    import time as _time
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+    from datetime import timezone as _tz
+
+    _sh_tz = _tz(_td(hours=8))
+    _log_dir = os.path.join(os.path.dirname(__file__), "..", "instance", "logs")
+
+    @app.before_request
+    def _api_timer():
+        if request.path.startswith("/api/"):
+            g._api_t0 = _time.perf_counter()
+
+    @app.after_request
+    def _api_observability(resp):
+        if not request.path.startswith("/api/"):
+            return resp
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        try:
+            t0 = getattr(g, "_api_t0", None)
+            dur = f"{int((_time.perf_counter() - t0) * 1000)}ms" if t0 else "-"
+            now = _dt.now(_tz.utc)
+            fwd = request.headers.get("X-Forwarded-For") or request.remote_addr or "-"
+            line = "\t".join([
+                now.astimezone(_sh_tz).strftime("%Y-%m-%d %H:%M:%S"),
+                request.method,
+                request.full_path.rstrip("?"),
+                str(resp.status_code),
+                dur,
+                str(getattr(g, "user_id", "-") or "-"),
+                fwd.split(",")[0].strip(),
+                (request.headers.get("User-Agent") or "")[:48].replace("\t", " "),
+            ])
+            os.makedirs(_log_dir, exist_ok=True)
+            log_dir = os.environ.get("API_LOG_DIR") or _log_dir
+            os.makedirs(log_dir, exist_ok=True)
+            fname = "api_access_" + now.astimezone(_sh_tz).strftime("%Y-%m-%d") + ".log"
+            with open(os.path.join(log_dir, fname), "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+        except Exception:  # noqa: BLE001, S110 - 观测失败必须静默，绝不影响业务响应
+            pass
+        return resp
 
     # 静态托管 frontend/（同源，避免 CORS）
     frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")

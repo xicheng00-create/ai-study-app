@@ -1858,3 +1858,15 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **违规处置**：手动改库补连胜数字、或前端自行上报冰冻、或把已消耗的冰冻「退还」→ 该 commit 回滚重做。
 - **机械断言**：`tests/test_streak_freeze.py` 7 例 —— ①初始可用 2；②连胜到 5 / 10 各 +1（`granted=4`）；③gap=1 且可用 ≥1 → 扣 1、连胜不变、`streak_freezes` 恰 1 行且 `freeze_date` = 缺口日；④重复调用不重复扣（行数不变）；⑤可用 0 且 gap=1 → `streak=0` 且不写行；⑥gap=3、可用 2 → `streak=0` 且不写行；⑦`available` 下限 0（used > granted 的异常账本不减成负数）。反证：把 `available >= gap` 改成 `available >= 1` → 用例⑥必须真红。
 - **实现状态**：**已落地并上线 v2.14.0（2026-10-08）**。真实核查：`make lint test smoke` 全绿（覆盖率 80.49%、smoke `version=2.14.0`）；`scripts/verify_streak_freeze.py` 在「生产库副本 + 本地 :5006」退出 0（前端标记 5 项 / `freezes{granted,used,available,records}` 与库推导一致 / 结算幂等 / 缺口 1 天被冻住且 `streak` = 最后一次打卡行值）；真实库副本实测 —— 周大维尼消耗 1 次（`freeze_date=2026-10-07`、`streak_kept=11`）→ 连胜显示 11（不再清零）、余额 4→3；其余学生（缺口 > 余额）一行不扣、行为不变。反证真跑：`available >= len(needed)`→`>= 1`、`int(prev["streak_after"])`→`longest` 均令对应用例真红退出 1，还原后 7 例全绿。浏览器 DOM 实测（:5006）：`#freezeChip`=「❄ 3」与 🔥 同排、sheet 含三条规则 + 「2026-10-07 · 保住 11 天」、`#freezeAnim` 为 fixed 覆盖层 `freezeFade 1.6s`（数字 `freezeSeal`）、余额 0 时 chip 常显置灰并显示「冰冻已用完，漏卡将清空连胜」。资源版本 `?v=2.14.0`、`sw.js CACHE=aistudy-shell-v71`。
+
+### 12.71 REQ-OBS-014（v2.14.1）：`/api/*` 缓存口径 + 逐次访问日志
+
+- **触发背景**：2026-10-08 出现「学生坚称 10-07 晚已打卡、服务端各内容表零记录」的争议。服务器侧此前**没有任何访问日志**（waitress 不记请求、cloudflared 只记错误），因此**无法区分**「客户端根本没发请求」与「发了但服务端没落库」；同时 `/api/*` 响应**不带任何 `Cache-Control`**，浏览器/边缘缓存理论上可以把上一次的「已打卡 / 连胜 N」态重放给今天。
+- **覆盖路径（对后续一律适用，非一次性处理）**：
+  1. **所有** `/api/*` 响应必须带 `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` 与 `Pragma: no-cache`。统一在 `app.py` 的 `after_request` 施加，**禁止逐路由手写**；新增任何蓝图/路由自动覆盖。
+  2. **每个** `/api/*` 请求落 1 行访问日志到 `instance/logs/api_access_<上海日期>.log`（`API_LOG_DIR` 可覆盖目录），字段固定 8 列、Tab 分隔：`上海时间`、`method`、`path?query`、`status`、`耗时ms`、`user_id`、`X-Forwarded-For 首跳`、`User-Agent 前 48 字`。
+  3. 日志写入**必须失败静默**（`try/except: pass`），观测失败绝不影响业务响应；日志中**禁止**出现 Authorization / 令牌 / 密码等凭据。
+  4. 复查口径（复用）：任何「客户端说做过、服务端查不到」的争议，先看 `api_access_<日期>.log` —— **有该路径的行 = 请求到达过；无行 = 客户端未发出**；再看内容表判断是否落库。二者结合即可判定，不再靠反推。
+- **违规处置**：新增 API 路由绕过统一 `after_request`（自写响应头 / 自写日志格式）→ 该 commit 回滚重做；观测代码异常外溢影响业务响应 → 立即回滚；把凭据写进日志 → 立即回滚并清理日志文件。
+- **机械断言**：`tests/test_observability.py` 3 例 —— ①未鉴权的 `/api/checkin/today` 必须含 `Cache-Control: no-store`/`no-cache` 与 `Pragma: no-cache`；②一次 `/api/auth/login` 请求后 `api_access_<今日>.log` 恰新增 1 行且字段数 = 8（含 method/path/status/耗时）；③`/health` 等非 `/api/` 路径不得写该日志。
+- **实现状态**：**已落地并上线 v2.14.1（2026-10-08）**。真实核查：`make lint test smoke ui-audit` 退出 0（覆盖率 **80.59%**、smoke `version=2.14.1`）；生产 :5003 重启后 `curl -sI /api/checkin/today` 返回 `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` + `Pragma: no-cache`，**经 Cloudflare 公网访问同样保留该头且 `cf-cache-status: DYNAMIC`**（= 边缘不缓存）；`instance/logs/api_access_2026-10-08.log` 实测已落真实设备行（含 `user_id` 与 UA，如 `GET /api/progress/review-items 200 0ms 1f695572-… Mozilla/5.0 (Macintosh…)`）与本机 curl 行（未鉴权为 `-`、`401`）。反证真跑：把日志写入改成写空串 → `test_api_access_log_written` 真红（IndexError，字段数 <8），还原后 3 例全绿。
