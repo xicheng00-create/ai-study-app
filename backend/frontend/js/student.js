@@ -25,6 +25,30 @@ function fmtWrongCard(w) {
   return `<div class="card sm" style="border-color:#FAD9D6"><div style="font-size:13.5px"><b>题：</b>${esc(w.content)}${w.sub_concept ? ` <span class="muted">（${esc(w.sub_concept)}）</span>` : ''}</div>${inner}</div>`;
 }
 
+/* REQ-PROG-016：章节卡五角星（0~5，进位那颗按比例裁切；不足部分 = 同一 path 半透明） */
+const CC_STAR_PATH = 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z';
+let ccStarUid = 0;
+function ccStars(filled) {
+  let out = '';
+  for (let i = 0; i < 5; i++) {
+    const f = Math.max(0, Math.min(1, filled - i));
+    const id = 'ccs' + (ccStarUid++);
+    out += `<svg viewBox="0 0 24 24"><defs><clipPath id="${id}"><rect x="0" y="0" width="${(24 * f).toFixed(2)}" height="24"></rect></clipPath></defs>`
+      + `<path d="${CC_STAR_PATH}" fill="#F2714E" opacity=".18"></path>`
+      + (f > 0 ? `<path d="${CC_STAR_PATH}" fill="#F2714E" clip-path="url(#${id})"></path>` : '')
+      + '</svg>';
+  }
+  return out;
+}
+/* REQ-PROG-016：覆盖率环形（88px，r=36 → 周长 226.19；无横条，进度只在这一处表达） */
+function ccRing(pct) {
+  const C = 226.19;
+  const off = (C * (1 - Math.max(0, Math.min(100, pct)) / 100)).toFixed(2);
+  return `<svg viewBox="0 0 88 88" width="88" height="88" aria-hidden="true">`
+    + `<circle class="rt" cx="44" cy="44" r="36"></circle>`
+    + `<circle class="rv" cx="44" cy="44" r="36" stroke-dasharray="${C}" stroke-dashoffset="${off}"></circle></svg>`;
+}
+
 const Student = {
   showFreezeSheet() {
     const f = (App.checkin && App.checkin.freezes) || { available: 0 };
@@ -1303,10 +1327,10 @@ const Student = {
     const fmt = (v) => v == null ? '—' : v;
     const chapList = (mastery.chapters || []).map(ch => {
       const x = ch.mastery || {};
-      const mastery = x.m == null ? 0 : x.m;
       const coverage = x.coverage || 0;
       const txt = `已学 ${x.learned || 0} / 共 ${x.cards_total || 0}`;
-      return `<div class="chapter"><div class="chapter-progress"><div class="nm">${esc(ch.name)}</div><div class="mt chapter-metrics">${txt}</div><div class="chapter-bar-row"><span>掌握度 ${x.m == null ? '—' : x.m + '%'}</span><div class="chapter-bar"><i class="mastery-bar" style="width:${mastery}%"></i></div></div><div class="chapter-bar-row"><span>覆盖率 ${coverage}%</span><div class="chapter-bar"><i class="coverage-bar" style="width:${coverage}%"></i></div></div></div><span class="badge ${esc(ch.state)}">${esc(ch.state_label)}</span></div>`;
+      const stars = x.m == null ? 0 : x.m / 20;
+      return `<div class="chapter kpi"><div class="chapter-head"><div class="nm">${esc(ch.name)}</div><div class="mt chapter-metrics">${txt} · ${esc(ch.state_label)}</div></div><div class="chapter-body"><div class="cc-ring">${ccRing(coverage)}<div class="cc-ring-txt"><span>覆盖率</span><b>${coverage}<i>%</i></b></div></div><div class="cc-rate"><div class="cc-stars">${ccStars(stars)}</div><div class="cc-rate-txt"><b>掌握度 ${x.m == null ? '未评估' : x.m + '%'}</b><span>${x.m == null ? '—' : stars.toFixed(1)}<i>★</i></span></div></div></div></div>`;
     }).join('') || '<div class="muted">暂无章节</div>';
     const adviceLines = (advice.advice || '').split('\n').filter(Boolean);
     const canGen = advice.can_generate !== false;

@@ -1871,3 +1871,16 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **违规处置**：新增 API 路由绕过统一 `after_request`（自写响应头 / 自写日志格式）→ 该 commit 回滚重做；观测代码异常外溢影响业务响应 → 立即回滚；把凭据写进日志 → 立即回滚并清理日志文件。
 - **机械断言**：`tests/test_observability.py` 3 例 —— ①未鉴权的 `/api/checkin/today` 必须含 `Cache-Control: no-store`/`no-cache` 与 `Pragma: no-cache`；②一次 `/api/auth/login` 请求后 `api_access_<今日>.log` 恰新增 1 行且字段数 = 8（含 method/path/status/耗时）；③`/health` 等非 `/api/` 路径不得写该日志。
 - **实现状态**：**已落地并上线 v2.14.1（2026-10-08）**。真实核查：`make lint test smoke ui-audit` 退出 0（覆盖率 **80.59%**、smoke `version=2.14.1`）；生产 :5003 重启后 `curl -sI /api/checkin/today` 返回 `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` + `Pragma: no-cache`，**经 Cloudflare 公网访问同样保留该头且 `cf-cache-status: DYNAMIC`**（= 边缘不缓存）；`instance/logs/api_access_2026-10-08.log` 实测已落真实设备行（含 `user_id` 与 UA，如 `GET /api/progress/review-items 200 0ms 1f695572-… Mozilla/5.0 (Macintosh…)`）与本机 curl 行（未鉴权为 `-`、`401`）。反证真跑：把日志写入改成写空串 → `test_api_access_log_written` 真红（IndexError，字段数 <8），还原后 3 例全绿。
+
+### 12.72 REQ-PROG-016（v2.14.2）：进度页章节卡 = 「覆盖率环 + 五星掌握度」，删掉与之重复的横向 bar
+
+- **触发背景**：2026-10-08 Ray 下达 UI 口径（原话）：「章节下面那个横条和覆盖率的圈的进度实际上是重复的，把横条删掉。你可以显示灰小字『已学 93/共 725』，那个小字可以保留。然后下面的星星可以大一点，因为现在圈和星星之间有一个不必要的空白」。配色沿用图一量取值：底 `#FBF7F2`、卡 `#FFFDF9`、环/星 `#F2714E`（= 既有 `--coral`）；图中绿色稿不用。
+- **覆盖路径（对后续一律适用，非一次性处理）**：
+  1. 进度页（`#progress`）「各章节状态」里每张章节卡**不得**再出现横向进度条：**掌握度**只用五角星表达、**覆盖率**只用环形表达，**同一信息不得两处展示**（每卡 `掌握度`/`覆盖率` 字样各出现 1 次）。
+  2. 章节卡结构固定：① 标题行 = 左章节名（超长省略号）/ 右灰小字 `已学 X / 共 Y · <四态>`（等宽数字，四态限 `已掌握/进行中/薄弱/未评估`）；② 下行两栏 = 左覆盖率环（88px、`r=36`、描边 8px、`#F2714E`、圈内两行「覆盖率」+ 百分比）+ 右五星掌握度（5 颗、26px、实心 `#F2714E`，进位那颗按比例裁切、余量同色 18% 透明；右侧两行「掌握度 XX%」/「X.X ★」）。
+  3. 换算**只在**这两处：满星数 = `floor(掌握度 / 20)`；`掌握度 = 未评估` → 0 星、第二行 `— ★`；环长 = `覆盖率%`，`stroke-dashoffset = 226.19 × (1 − 覆盖率/100)`。
+  4. **间距口径**：390 宽下「环右缘 → 星左缘 ≤ 26px」「星块右缘 → 卡右缘 ≤ 22px」——环与星之间只留栏距，不留空档。
+  5. 章节卡用 `.chapter.kpi` 修饰类实现，**不得**改动 `.chapter` 基类在别处（章节多选 / 自主练习选章 / 资料库列表）的姿态；原 `.chapter-bar*` 六条死规则随本次删除。
+- **违规处置**：章节卡重新引入横向 bar，或把掌握度/覆盖率任一信息拆成两处显示 → 该 commit 回滚重做；改坏 `.chapter` 基类导致其它页面错位 → 立即回滚。
+- **机械断言**：`scripts/ui_audit.js`（`make ui-audit`；390/1280 双宽度 × `#progress`/`#quiz`）—— ① 章节卡 `.chapter-bar` 计数必须为 0；② 每卡恰 1 个 `.cc-ring` + 5 个 `.cc-stars svg`，环弧 `stroke` = `rgb(242, 113, 78)`；③ 环 `stroke-dashoffset` 与圈内百分比自洽（±1.5px，C=226.19）；④ 满星数 = `floor(掌握度/20)`；⑤ `掌握度`/`覆盖率` 字样各 1 次；⑥ 章节小字匹配 `/^已学 \d+ \/ 共 \d+ · (已掌握|进行中|薄弱|未评估)$/`；⑦ 390 宽下环↔星 gap ≤26px、尾距 ≤22px。`.cc-ring`/`.cc-stars` 已加入横向/纵向间隙扫描的 TIER_HI（≥12px）。
+- **实现状态**：**已落地并上线 v2.14.2（2026-10-08）**。真实核查：`make lint test smoke ui-audit` 退出 0（覆盖率 **80.59%**、UI 机械断言 **33 条全绿**，含上述 7 组新断言）；**反证真跑**：临时把 `ccStars` 循环改成 4 颗 + 往卡里塞回一个 `.chapter-bar` → `make ui-audit` **EXIT=2、真红 5 项**（`章节卡仍有横向 bar`、`环/星结构或颜色不符`、`环↔星空档过大 gap=32 > 26`，390/1280 各一组），还原后全绿 = 断言具备失败能力。版本三件套：`backend/app.py version=2.14.2`、`sw.js CACHE=aistudy-shell-v73`、`index.html ?v=2.14.2`（6 处）。

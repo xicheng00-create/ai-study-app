@@ -114,15 +114,15 @@ with create_app('production').app_context():
 const audit = `(() => {
  const body = document.body, c = document.querySelector('.content');
  const text = body.innerText || '';
- const badges = [...document.querySelectorAll('.chapter .badge')];
- const rects = badges.map(x => { const r=x.getBoundingClientRect(); return [Math.round(r.width),Math.round(r.height),x.innerText.trim()]; });
+ // PROG-016：章节卡改「标题行 + 覆盖率环 + 五星掌握度」后，原 tag 断言改为「章节小字 = 已学 X / 共 Y · 四态」
+ const metas = [...document.querySelectorAll('.chapter.kpi .chapter-metrics')].map(x => x.innerText.replace(/\s+/g, ' ').trim());
  const blocks = [...document.querySelectorAll('.content > .card, .content > .dcard')];
  const interactive = [...document.querySelectorAll('button, a, [onclick], .qcard, .chapter')].filter(x => { const r=x.getBoundingClientRect(); return r.width>0&&r.height>0; });
  const dsc=e=>{const c=(typeof e.className==='string')?e.className:((e.getAttribute&&e.getAttribute('class'))||'');return (e.tagName||'?')+(c?'.'+c.split(' ').filter(Boolean).slice(0,2).join('.'):'')+'['+(e.innerText||'').replace(/\s+/g,' ').trim().slice(0,12)+']';};
  // 全能间隙扫描（横竖都查）：旧版只看 .content 直接子元素的**竖向**间隙，
  // 于是「页头连胜条 ↕ 公式文字贴在一起」这类真问题被漏判成绿（Ray 2026-09-27 亲测发现）。
  // 规则：两侧任一为「可交互块/卡片」→ 需 ≥12px；纯文字块之间 → ≥6px。祖先/后代不算相邻。
- const TIER_HI = 'button, a, [onclick], .card, .dcard, .chapter, .home-card, .qcard, .badge, .lib-card, .zone, .btn';
+ const TIER_HI = 'button, a, [onclick], .card, .dcard, .chapter, .home-card, .qcard, .badge, .lib-card, .zone, .btn, .cc-ring, .cc-stars';
  const TIER_LO = 'p, .muted, .hint, small, .formula, .sub, .day, .stat';
  const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
  const isAnc = (x, y) => x !== y && (x.contains(y) || y.contains(x));
@@ -138,7 +138,7 @@ const audit = `(() => {
   if (yo > 0.5 && xo >= 0 && xo < nd) gaps.push([Math.round(xo * 10) / 10, '横', nd, dsc(A), dsc(B)]);
   if (xo > 0.5 && yo >= 0 && yo < nd) gaps.push([Math.round(yo * 10) / 10, '纵', nd, dsc(A), dsc(B)]);
  }
- return JSON.stringify({text, blocks:blocks.map(x=>x.innerText), rects, scroll:body.scrollWidth, inner:innerWidth, gaps});
+ return JSON.stringify({text, blocks:blocks.map(x=>x.innerText), metas, scroll:body.scrollWidth, inner:innerWidth, gaps});
 })()`;
 (async () => {
  loadDotenv();
@@ -180,14 +180,21 @@ const audit = `(() => {
      const forbidden=['本周概况','对话天数','测评天数','知识卡片','薄弱点（带错题依据）','巩固练习闭环'];
      forbidden.forEach(k=>x.text.includes(k)&&fail(`${route}@${width}: 删除清单命中「${k}」`));
      if(!forbidden.some(k=>x.text.includes(k))) pass(`${route}@${width}: 删除清单零命中`);
-     if(!x.rects.length||new Set(x.rects.map(r=>r[0])).size!==1||new Set(x.rects.map(r=>r[1])).size!==1) fail(`${route}@${width}: tag 尺寸不唯一`); else pass(`${route}@${width}: tag 尺寸唯一`);
-     if(x.rects.some(r=>!['已掌握','进行中','薄弱','未评估'].includes(r[2]))) fail(`${route}@${width}: tag 文本不在四态词表`); else pass(`${route}@${width}: 四态 tag 文本合法`);
+     const STATE_RE = /^已学 \d+ \/ 共 \d+ · (已掌握|进行中|薄弱|未评估)$/;
+     if(!x.metas.length) fail(`${route}@${width}: 未找到章节卡小字（.chapter.kpi .chapter-metrics）`);
+     else if(x.metas.some(m=>!STATE_RE.test(m))) fail(`${route}@${width}: 章节小字格式/四态词表不符 → ${JSON.stringify(x.metas.slice(0,3))}`);
+     else pass(`${route}@${width}: 章节小字 = 「已学 X / 共 Y · 四态」`);
      if(x.text.includes('薄弱点')||x.text.includes('巩固练习')) fail(`${route}@${width}: 进度页出现迁移块`); else pass(`${route}@${width}: 不出现迁移块`);
-     const md=pageEval(`JSON.stringify({coverage:getComputedStyle(document.querySelector('.dcard .bar>i')).backgroundColor, rows:[...document.querySelectorAll('.chapter')].map(r=>({bars:r.querySelectorAll('.chapter-bar i').length,text:r.innerText,mastery:r.querySelector('.mastery-bar')?getComputedStyle(r.querySelector('.mastery-bar')).backgroundColor:null}))})`);
+     const md=pageEval(`JSON.stringify({coverage:getComputedStyle(document.querySelector('.dcard .bar>i')).backgroundColor, rows:[...document.querySelectorAll('.chapter.kpi')].map(r=>{const arc=r.querySelector('.cc-ring .rv'),rt=r.querySelector('.cc-ring-txt'),ss=[...r.querySelectorAll('.cc-stars svg')],rr=r.querySelector('.cc-ring').getBoundingClientRect(),sr=r.querySelector('.cc-stars').getBoundingClientRect(),qr=r.querySelector('.cc-rate').getBoundingClientRect(),cr=r.getBoundingClientRect(),t=r.innerText.replace(/\\s+/g,' ').trim(),mm=t.match(/掌握度\\s*(\\d+)%/);return {bars:r.querySelectorAll('.chapter-bar').length,rings:r.querySelectorAll('.cc-ring').length,stars:ss.length,stroke:arc?getComputedStyle(arc).stroke:null,off:arc?parseFloat(arc.getAttribute('stroke-dashoffset')):null,cover:parseInt((rt?rt.innerText:'').replace(/[^0-9]/g,''),10),full:ss.filter(s=>parseFloat(s.querySelector('rect').getAttribute('width'))>=23.9).length,m:mm?parseInt(mm[1],10):null,mCnt:(t.match(/掌握度/g)||[]).length,cCnt:(t.match(/覆盖率/g)||[]).length,gap:Math.round((sr.left-rr.right)*10)/10,tail:Math.round((cr.right-qr.right)*10)/10,txt:t};})})`);
      if(md.coverage!=='rgb(85, 82, 75)') fail(`${route}@${width}: 数据卡覆盖率条颜色错误 ${md.coverage}`); else pass(`${route}@${width}: 数据卡覆盖率条为深灰`);
-     if(md.rows.some(r=>r.bars<2||r.mastery!=='rgb(242, 113, 78)'||!r.text.includes('已学')||!r.text.includes('共'))) fail(`${route}@${width}: 章节两条 bar/文案/掌握度颜色断言失败`); else pass(`${route}@${width}: 章节两条 bar、文案与橙色掌握度通过`);
-     const dup=md.rows.filter(r=>((r.text.match(/掌握度/g)||[]).length>1)||((r.text.match(/覆盖率/g)||[]).length>1));
-     if(dup.length) fail(`${route}@${width}: 章节行数值与 bar 标签重复（掌握度/覆盖率各应只出现 1 次）`); else pass(`${route}@${width}: 章节行无重复数值（数值只在 bar 标签上）`);
+     if(!md.rows.length) fail(`${route}@${width}: 无 .chapter.kpi 章节卡`);
+     if(md.rows.some(r=>r.bars!==0)) fail(`${route}@${width}: 章节卡仍有横向 bar（PROG-016 要求删净）`); else pass(`${route}@${width}: 章节卡零横向 bar`);
+     if(md.rows.some(r=>r.rings!==1||r.stars!==5||r.stroke!=='rgb(242, 113, 78)')) fail(`${route}@${width}: 环/星结构或颜色不符（需 1 环 + 5 星 + 珊瑚橙）`); else pass(`${route}@${width}: 每章 1 环 5 星且为珊瑚橙`);
+     const CR=226.19;
+     if(md.rows.some(r=>r.off==null||Math.abs(r.off-(CR*(1-r.cover/100)))>1.5)) fail(`${route}@${width}: 环长与覆盖率数字不一致（off=${md.rows.map(r=>r.off)} cover=${md.rows.map(r=>r.cover)}）`); else pass(`${route}@${width}: 环长随覆盖率（±1.5px）`);
+     if(md.rows.some(r=>r.full!==(r.m==null?0:Math.floor(r.m/20)))) fail(`${route}@${width}: 满星数≠floor(掌握度/20)（full=${md.rows.map(r=>r.full)} m=${md.rows.map(r=>r.m)}）`); else pass(`${route}@${width}: 满星数与掌握度自洽`);
+     if(md.rows.some(r=>r.mCnt!==1||r.cCnt!==1)) fail(`${route}@${width}: 掌握度/覆盖率字样重复（各应只出现 1 次）`); else pass(`${route}@${width}: 掌握度/覆盖率各一次（无重复数值）`);
+     if(width<=480&&md.rows.some(r=>r.gap>26||r.tail>22)) fail(`${route}@${width}: 环↔星空档过大（gap=${md.rows.map(r=>r.gap)} tail=${md.rows.map(r=>r.tail)}，需 ≤26/≤22px）`); else pass(`${route}@${width}: 环↔星无多余空档`);
     } else {
      const wi=x.text.indexOf('薄弱点（带错题依据）'), ri=x.text.indexOf('巩固练习闭环');
      if(wi<0||ri<0||wi>ri) fail(`${route}@${width}: 测评承载块缺失或顺序错误`); else pass(`${route}@${width}: 测评承载块顺序正确`);
