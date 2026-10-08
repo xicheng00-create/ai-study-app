@@ -178,9 +178,9 @@ def repair(card, source_default):
     if not card.get("skeleton"):
         warns.append("缺 skeleton（不影响渲染）")
     total = sum(len(s.get("text") or "") for s in keep)
-    if total < 270:
+    if total < 300:
         fatal.append("配音只有 %d 字，太短（目标 300–560）" % total)
-    elif total > 600:
+    elif total > 560:
         warns.append("配音 %d 字偏长（约 %.0f 秒）" % (total, total / 4.5))
     return card, fatal, warns
 

@@ -206,6 +206,58 @@ const audit = `(() => {
     }
    }
   }
+  /* REQ-VID：在副本库验证实际入队、只列 ready 和播放器卸载。 */
+  try {
+   ab(['set','viewport','390','900']);
+   ab(['open', `${BASE}/?cb=${Date.now()}#learn`]);
+   ab(['wait','--fn',"document.querySelector('.home-card') !== null"]);
+   if (!pageEval(`JSON.stringify(!![...document.querySelectorAll('.home-card')].find(x=>x.innerText.includes('AI 视频讲解')))`)) fail('视频入口缺失');
+   else pass('#learn@390: 视频入口存在');
+   const c = spawnSync(ROOT+'/.venv/bin/python', ['-c', `
+import os,sqlite3,json
+con=sqlite3.connect(os.environ['DATABASE_PATH']);con.row_factory=sqlite3.Row
+r=con.execute("SELECT kc.id,kc.chapter_id FROM knowledge_cards kc JOIN chapters ch ON ch.id=kc.chapter_id WHERE ch.status='published' AND NOT EXISTS(SELECT 1 FROM card_videos v WHERE v.core_card_id=kc.id OR EXISTS(SELECT 1 FROM card_video_links l WHERE l.video_id=v.id AND l.card_id=kc.id)) LIMIT 1").fetchone()
+if not r: raise SystemExit('no unused card')
+print(json.dumps(dict(r)))
+`], {cwd:ROOT,encoding:'utf8',env:process.env});
+   if(c.status) throw new Error(c.stderr || '无未生成卡');
+   const card=JSON.parse(c.stdout.trim());
+   ab(['eval', `Student.knowledgeCards=[{id:${JSON.stringify(card.id)},front:'审计卡',back:'解释',chName:'章'}];Student.knowledgePos=0;Student.knowledgeDeck=true;render()`]);
+   ab(['wait','--fn',"document.querySelector('.kc-video')!==null"]);
+   if(!pageEval(`JSON.stringify(document.querySelector('.kc-video').innerText.includes('AI 视频讲解'))`)) fail('复习态视频按钮缺失');
+   else pass('复习态视频按钮存在');
+   ab(['eval', `document.querySelector('.kc-video').click()`]);
+   ab(['wait','--fn',"document.body.innerText.includes('生成中')"]);
+   const queued=spawnSync(ROOT+'/.venv/bin/python', ['-c', `import os,sqlite3,sys; c=sqlite3.connect(os.environ['DATABASE_PATH']);print(c.execute("SELECT count(*) FROM card_videos WHERE core_card_id=? AND status='queued'",(sys.argv[1],)).fetchone()[0])`,card.id],{cwd:ROOT,encoding:'utf8',env:process.env});
+   if(queued.status || queued.stdout.trim()!=='1') fail('未生成卡点击未产生唯一 queued 行');
+   else pass('生成中文案 + 副本库 queued 行');
+   const result=pageEval(`JSON.stringify({queued:Student.videoStates[${JSON.stringify(card.id)}],button:document.body.innerText.includes('生成中')})`);
+   if(!result.button) fail('点击后未出现生成中');
+   const queuedList=await fetch(`${BASE}/api/videos`,{headers:{Authorization:'Bearer '+tk}}).then(r=>r.json());
+   if((queuedList.data||[]).some(v=>v.core_card_id===card.id)) fail('queued 视频混入列表'); else pass('queued 视频未混入列表');
+   // 副本库 stub ready，浏览器实际打开播放器；清理 stub 后不污染后续断言。
+   const stub=spawnSync(ROOT+'/.venv/bin/python', ['-c', `import os,sqlite3,sys; c=sqlite3.connect(os.environ['DATABASE_PATH']);c.execute("UPDATE card_videos SET status='ready',file_name='audit-stub.mp4' WHERE core_card_id=?",(sys.argv[1],));c.commit()`,card.id],{cwd:ROOT,encoding:'utf8',env:process.env});
+   if(stub.status) throw new Error(stub.stderr);
+   // 从状态接口拿真实 id 而不是前端缓存状态。
+   const ready=await fetch(`${BASE}/api/videos/card/${card.id}`,{headers:{Authorization:'Bearer '+tk}}).then(r=>r.json());
+   ab(['eval', `Student.openVideoPlayer(${JSON.stringify(ready.data.video_id)})`]);
+   ab(['wait','--fn',"document.querySelector('#sheet video')!==null"]);
+   const player=pageEval(`JSON.stringify({src:document.querySelector('#sheet video').getAttribute('src'),paused:document.querySelector('#sheet video').paused,full:getComputedStyle(document.querySelector('.sheet-mask')).alignItems})`);
+   if(!player.src.startsWith('/media/videos/')||!player.paused||player.full!=='stretch') fail('播放器 src/暂停/全屏不正确');
+   else pass('全屏播放器 video + media src + 可暂停');
+   ab(['eval', `closeSheet()`]);
+   const closed=pageEval(`JSON.stringify(!document.querySelector('#sheet video').hasAttribute('src'))`);
+   if(!closed) fail('关闭播放器后仍有 src'); else pass('关闭播放器卸载 src');
+   const clean=spawnSync(ROOT+'/.venv/bin/python', ['-c', `import os,sqlite3,sys; c=sqlite3.connect(os.environ['DATABASE_PATH']);c.execute('DELETE FROM card_videos WHERE core_card_id=?',(sys.argv[1],));c.commit()`,card.id],{cwd:ROOT,encoding:'utf8',env:process.env});
+   if(clean.status) throw new Error(clean.stderr);
+   ab(['eval', `Student.videoList=false;Student.knowledgeDeck=false;render()`]);
+   ab(['wait','--fn',"document.querySelector('.home-card')!==null"]);
+   ab(['eval', `Student.enterVideos()`]);
+   ab(['wait','--fn',"document.body.innerText.includes('AI 视频讲解')"]);
+   const listed=await fetch(`${BASE}/api/videos`,{headers:{Authorization:'Bearer '+tk}}).then(r=>r.json());
+   if((listed.data||[]).some(v=>v.status!=='ready')) fail('视频列表包含非 ready');
+   else pass('视频列表只含 ready');
+  } catch(e) { fail(`REQ-VID@390 审计异常：${e.message.split('\n')[0]}`); }
   /* REQ-UI-015：学习页（资料库展开）勾选章节 = 同视图原地重绘 → 不得把页面拉回顶端；
      切页（go）→ 仍必须回顶端。冷载 #learn + localStorage 记忆展开态，断言可重跑。 */
   try {

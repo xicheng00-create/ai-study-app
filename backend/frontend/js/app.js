@@ -106,7 +106,7 @@ function openSheet(html) {
   document.getElementById("sheet").innerHTML = html;
   document.getElementById("sheetMask").classList.add("show");
 }
-function closeSheet() { document.getElementById("sheetMask").classList.remove("show"); }
+function closeSheet() { const v = document.querySelector("#sheet video"); if (v) { v.pause(); v.removeAttribute("src"); v.load(); } document.getElementById("sheetMask").classList.remove("show"); }
 function avatar() {
   const role = App.state.role;
   const u = App.state.user || {};
@@ -163,7 +163,7 @@ function go(h) { App.state.hash = h; if (h === "quiz") App.activeQuiz = null; Ap
 function viewSig() {
   const s = (App.state.role === "teacher") ? (window.Teacher || {}) : (window.Student || {});
   return [App.state.role || "", App.state.hash, App.activeQuiz || "",
-    s.learnChat ? "chat" : "", s.knowledgeIdx ? "ki" : "", s.knowledgeDeck ? "kd" : "",
+    s.learnChat ? "chat" : "", s.videoList ? "videos" : "", s.knowledgeIdx ? "ki" : "", s.knowledgeDeck ? "kd" : "",
     s.quiz ? "qz" : "", s.result ? "res" : "", s.practice ? "pr" : "",
     s.practiceResult ? "prs" : "", s.practiceView ? "pv" : "", s.kcardChapterId || ""].join("|");
 }
@@ -352,6 +352,7 @@ async function markAllRead() {
 }
 async function openNotification(id, ref_kind, ref_id, type) {
   try { await API.post("/api/notifications/read", { ids: [id] }); App.unread = Math.max(0, (App.unread || 0) - 1); } catch (e) {}
+  if (ref_kind === "card_video") { go("learn"); await Student.openVideoPlayer(ref_id); return; }
   let h = "learn";
   if (type === "path_published" || ref_kind === "session") h = "path";
   else if (type === "quiz_published" || ref_kind === "quiz") h = "quiz";

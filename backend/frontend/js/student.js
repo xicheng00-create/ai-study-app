@@ -96,6 +96,7 @@ const Student = {
   selChapters: null,    // 学习多选集（hub 资料库勾选，localStorage 记忆；null=未初始化 → 全选）
   _kcBusy: false,       // 翻卡异步锁：飞出动画/提交期间防连点与重入
   learnChat: false,     // 学习 tab 子视图：true=对话页；false=学习主菜单（hub：对话/知识卡片两入口）
+  videoList: false, videoItems: [], videoOpen: {}, videoStates: {}, videoTimers: {},
   relatedVideos: [],   // 最近一次对话返回的相关视频课（CHAT-010）
   askCtx: null,        // 从「路径」进入提问时携带的 chapter_ids/concept_tags
   curriculum: null,
@@ -114,8 +115,9 @@ const Student = {
   async render() {
     const h = App.state.hash;
     // 离开学习区：退出知识卡片全屏态（复习进度已存 localStorage，回来可续）
-    if (h !== "learn") { this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false; this._kcBusy = false; this.todayDeck = false; this.todayExtra = false; }
+    if (h !== "learn") { this.videoList = false; this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false; this._kcBusy = false; this.todayDeck = false; this.todayExtra = false; }
     if (this.knowledgeDeck) return this.viewKnowledgeDeck();
+    if (this.videoList) return this.viewVideos();
     if (this.knowledgeIdx) return await this.viewKnowledge();
     if (h === "quiz") {
       if (this.result) return this.viewResult();
@@ -171,6 +173,10 @@ const Student = {
         <span class="home-ic alt">${ic('cards')}</span>
         <span class="home-txt"><b>知识卡片</b><small>${scope} · 翻卡记忆，进度计入掌握度</small></span>
         <span class="home-go">›</span>
+      </button>
+      <button class="home-card" onclick="Student.enterVideos()">
+        <span class="home-ic alt">${ic('video')}</span>
+        <span class="home-txt"><b>AI 视频讲解</b><small>按章节浏览已生成的视频</small></span><span class="home-go">›</span>
       </button>
       <div class="card sm mb-12 lib-card">
         <div class="lib-head" onclick="Student.toggleLib()">
@@ -726,8 +732,50 @@ const Student = {
       </div></div>
     <div class="kc-hint">拖动卡片：右滑 = 记住了 · 左滑 = 没记住</div>
     <div class="kc-actions"><button class="btn ghost" onclick="Student.reviewKnowledge(false)">${ic('cross')}没记住</button><button class="btn" onclick="Student.reviewKnowledge(true)">记住了${ic('check')}</button></div>
+    <button class="btn ghost kc-video" onclick="Student.openCardVideo('${c.id}')">${esc(this.videoStates[c.id] === 'failed' ? '生成失败，点击重试 AI 视频讲解' : this.videoStates[c.id] === 'ready' ? '▶ AI 视频讲解 · 已就绪' : this.videoStates[c.id] ? '生成中，请稍后回看' : '▶ AI 视频讲解')}</button>
     <button class="btn ghost kc-tutor" onclick="Student.askCurrentKcTutor()">💬 问 TUTOR 这张卡</button>
     <button class="btn ghost kc-quit" onclick="Student.pauseKnowledge()">${ic('back')}暂停退出（保存进度）</button></div>` + tabbar();
+  },
+  async enterVideos() {
+    try { this.videoItems = await API.get('/api/videos'); this.videoList = true; this.knowledgeIdx = false; this.knowledgeDeck = false; render(); }
+    catch (e) { toast(e.message); }
+  },
+  viewVideos() {
+    const groups = {};
+    for (const v of this.videoItems) (groups[v.chapter_id] ||= { name: v.chapter_name, rows: [] }).rows.push(v);
+    const rows = Object.entries(groups).map(([id, group]) => `<div class="card sm mb-12">
+      <div class="lib-head" onclick="Student.videoOpen['${id}']=!Student.videoOpen['${id}'];render()"><b>${esc(group.name)}</b><span>${group.rows.length} 条 ›</span></div>
+      ${this.videoOpen[id] === false ? '' : group.rows.map(v => `<button class="home-card" onclick="Student.openVideoPlayer('${v.video_id}')">${ic('video')} ${esc(v.front)}${v.topic ? ` · ${esc(v.topic)}` : ''}</button>`).join('')}
+    </div>`).join('');
+    return appbar('AI 视频讲解', '已完成的视频', 'Student.videoList=false;render()') + `<div class="content">${rows || '<div class="card sm muted">暂无已生成的视频，从知识卡片点击「AI 视频讲解」开始生成</div>'}</div>` + tabbar();
+  },
+  async openCardVideo(cardId) {
+    try {
+      let v = await API.get(`/api/videos/card/${encodeURIComponent(cardId)}`);
+      if (v.status === 'ready') return this.openVideoPlayer(v.video_id);
+      if (v.status === 'none' || v.status === 'failed') v = await API.post(`/api/videos/card/${encodeURIComponent(cardId)}/request`, {});
+      if (v.status === 'ready') return this.openVideoPlayer(v.video_id);
+      this.videoStates[cardId] = v.status; toast('生成中，请稍后回看'); render();
+      if (!this.videoTimers[cardId]) this.videoTimers[cardId] = setInterval(async () => {
+        try {
+          const next = await API.get(`/api/videos/card/${encodeURIComponent(cardId)}`);
+          this.videoStates[cardId] = next.status;
+          if (next.status === 'ready' || next.status === 'failed') {
+            clearInterval(this.videoTimers[cardId]); delete this.videoTimers[cardId];
+            toast(next.status === 'ready' ? 'AI 视频讲解已就绪，点击播放' : '视频生成失败，点击重试');
+          }
+          if (this.knowledgeDeck) render();
+        } catch (e) { clearInterval(this.videoTimers[cardId]); delete this.videoTimers[cardId]; toast(e.message); }
+      }, 15000);
+    } catch (e) { toast(e.message); }
+  },
+  async openVideoPlayer(videoId) {
+    try {
+      const v = await API.get(`/api/videos/${encodeURIComponent(videoId)}/status`);
+      if (v.status !== 'ready' || !v.url) { toast('视频尚未就绪'); return; }
+      const meta = this.videoItems.find(x => x.video_id === videoId);
+      openSheet(`<div class="vp"><button class="vp-close" onclick="closeSheet()">✕ 关闭</button><h3>${esc(meta ? meta.chapter_name + ' · ' + meta.front : v.title)}</h3><video controls playsinline preload="metadata" src="${esc(v.url)}"></video></div>`);
+    } catch (e) { toast(e.message); }
   },
   // ===== 卡片手势动画：翻转切 class（3D 过渡）、拖拽跟手、超阈值甩出/回弹、换卡入场 =====
   flipKnowledge() {

@@ -148,7 +148,7 @@ SPECS, DURS = {}, {}
 
 
 def _load():
-    here = os.path.dirname(os.path.abspath(__file__))
+    here = os.getcwd()
     try:
         n = json.load(open(os.path.join(here, "narration.json"), encoding="utf-8"))
     except Exception:

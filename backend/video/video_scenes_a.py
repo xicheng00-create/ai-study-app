@@ -1,6 +1,6 @@
 from video_base import *  # noqa: F403
 from video_base import _phrase_starts  # noqa: F401
-from video_scenes_b import k_text
+
 def k_situation(self, spec, dur, total):
     """H 钩子：一个他见过的现象。两个人 + 中间那条「跨不过去」的距离。"""
     st = spec.get("stage") or {}
@@ -70,7 +70,7 @@ def k_chain(self, spec, dur, total):
     st = spec.get("stage") or {}
     nodes = [n for n in (st.get("nodes") or []) if n][:4]
     if not nodes:
-        return k_text(self, spec, dur, total)
+        return __import__("video_scenes_b").k_text(self, spec, dur, total)
     xs = -2.3
     ys = [2.0 - i * (4.0 / max(1, len(nodes) - 1)) for i in range(len(nodes))] \
         if len(nodes) > 1 else [0.0]
@@ -178,7 +178,7 @@ def k_loop(self, spec, dur, total):
     nodes = [str(n.get("label") if isinstance(n, dict) else n)
              for n in (st.get("nodes") or [])][:4]
     if len(nodes) < 2:
-        return k_text(self, spec, dur, total)
+        return __import__("video_scenes_b").k_text(self, spec, dur, total)
     c = Circle(radius=2.3, color=DIM, stroke_width=5).move_to(np.array([0, 0.2, 0]))
     arcs, labs = VGroup(), VGroup()
     n = len(nodes)
