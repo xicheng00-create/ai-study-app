@@ -5,3 +5,6 @@
 [lint.per-file-ignores]
 "backend/ai/usage_log.py" = ["S110", "BLE001"]
 "backend/ai/cardgate.py" = ["S110", "BLE001"]
+
+# 派生 Manim 管线：上游独立同步，保持原始实现以内容比对。
+"backend/video/*.py" = ["ALL"]
