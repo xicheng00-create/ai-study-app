@@ -1915,3 +1915,25 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **机械断言**：`scripts/ui_audit.js`（`make ui-audit`，390x900 × `#learn`）—— ① 冷载 `#learn`（`aistudy_lib_open=1` 记忆展开）→ 记 `max = scrollHeight - clientHeight`，把 `#screen` 滚到 `min(520, max)`；若实际可达 < 200px 判「断言无法执行」；② 点击第 2 个 `.chapter` 行后：勾选必须生效（`aistudy_sel_chapters` 计数变化），且 `scrollTop` **不变**；③ `go('path')` 后 `location.hash === '#path'` 且 `scrollTop === 0`。
 - **实现状态**：**已落地并上线 v2.14.6（2026-10-08）**。真实核查：`make ui-audit` 退出 0（UI 机械断言 **40 条全绿**，`✓ #learn 勾选章节：滚动位置保持 345px（勾选 0→3 生效）` + `✓ #learn 切页（#path）：仍回顶端`）；**反证真跑**：把 `root.scrollTop = keepTop` 临时改回 `= 0` → `make ui-audit` **EXIT=2**、`✗ #learn 勾选章节后页面被拉回顶端（scrollTop 0，应保持 345）` 真红，还原后全绿。
 - **踩坑（下次别再犯）**：断言里**不要硬编码滚动目标值** —— `390x900` 下该页实测可达最大滚动只有 **345px**（首次写成「保持 520」，被浏览器钳制后误报假红）。断言必须用「实测可达值」（`min(目标, max)`）自比。
+
+
+### 12.75 REQ-VID-001~006（v2.15.0）：AI 视频讲解（卡片 → 1–2 分钟中文讲解 mp4）
+
+**需求来源**：2026-10-08 Ray 口述（「针对卡片现在可以问 tutor，加一个功能叫 AI 视频讲解，以所选卡片为核心，辐射知识点相近的 5–10 个卡片，生成 1–2 分钟中文讲解视频 mp4，在 app 里丝滑弹出、可播放可暂停；视频入口附在知识卡片里（有生成才有）；任一同学生成过，其他同学复习那张卡也能点出来看；点击做两件事：先查库，有直接播、没有显示『生成中，请稍后回看』，生成好推送通知，点通知进播放；学习页除对话、知识卡片，再加一个视频讲解」）。5 个分叉已 clarify 定案（Manim 管线 / 核心卡＋辐射卡共享 / 学生点按钮异步生成全局一次 / 学习页第三入口＋卡片内按钮＋全屏播放器 / 不设配额）。
+
+- **REQ-VID-001 入口与播放（前端）**：① 卡片复习态（`viewKnowledgeDeck`，与「💬 问 TUTOR 这张卡」并列）必须有「▶ AI 视频讲解」按钮；② 学习页 hub 在「知识卡片」之下新增第三入口「AI 视频讲解」（钻取式，**禁**横滑 carousel，遵 UI 铁律）；③ 播放器 = 全屏 sheet 内 `<video controls playsinline preload="metadata">`，可播放/暂停/拖进度/全屏；④ 关闭 sheet 必须卸载 video（不允许后台继续出声）。
+- **REQ-VID-002 点击语义与幂等（前后端）**：点击 = 先查库：`ready` → 直接播放；`queued`/`generating` → 状态文案「生成中，请稍后回看」（**不得静默**）；无记录 → 入队生成并同样显示「生成中」。**同一核心卡全局只生成一次**（`card_videos.core_card_id` UNIQUE）：重复点击/多人点击不产生第二条任务。**不设配额**（Ray 定案）。
+- **REQ-VID-003 内容口径**：一条视频 = 核心卡 1 张 + 辐射卡 5–10 张（同章优先，由 LLM 从候选 front 里挑，**挑不出就少挂，不许硬凑**），挂载关系落 `card_video_links(is_core)`；讲稿必须以该章 `chunks` 资料为依据（RAG 兜底口径与 TUTOR 一致：不确定不许编造）；成片规格 60–120 秒中文、竖屏 1080×1920、h264+aac、faststart；生成走本机 Manim 讲解管线（零 API 费，仅 1 次导演 LLM 调用）。
+- **REQ-VID-004 共享与可见性**：视频对**全部学生**可见（全局共享，不按 user 过滤）；复习任一张被挂载的卡都能点出同一条视频；教师端本期不做生成入口。
+- **REQ-VID-005 完成通知（NOTIF 复用）**：生成完成 → `notifications`（`type='card_video_ready'`, `ref_kind='card_video'`, `ref_id=<video_id>`）+ Web Push；点通知**直达播放器**（深链沿 v4.4.7 query 格式口径）。
+- **REQ-VID-006 列表与状态可见**：学习页「AI 视频讲解」列表**只列 `status='ready'`** 的视频，按章节分组；生成失败 → 不出现在列表，且卡片处按钮必须给出可重试的明确文案（`failed` 不得静默）。
+- **覆盖路径（对后续一律适用）**：新增任何「卡片 → 媒体」入口都走本条款的两分支语义（先查库、有即播、无即入队 + 状态文案）；新增任何媒体路由必须支持 HTTP Range；新增任何「生成类」长任务必须是**独立 worker 进程 + 库内队列**（不占 Flask 请求线程）。
+- **违规处置**：出现「点了没反应」（无状态文案）/ 重复生成同一张卡 / 播放器不支持拖进度 / 列表混入未完成视频 → 该 commit 回滚重做。
+- **机械断言**（`scripts/video_audit.sh` 或并入 `make ui-audit`，必须两向可证伪）：
+  1. 幂等：对同一 card 连发 3 次 `POST /api/videos/card/<id>/request` → `card_videos` 该卡仅 1 行、状态不回退。
+  2. 挂载：ready 之后 `card_video_links` 含 1 条 `is_core=1` + 5–10 条辐射卡（辐射卡必须与核心卡同章或有共享 topic）。
+  3. Range：`curl -r 0-1023 /media/videos/<f>` → HTTP 206 且带 `Content-Range`。
+  4. 前端：卡片复习态存在「AI 视频讲解」按钮；点击未生成卡 → 页面出现「生成中」文案且库中新增 `queued` 行（**不静默**）；列表页不含非 ready 视频。
+  5. 通知：ready 后该视频对全部学生各产生 1 条 `card_video_ready` 通知，`ref_id` = video_id。
+  6. 反证：临时关掉 UNIQUE 幂等 / 去掉 Range 支持 → 对应断言必须真红（记录退出码）。
+- **实现状态**：**待实现**（M1 数据+API / M2 worker+出片 / M3 前端+断言；每段独立 commit + `make lint test smoke ui-audit` 门禁）。已完成的可行性实测（2026-10-08，真实卡片）：导演 1 次 LLM 调用 $0.0039 → 7 拍 228 字；渲染 29.5s（edge-tts 14.0s + manim 13.4s + 拼接 2.1s）；成片 47.8s / 1080×1920 / 2.05MB。
