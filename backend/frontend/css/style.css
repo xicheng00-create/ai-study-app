@@ -104,7 +104,6 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text);overflow:hidde
 .badge.ver{background:var(--indigo-soft);color:var(--indigo)}
 .badge.parse{background:#EAF2FB;color:#2E7BD6}
 .dcard{background:var(--surface);border:1px solid rgba(0,0,0,.06);border-radius:18px;padding:18px;box-shadow:0 6px 20px rgba(0,0,0,.05)}
-.dcard .hero{display:flex;align-items:flex-end;gap:10px}.dcard .hero .v{font-size:46px;font-weight:800;line-height:.95;color:var(--green)}.dcard .hero .u{font-size:18px;font-weight:700;color:var(--green);padding-bottom:4px}.dcard .hero .k{font-size:13px;color:var(--text-2);padding-bottom:6px}.dcard .bar{height:8px;border-radius:999px;background:rgba(0,0,0,.07);overflow:hidden;margin-top:12px}.dcard .bar>i{display:block;height:100%;background:var(--green);border-radius:999px}.dcard .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(0,0,0,.06)}.dcard .grid>div{text-align:center}.dcard .grid b{display:block;font-size:19px;font-weight:750;font-variant-numeric:tabular-nums}.dcard .grid span{display:block;font-size:11.5px;color:var(--text-2);margin-top:3px}
 .chapter .badge{min-width:58px;text-align:center;box-sizing:border-box;padding:5px 9px;font-size:11px;line-height:1}
 .qcard{display:flex;align-items:center;gap:12px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;cursor:pointer}
 .qcard .ic{width:42px;height:42px;border-radius:12px;background:var(--coral-soft);color:var(--coral-strong);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
@@ -420,35 +419,49 @@ select.count-sel{font-size:16px;font-weight:600;font-family:var(--font);color:va
 .badge.prog,.badge.weak{background:var(--coral-soft);color:var(--coral-strong)}
 .badge.ver{background:var(--surface-2);color:var(--text-2)}
 .dcard{border-radius:16px;padding:18px;box-shadow:var(--shadow)}
-.dcard .hero .v,.dcard .hero .u{color:var(--coral-strong)}
-.dcard .bar{height:6px;background:var(--surface-2)}
-.dcard .bar>i{background:#55524B}
 .chapter-progress{flex:1;min-width:0}
 .chapter-metrics{margin-top:3px}
-/* REQ-PROG-016（v2.14.2）：进度页章节卡 = 标题行 + 「覆盖率环形 + 五星掌握度」两栏。
-   原掌握度/覆盖率两条横向 bar 已删（与环表达重复，Ray 2026-10-08 口径）；本章卡是 .chapter 的 kpi 修饰类，
-   不影响 .chapter 在别处（章节多选 / 自主练习选章 / 资料库列表）的原有姿态。 */
-.chapter.kpi{display:block;padding:13px 14px 16px;cursor:default}
-.chapter.kpi .chapter-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-.chapter.kpi .nm{flex:1 1 auto;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.chapter.kpi .chapter-metrics{flex:0 0 auto;margin-top:0;font-size:11.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
-.chapter.kpi .chapter-body{display:flex;align-items:center;justify-content:flex-start;gap:16px;margin-top:14px}
-.cc-ring{position:relative;flex:0 0 88px;width:88px;height:88px}
-.cc-ring svg{display:block;transform:rotate(-90deg)}
-.cc-ring .rt{fill:none;stroke:var(--surface-2);stroke-width:8}
-.cc-ring .rv{fill:none;stroke:#F2714E;stroke-width:8;stroke-linecap:round}
+/* REQ-PROG-016（v2.14.2）/ REQ-PROG-017（v2.14.4）：进度页两类卡片（学科级 .dcard.kpi + 章节级 .chapter.kpi）
+   统一用「标题行 + 覆盖率环 + 五星掌握度」表达，禁止再用横向 bar / 大数字 / 网格重复同一信息（Ray 2026-10-08 口径）。
+   .chapter.kpi 不改动 .chapter 在别处（章节多选 / 自主练习选章 / 资料库列表）的姿态。 */
+.kpi{display:block;cursor:default}
+.kpi .chapter-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.kpi .nm{flex:1 1 auto;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:600;font-size:14.5px}
+.kpi .chapter-metrics{flex:0 0 auto;margin-top:0;font-size:11.5px;color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.kpi .chapter-body{display:flex;align-items:center;justify-content:flex-start;gap:14px;margin-top:12px}
+.chapter.kpi{padding:13px 14px 16px}
+.dcard.kpi{padding:16px 18px 18px}
+/* v2.14.4 溢出修复：原「环 88 + 星 26×5 + 文字」在 390 宽下总宽 333 > 卡片内容宽 288 → 掌握度文字溢出卡外。
+   按 Ray 口径「空间不足就缩小星星或圆圈」，收成 环 68 + 星 20 + 字号一档，总宽 ≈ 277 ≤ 288。 */
+.cc-ring{position:relative;flex:0 0 68px;width:68px;height:68px}
+.cc-ring svg{display:block;width:68px;height:68px;transform:rotate(-90deg)}
+@media (max-width:380px){.cc-ring svg{width:60px;height:60px}}
+.cc-ring .rt{fill:none;stroke:var(--surface-2);stroke-width:9}
+.cc-ring .rv{fill:none;stroke:#F2714E;stroke-width:9;stroke-linecap:round}
 .cc-ring-txt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;text-align:center}
-.cc-ring-txt>span{font-size:11px;color:var(--text-2)}
-.cc-ring-txt>b{margin-top:5px;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
-.cc-ring-txt>b>i{font-style:normal;font-size:10.5px;font-weight:600;margin-left:1px}
-.cc-rate{display:flex;align-items:center;gap:11px;flex:0 0 auto}
-.cc-stars{display:flex;gap:4px;flex:0 0 auto}
-.cc-stars svg{display:block;width:26px;height:26px}
-.cc-rate-txt{display:flex;flex-direction:column;gap:4px;line-height:1.1;flex:0 0 auto}
-.cc-rate-txt>b{font-size:13px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
-.cc-rate-txt>span{font-size:12px;color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.cc-ring-txt>span{font-size:9.5px;color:var(--text-2)}
+.cc-ring-txt>b{margin-top:4px;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+.cc-ring-txt>b>i{font-style:normal;font-size:9px;font-weight:600;margin-left:1px}
+.cc-rate{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.cc-stars{display:flex;gap:3px;flex:0 0 auto}
+.cc-stars svg{display:block;width:20px;height:20px}
+.cc-rate-txt{display:flex;flex-direction:column;gap:3px;line-height:1.1;flex:0 0 auto}
+.cc-rate-txt>b{font-size:12px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.cc-rate-txt>span{font-size:11px;color:var(--text-3);white-space:nowrap;font-variant-numeric:tabular-nums}
 .cc-rate-txt>span>i{font-style:normal;color:#F2714E;margin-left:1px}
-.dcard .grid{padding-top:16px;margin-top:16px}
+/* 窄屏（≤380）再收一档：375/360 宽设备同样零溢出 */
+@media (max-width:380px){
+  .kpi .chapter-body{gap:12px}
+  .cc-ring{flex:0 0 60px;width:60px;height:60px}
+  .cc-ring .rt,.cc-ring .rv{stroke-width:10}
+  .cc-ring-txt>span{font-size:8.5px}
+  .cc-ring-txt>b{font-size:13px}
+  .cc-ring-txt>b>i{font-size:8px}
+  .cc-stars svg{width:17px;height:17px}
+  .cc-rate{gap:7px}
+  .cc-rate-txt>b{font-size:11px}
+  .cc-rate-txt>span{font-size:10.5px}
+}
 .chapter .badge.master{background:var(--green-soft);color:var(--green)}
 .chapter .badge.weak,.chapter .badge.na{background:var(--coral-soft);color:var(--coral-strong)}
 .ai-tip .ic{background:var(--coral-soft);color:var(--coral-strong)}

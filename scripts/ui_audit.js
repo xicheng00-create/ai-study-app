@@ -115,7 +115,7 @@ const audit = `(() => {
  const body = document.body, c = document.querySelector('.content');
  const text = body.innerText || '';
  // PROG-016：章节卡改「标题行 + 覆盖率环 + 五星掌握度」后，原 tag 断言改为「章节小字 = 已学 X / 共 Y · 四态」
- const metas = [...document.querySelectorAll('.chapter.kpi .chapter-metrics')].map(x => x.innerText.replace(/\s+/g, ' ').trim());
+ const metas = [...document.querySelectorAll('.kpi .chapter-metrics')].map(x => x.innerText.replace(/\s+/g, ' ').trim());
  const blocks = [...document.querySelectorAll('.content > .card, .content > .dcard')];
  const interactive = [...document.querySelectorAll('button, a, [onclick], .qcard, .chapter')].filter(x => { const r=x.getBoundingClientRect(); return r.width>0&&r.height>0; });
  const dsc=e=>{const c=(typeof e.className==='string')?e.className:((e.getAttribute&&e.getAttribute('class'))||'');return (e.tagName||'?')+(c?'.'+c.split(' ').filter(Boolean).slice(0,2).join('.'):'')+'['+(e.innerText||'').replace(/\s+/g,' ').trim().slice(0,12)+']';};
@@ -180,23 +180,26 @@ const audit = `(() => {
      const forbidden=['本周概况','对话天数','测评天数','知识卡片','薄弱点（带错题依据）','巩固练习闭环'];
      forbidden.forEach(k=>x.text.includes(k)&&fail(`${route}@${width}: 删除清单命中「${k}」`));
      if(!forbidden.some(k=>x.text.includes(k))) pass(`${route}@${width}: 删除清单零命中`);
-     const STATE_RE = /^已学 \d+ \/ 共 \d+ · (已掌握|进行中|薄弱|未评估)$/;
-     if(!x.metas.length) fail(`${route}@${width}: 未找到章节卡小字（.chapter.kpi .chapter-metrics）`);
+     const STATE_RE = /^已学 [\d,]+ \/ 共 [\d,]+ · (已掌握|进行中|薄弱|未评估)$/;
+     if(!x.metas.length) fail(`${route}@${width}: 未找到卡片小字（.kpi .chapter-metrics）`);
      else if(x.metas.some(m=>!STATE_RE.test(m))) fail(`${route}@${width}: 章节小字格式/四态词表不符 → ${JSON.stringify(x.metas.slice(0,3))}`);
      else pass(`${route}@${width}: 章节小字 = 「已学 X / 共 Y · 四态」`);
      if(x.text.includes('薄弱点')||x.text.includes('巩固练习')) fail(`${route}@${width}: 进度页出现迁移块`); else pass(`${route}@${width}: 不出现迁移块`);
-     const md=pageEval(`JSON.stringify({coverage:getComputedStyle(document.querySelector('.dcard .bar>i')).backgroundColor, rows:[...document.querySelectorAll('.chapter.kpi')].map(r=>{const arc=r.querySelector('.cc-ring .rv'),rt=r.querySelector('.cc-ring-txt'),ss=[...r.querySelectorAll('.cc-stars svg')],rr=r.querySelector('.cc-ring').getBoundingClientRect(),sr=r.querySelector('.cc-stars').getBoundingClientRect(),qr=r.querySelector('.cc-rate').getBoundingClientRect(),cr=r.getBoundingClientRect(),t=r.innerText.replace(/\\s+/g,' ').trim(),mm=t.match(/掌握度\\s*(\\d+)%/);return {bars:r.querySelectorAll('.chapter-bar').length,rings:r.querySelectorAll('.cc-ring').length,stars:ss.length,stroke:arc?getComputedStyle(arc).stroke:null,off:arc?parseFloat(arc.getAttribute('stroke-dashoffset')):null,cover:parseInt((rt?rt.innerText:'').replace(/[^0-9]/g,''),10),full:ss.filter(s=>parseFloat(s.querySelector('rect').getAttribute('width'))>=23.9).length,m:mm?parseInt(mm[1],10):null,mCnt:(t.match(/掌握度/g)||[]).length,cCnt:(t.match(/覆盖率/g)||[]).length,gap:Math.round((sr.left-rr.right)*10)/10,tail:Math.round((cr.right-qr.right)*10)/10,rLines:r.querySelector('.cc-rate-txt>b').getClientRects().length,rWs:getComputedStyle(r.querySelector('.cc-rate-txt>b')).whiteSpace,nmClamp:(()=>{const cs=getComputedStyle(r.querySelector('.nm'));return cs.webkitLineClamp||cs.getPropertyValue('-webkit-line-clamp');})(),txt:t};})})`);
-     if(md.coverage!=='rgb(85, 82, 75)') fail(`${route}@${width}: 数据卡覆盖率条颜色错误 ${md.coverage}`); else pass(`${route}@${width}: 数据卡覆盖率条为深灰`);
-     if(!md.rows.length) fail(`${route}@${width}: 无 .chapter.kpi 章节卡`);
-     if(md.rows.some(r=>r.bars!==0)) fail(`${route}@${width}: 章节卡仍有横向 bar（PROG-016 要求删净）`); else pass(`${route}@${width}: 章节卡零横向 bar`);
+     const md=pageEval(`JSON.stringify({dcards:document.querySelectorAll('.dcard.kpi').length, dcardDup:document.querySelectorAll('.dcard.kpi .bar,.dcard.kpi .grid,.dcard.kpi .hero').length, rows:[...document.querySelectorAll('.chapter.kpi, .dcard.kpi')].map(r=>{const arc=r.querySelector('.cc-ring .rv'),rt=r.querySelector('.cc-ring-txt'),ss=[...r.querySelectorAll('.cc-stars svg')],rr=r.querySelector('.cc-ring').getBoundingClientRect(),sr=r.querySelector('.cc-stars').getBoundingClientRect(),qr=r.querySelector('.cc-rate').getBoundingClientRect(),cr=r.getBoundingClientRect(),t=r.innerText.replace(/\\s+/g,' ').trim(),mm=t.match(/掌握度\\s*(\\d+)%/);return {bars:r.querySelectorAll('.chapter-bar').length,rings:r.querySelectorAll('.cc-ring').length,stars:ss.length,stroke:arc?getComputedStyle(arc).stroke:null,off:arc?parseFloat(arc.getAttribute('stroke-dashoffset')):null,cover:parseInt((rt?rt.innerText:'').replace(/[^0-9]/g,''),10),full:ss.filter(s=>parseFloat(s.querySelector('rect').getAttribute('width'))>=23.9).length,m:mm?parseInt(mm[1],10):null,mCnt:(t.match(/掌握度[ ]*(未评估|[\\d,]+[ ]*%)/g)||[]).length,cCnt:(t.match(/覆盖率[ ]*[\\d,]+[ ]*%/g)||[]).length,gap:Math.round((sr.left-rr.right)*10)/10,tail:Math.round((cr.right-qr.right)*10)/10,rLines:r.querySelector('.cc-rate-txt>b').getClientRects().length,rWs:getComputedStyle(r.querySelector('.cc-rate-txt>b')).whiteSpace,nmClamp:(()=>{const cs=getComputedStyle(r.querySelector('.nm'));return cs.webkitLineClamp||cs.getPropertyValue('-webkit-line-clamp');})(),ovf:[...r.querySelectorAll('*')].filter(e=>{const b=e.getBoundingClientRect(),cp=getComputedStyle(r);return b.width>0&&(b.right>cr.right-parseFloat(cp.paddingRight)+0.5||b.left<cr.left+parseFloat(cp.paddingLeft)-0.5);}).map(e=>String(e.className&&e.className.baseVal!==undefined?e.className.baseVal:(e.className||'')).slice(0,20)),txt:t};})})`);
+     if(md.dcards!==1) fail(`${route}@${width}: 学科级数据卡应为 1 张 .dcard.kpi，实为 ${md.dcards}`);
+     else if(md.dcardDup!==0) fail(`${route}@${width}: 学科卡仍留着横条/大数字/网格（${md.dcardDup} 处，PROG-017 要求删净：覆盖率只走环、已学数只走灰小字）`);
+     else pass(`${route}@${width}: 学科卡零横条/零大数字/零网格`);
+     if(!md.rows.length) fail(`${route}@${width}: 无 .chapter.kpi / .dcard.kpi 卡片`);
+     if(md.rows.some(r=>r.bars!==0)) fail(`${route}@${width}: 卡片仍有横向 bar（PROG-016/017 要求删净）`); else pass(`${route}@${width}: 卡片零横向 bar`);
      if(md.rows.some(r=>r.rings!==1||r.stars!==5||r.stroke!=='rgb(242, 113, 78)')) fail(`${route}@${width}: 环/星结构或颜色不符（需 1 环 + 5 星 + 珊瑚橙）`); else pass(`${route}@${width}: 每章 1 环 5 星且为珊瑚橙`);
      const CR=226.19;
      if(md.rows.some(r=>r.off==null||Math.abs(r.off-(CR*(1-r.cover/100)))>1.5)) fail(`${route}@${width}: 环长与覆盖率数字不一致（off=${md.rows.map(r=>r.off)} cover=${md.rows.map(r=>r.cover)}）`); else pass(`${route}@${width}: 环长随覆盖率（±1.5px）`);
      if(md.rows.some(r=>r.full!==(r.m==null?0:Math.floor(r.m/20)))) fail(`${route}@${width}: 满星数≠floor(掌握度/20)（full=${md.rows.map(r=>r.full)} m=${md.rows.map(r=>r.m)}）`); else pass(`${route}@${width}: 满星数与掌握度自洽`);
-     if(md.rows.some(r=>r.mCnt!==1||r.cCnt!==1)) fail(`${route}@${width}: 掌握度/覆盖率字样重复（各应只出现 1 次）`); else pass(`${route}@${width}: 掌握度/覆盖率各一次（无重复数值）`);
-     if(width<=480&&md.rows.some(r=>r.gap>26||r.tail>22)) fail(`${route}@${width}: 环↔星空档过大（gap=${md.rows.map(r=>r.gap)} tail=${md.rows.map(r=>r.tail)}，需 ≤26/≤22px）`); else pass(`${route}@${width}: 环↔星无多余空档`);
+     if(md.rows.some(r=>r.mCnt!==1||r.cCnt!==1)) fail(`${route}@${width}: 掌握度/覆盖率数值重复或缺失（各应只出现 1 次，实测 ${md.rows.map(r=>r.mCnt+'/'+r.cCnt).join(' ')}）→ ${JSON.stringify(md.rows.map(r=>r.txt.slice(0,60)))}`); else pass(`${route}@${width}: 掌握度/覆盖率数值各一次（无重复数值）`);
+     if(width<=480&&md.rows.some(r=>r.gap>26)) fail(`${route}@${width}: 环↔星空档过大（gap=${md.rows.map(r=>r.gap)}，需 ≤26px）`); else pass(`${route}@${width}: 环↔星无多余空档`);
      if(md.rows.some(r=>r.rLines!==1||r.rWs!=='nowrap')) fail(`${route}@${width}: 掌握度文字会换行（未评估态曾竖排成一列；需 nowrap 且单行，实测 ${md.rows.map(r=>r.rLines+'/'+r.rWs).slice(0,2)}）`); else pass(`${route}@${width}: 掌握度文字不换行（nowrap 单行）`);
      if(md.rows.some(r=>r.nmClamp!=='2')) fail(`${route}@${width}: 章节标题未设 2 行钳制（长标题会被裁掉，实测 ${JSON.stringify(md.rows.map(r=>r.nmClamp))}）`); else pass(`${route}@${width}: 章节标题 2 行钳制`);
+     if(md.rows.some(r=>r.ovf.length)) fail(`${route}@${width}: 有元素溢出卡片框体 → ${JSON.stringify(md.rows.map(r=>r.ovf).filter(a=>a.length).slice(0,2))}`); else pass(`${route}@${width}: 零元素溢出卡片框体`);
     } else {
      const wi=x.text.indexOf('薄弱点（带错题依据）'), ri=x.text.indexOf('巩固练习闭环');
      if(wi<0||ri<0||wi>ri) fail(`${route}@${width}: 测评承载块缺失或顺序错误`); else pass(`${route}@${width}: 测评承载块顺序正确`);

@@ -1341,9 +1341,8 @@ const Student = {
       ? adviceLines.map(t => `<div class="ai-tip"><div class="ic">AI</div><div style="font-size:13.5px;line-height:1.5">${esc(t)}</div></div>`).join('')
         + `<div class="muted" style="font-size:11.5px;margin-top:6px">${esc(advice.advice_date || '')} 生成 · ${advice.is_today ? '今日已生成（每天最多一次）' : '今日还没生成（每天最多一次）'}</div><div style="margin-top:8px">${genBtn}</div>`
       : `<div class="muted" style="margin-bottom:8px">还没有学习建议——点下方按钮立即生成</div>${genBtn}`;
-    const dataCard = `<div class="dcard"><div class="hero"><div class="v">${fmt(s.m)}</div><div class="u">${s.m == null ? '' : '%'}</div><div class="k">学科掌握度</div></div>
-      <div class="bar"><i style="width:${s.coverage || 0}%"></i></div><div class="grid">
-      <div><b>${fmt(s.coverage)}%</b><span>覆盖率</span></div><div><b>${(s.learned || 0).toLocaleString()}</b><span>已学卡片</span></div><div><b>${(s.cards_total || 0).toLocaleString()}</b><span>总卡片</span></div></div></div>`;
+    const sStars = s.m == null ? 0 : s.m / 20;
+    const dataCard = `<div class="dcard kpi"><div class="chapter-head"><div class="nm">学科掌握度</div><div class="mt chapter-metrics">已学 ${(s.learned || 0).toLocaleString()} / 共 ${(s.cards_total || 0).toLocaleString()} · ${esc(s.state_label || '未评估')}</div></div><div class="chapter-body"><div class="cc-ring">${ccRing(s.coverage || 0)}<div class="cc-ring-txt"><span>覆盖率</span><b>${s.coverage || 0}<i>%</i></b></div></div><div class="cc-rate"><div class="cc-stars">${ccStars(sStars)}</div><div class="cc-rate-txt"><b>掌握度 ${s.m == null ? '未评估' : s.m + '%'}</b><span>${s.m == null ? '—' : sStars.toFixed(1)}<i>★</i></span></div></div></div></div>`;
     return appbar('进度', '按章节掌握度（仅本人）') + `<div class="content"><div class="muted">掌握度 = 已学卡掌握度平均（卡级 = 50% 状态分 + 50% 作答正确率）；覆盖率 = 已学卡 ÷ 全部卡</div>${dataCard}
       <div class="card"><div class="sec-title">各章节状态</div>${chapList}</div><div class="card"><div style="font-weight:700;margin-bottom:10px">AI 学习建议</div>${adviceHtml}</div></div>` + tabbar();
   },
