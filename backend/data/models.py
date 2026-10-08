@@ -204,6 +204,22 @@ CREATE TABLE IF NOT EXISTS card_topics (
 );
 CREATE INDEX IF NOT EXISTS idx_card_topics_chapter ON card_topics(chapter_id, ord);
 
+CREATE TABLE IF NOT EXISTS card_videos (
+    id TEXT PRIMARY KEY,
+    core_card_id TEXT NOT NULL UNIQUE REFERENCES knowledge_cards(id) ON DELETE CASCADE,
+    chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ('queued','generating','ready','failed')),
+    title TEXT, file_name TEXT, duration_s REAL, size_bytes INTEGER,
+    script_json TEXT, error TEXT, requested_by TEXT, requested_at TEXT, ready_at TEXT
+);
+CREATE TABLE IF NOT EXISTS card_video_links (
+    video_id TEXT NOT NULL REFERENCES card_videos(id) ON DELETE CASCADE,
+    card_id TEXT NOT NULL REFERENCES knowledge_cards(id) ON DELETE CASCADE,
+    is_core INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(video_id,card_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cvl_card ON card_video_links(card_id);
+
 CREATE TABLE IF NOT EXISTS practice_sessions (
     id           TEXT PRIMARY KEY,
     user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

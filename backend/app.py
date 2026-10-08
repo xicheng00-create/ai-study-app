@@ -10,7 +10,7 @@ from flask import Flask, g, jsonify, request, send_from_directory
 from middleware.errors import e_internal
 
 # 版本号诚实规则：任何入 CHANGELOG 的改动必须同步 bump 此常量
-version = "2.14.6"
+version = "2.15.0"
 
 
 def create_app(env=None):
@@ -45,6 +45,7 @@ def create_app(env=None):
     from api.quizzes import quizzes_bp
     from api.reports import reports_bp
     from api.teacher import teacher_bp
+    from api.videos import videos_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp)
@@ -61,6 +62,7 @@ def create_app(env=None):
     app.register_blueprint(practice_bp)
     app.register_blueprint(progress_bp)
     app.register_blueprint(reports_bp)
+    app.register_blueprint(videos_bp)
     app.register_blueprint(teacher_bp)
     app.register_blueprint(class_bp)
 
@@ -124,6 +126,13 @@ def create_app(env=None):
         except Exception:  # noqa: BLE001, S110 - 观测失败必须静默，绝不影响业务响应
             pass
         return resp
+
+    @app.get("/media/videos/<path:file>")
+    def video_media(file):
+        from flask import abort
+        if not file.endswith(".mp4") or "/" in file or ".." in file:
+            abort(404)
+        return send_from_directory(os.path.join(app.root_path, "..", "instance", "media", "videos"), file, conditional=True)
 
     # 静态托管 frontend/（同源，避免 CORS）
     frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
