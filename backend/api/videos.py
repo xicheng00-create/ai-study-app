@@ -15,7 +15,28 @@ def _visible_card(con, card_id):
 
 
 def _video(con, card_id):
+    # core_card_id 是旧库的兼容回退；新库同时维护 card_video_links。
     return con.execute("SELECT v.* FROM card_videos v LEFT JOIN card_video_links l ON l.video_id=v.id WHERE (v.core_card_id=? OR l.card_id=?) ORDER BY CASE WHEN v.status='ready' THEN 0 ELSE 1 END LIMIT 1", (card_id, card_id)).fetchone()
+
+
+def _video_links(con, video_id):
+    """反向链接兼容旧视频：缺核心 link 时仍用 core_card_id 暴露核心卡。"""
+    return con.execute("""SELECT * FROM (SELECT kc.id,kc.front,kc.sub_concept,kc.chapter_id,
+        COALESCE(ct.topic,'全部卡片') topic,COALESCE(l.is_core,1) is_core
+        FROM card_videos v JOIN knowledge_cards kc ON kc.id=v.core_card_id
+        LEFT JOIN card_video_links l ON l.video_id=v.id AND l.card_id=kc.id
+        LEFT JOIN card_topics ct ON ct.card_id=kc.id
+        JOIN chapters ch ON ch.id=kc.chapter_id AND ch.status='published'
+        WHERE v.id=? AND v.status='ready'
+        UNION ALL
+        SELECT kc.id,kc.front,kc.sub_concept,kc.chapter_id,
+        COALESCE(ct.topic,'全部卡片') topic,l.is_core
+        FROM card_video_links l JOIN knowledge_cards kc ON kc.id=l.card_id
+        LEFT JOIN card_topics ct ON ct.card_id=kc.id
+        JOIN chapters ch ON ch.id=kc.chapter_id AND ch.status='published'
+        WHERE l.video_id=? AND l.card_id != (SELECT core_card_id FROM card_videos WHERE id=?)
+        ) ORDER BY is_core DESC,id""", (video_id, video_id, video_id)).fetchall()
+
 
 
 def _state(row):
@@ -24,8 +45,6 @@ def _state(row):
     return {"status": row["status"], "video_id": row["id"],
             "url": "/media/videos/" + row["file_name"] if row["status"] == "ready" and row["file_name"] else None,
             "duration_s": row["duration_s"], "title": row["title"], "core_card_id": row["core_card_id"]}
-
-
 @videos_bp.post("/batch")
 @jwt_required
 @role_required("student")
@@ -193,7 +212,11 @@ def video_index():
         agg["videos"] += r["videos"]
         agg["cards_with_video"] += r["cards_with_video"]
         agg["cards_total"] += r["cards_total"]
-    linked_ids = {r[0] for r in con.execute("SELECT DISTINCT l.card_id FROM card_video_links l JOIN knowledge_cards kc ON kc.id=l.card_id JOIN chapters ch ON ch.id=kc.chapter_id AND ch.status='published'").fetchall()}
+    linked_ids = {r[0] for r in con.execute("""SELECT DISTINCT card_id FROM (
+        SELECT l.card_id FROM card_video_links l JOIN knowledge_cards kc ON kc.id=l.card_id
+        JOIN chapters ch ON ch.id=kc.chapter_id AND ch.status='published'
+        UNION SELECT v.core_card_id FROM card_videos v JOIN knowledge_cards kc ON kc.id=v.core_card_id
+        JOIN chapters ch ON ch.id=kc.chapter_id AND ch.status='published')""").fetchall()}
     linked_cards = {cid: cards[cid] for cid in linked_ids if cid in cards}
     return ok({"cards": linked_cards, "all_cards": cards, "topics": topics, "chapters": chapters})
 
@@ -203,7 +226,7 @@ def video_index():
 @role_required("student")
 def video_cards(video_id):
     con = get_db()
-    rows = con.execute("SELECT kc.id,kc.front,kc.sub_concept,kc.chapter_id,COALESCE(ct.topic,'全部卡片') topic,l.is_core FROM card_video_links l JOIN card_videos v ON v.id=l.video_id AND v.status='ready' JOIN knowledge_cards kc ON kc.id=l.card_id JOIN chapters ch ON ch.id=kc.chapter_id AND ch.status='published' LEFT JOIN card_topics ct ON ct.card_id=kc.id WHERE l.video_id=? ORDER BY l.is_core DESC,kc.rowid", (video_id,)).fetchall()
+    rows = _video_links(con, video_id)
     if not rows:
         return e_not_found()
     return ok([{"id": r["id"], "front": r["front"], "sub_concept": r["sub_concept"], "chapter_id": r["chapter_id"], "topic": r["topic"], "is_core": bool(r["is_core"])} for r in rows])

@@ -496,4 +496,8 @@ def migrate(con) -> None:
             " ELSE 0 END"
             " WHERE graded_by = 'ai'"
         )
+
+    # v2.16: backfill missing legacy core links on every migration (idempotent).
+    con.execute("INSERT OR IGNORE INTO card_video_links(video_id,card_id,is_core) "
+                "SELECT id,core_card_id,1 FROM card_videos WHERE core_card_id IS NOT NULL")
     con.commit()

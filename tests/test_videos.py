@@ -270,3 +270,23 @@ def test_manual_requests_create_one_notification(client, teacher_headers, monkey
     assert data['cards'][cards[0]['id']]['video_id'] == video_ids[0]
     assert data['cards'][cards[1]['id']]['video_id'] == video_ids[0]
     assert data['cards'][cards[2]['id']]['video_id'] == video_ids[2]
+
+
+def test_legacy_ready_video_backfill_and_fallback(client, teacher_headers, monkeypatch):
+    chapter = client.post('/api/chapters', json={'name': 'legacy-link'}, headers=teacher_headers).get_json()['data']['id']
+    make_student(client, teacher_headers, 'legacyvideo')
+    student = {'Authorization': 'Bearer ' + login(client, 'legacyvideo', 'student123')}
+    monkeypatch.setattr(knowledge, 'generate_knowledge_cards', lambda ids: [{'front': '旧核心', 'back': '解', 'sub_concept': '主题'}])
+    card = client.post('/api/knowledge/generate', json={'chapter_ids': [chapter]}, headers=student).get_json()['data']['cards'][0]['id']
+    with client.application.app_context():
+        con = get_db(); vid = models.new_id()
+        con.execute("INSERT INTO card_videos(id,core_card_id,chapter_id,status,title,file_name,requested_at) VALUES(?,?,?,'ready','旧核心','old.mp4',?)", (vid, card, chapter, models.utcnow())); con.commit()
+        models.migrate(con); con.commit(); models.migrate(con)
+        assert con.execute('SELECT count(*) FROM card_video_links WHERE video_id=? AND card_id=? AND is_core=1', (vid, card)).fetchone()[0] == 1
+        con.execute('DELETE FROM card_video_links WHERE video_id=?', (vid,)); con.commit()
+    assert client.get('/api/videos/index', headers=student).get_json()['data']['all_cards'][card]['video_id'] == vid
+    resp = client.get(f'/api/videos/{vid}/cards', headers=student)
+    assert resp.status_code == 200 and resp.get_json()['data'][0]['id'] == card
+
+
+
