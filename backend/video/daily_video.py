@@ -110,6 +110,60 @@ def wrap(text, limit=13):
     return [ln.strip("，。") for ln in lines if ln.strip("，。")] or [text]
 
 
+def check_style_drift():
+    """在系统 Python 下按文本核对渲染器 KINDS 与本档 STYLES。"""
+    path = os.path.join(PROJ, "script.py")
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError as exc:
+        die("无法读取渲染器 script.py：%s" % exc)
+    m = re.search(r"^KINDS\s*=\s*\{", text, re.M)
+    if not m:
+        die("script.py 缺少可解析的 KINDS 注册")
+    depth, i = 0, m.end() - 1
+    while i < len(text):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    if depth != 0:
+        die("script.py 的 KINDS 注册未闭合")
+    body = text[m.end():i]
+    keys = set(re.findall(r"[\"']([A-Za-z_]+)[\"']\s*:", body))
+    if not keys:
+        die("script.py 的 KINDS 没有可解析的键")
+    missing = keys - STYLES
+    if missing:
+        die("script.py 的 KINDS 注册了 %s，但本文件 STYLES 白名单里没有"
+            % sorted(missing))
+    gone = STYLES - keys
+    if gone:
+        print("[warn] STYLES 里有渲染器已不存在的 style：%s" % sorted(gone),
+              file=sys.stderr)
+
+
+def check_duration(proj, dur):
+    """最终成片须落在配音总长的 0.85–1.6 倍。"""
+    durations = os.path.join(proj, "durations.json")
+    try:
+        rows = json.load(open(durations, encoding="utf-8"))
+        want = sum(float(row["dur"]) for row in rows)
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        die("无法读取有效的配音时长表：%s" % exc)
+    if want <= 0:
+        die("配音总时长必须大于 0")
+    try:
+        got = float(dur)
+    except (TypeError, ValueError):
+        die("无法读取 final.mp4 的 ffprobe 时长：%r" % dur)
+    if not 0.85 * want <= got <= 1.6 * want:
+        die("成片时长异常：%.1fs，但配音合计 %.1fs（疑似截断或空片）" % (got, want))
+    return want
+
+
 def seed_project(proj):
     """渲染工作目录必须自带 script.py + 两个 sh。
 
@@ -144,6 +198,7 @@ def main():
 
     with open(args.card, encoding="utf-8") as f:
         card = json.load(f)
+    check_style_drift()
     scenes = card.get("scenes") or []
     if not scenes:
         die("card.json 里没有 scenes")
@@ -214,6 +269,9 @@ def main():
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
          "-of", "csv=p=0", final],
         capture_output=True, text=True).stdout.strip()
+
+    # 时长体检：见 check_duration() 注释 ——「文件变新」不等于「不是废片」。
+    check_duration(proj, dur)
 
     os.makedirs(args.out_dir, exist_ok=True)
     stamp = card.get("date") or time.strftime("%Y-%m-%d")

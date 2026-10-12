@@ -1,0 +1,101 @@
+Manim Community v0.19.2
+
+[theme] paper (米白手记)
+[10/13/26 01:34:46] INFO     Caching disabled.              cairo_renderer.py:83
+[10/13/26 01:34:47] INFO     Animation 0 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-op                         
+                             ener/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5OpenerAudit/uncached_00                         
+                             000.mp4'                                           
+[cam-dbg] i=0 frame=True n=1 tg=True :: ['FadeIn(4.38x0.52)']
+[cam] beat=0 cur=1.100 want=1.060 ratio=0.964 center=(0.00, 1.38)
+                    INFO     Caching disabled.              cairo_renderer.py:83
+Animation 1: FadeIn(Text('重要的事一直空着')), etc.:   0%|          | 0/12 [00:00<?, ?it/s]Animation 1: FadeIn(Text('重要的事一直空着')), etc.:  25%|██▌       | 3/12 [00:00<00:00, 29.59it/s]Animation 1: FadeIn(Text('重要的事一直空着')), etc.:  58%|█████▊    | 7/12 [00:00<00:00, 31.15it/s]Animation 1: FadeIn(Text('重要的事一直空着')), etc.:  92%|█████████▏| 11/12 [00:00<00:00, 31.25it/s]                                                                                                                        INFO     Animation 1 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-op                         
+                             ener/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5OpenerAudit/uncached_00                         
+                             001.mp4'                                           
+[cam-dbg] i=1 frame=True n=1 tg=True :: ['Create(8.10x1.45)']
+[cam] beat=1 cur=1.060 want=1.060 ratio=1.000 center=(0.00, 1.38)
+                    INFO     Caching disabled.              cairo_renderer.py:83
+Animation 2: Create(RoundedRectangle), etc.:   0%|          | 0/11 [00:00<?, ?it/s]Animation 2: Create(RoundedRectangle), etc.:  36%|███▋      | 4/11 [00:00<00:00, 31.97it/s]Animation 2: Create(RoundedRectangle), etc.:  73%|███████▎  | 8/11 [00:00<00:00, 31.75it/s]                                                                                                               INFO     Animation 2 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-op                         
+                             ener/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5OpenerAudit/uncached_00                         
+                             002.mp4'                                           
+[cam-dbg] i=2 frame=True n=1 tg=True :: ['FadeIn(8.10x0.24)']
+[cam] beat=2 cur=1.060 want=1.060 ratio=1.000 center=(0.00, 1.26)
+                    INFO     Caching disabled.              cairo_renderer.py:83
+Animation 3: FadeIn(VGroup of 9 submobjects), etc.:   0%|          | 0/8 [00:00<?, ?it/s]Animation 3: FadeIn(VGroup of 9 submobjects), etc.:  50%|█████     | 4/8 [00:00<00:00, 31.38it/s]Animation 3: FadeIn(VGroup of 9 submobjects), etc.: 100%|██████████| 8/8 [00:00<00:00, 31.37it/s]                                                                                                 [10/13/26 01:34:48] INFO     Animation 3 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-op                         
+                             ener/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5OpenerAudit/uncached_00                         
+                             003.mp4'                                           
+[cam-dbg] i=3 frame=True n=1 tg=False :: ['LaggedStart(0.00x0.00)']
+                    INFO     Caching disabled.              cairo_renderer.py:83
+Animation 4: LaggedStart(Group):   0%|          | 0/24 [00:00<?, ?it/s]                                                                                           INFO     Animation 4 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-op                         
+                             ener/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5OpenerAudit/uncached_00                         
+                             004.mp4'                                           
+[cam-dbg] i=4 frame=True n=1 tg=True :: ['FadeIn(0.80x0.38)']
+[cam] beat=4 cur=1.060 want=0.950 ratio=0.897 center=(-0.23, 0.50)
+                    INFO     Caching disabled.              cairo_renderer.py:83
+Animation 5: FadeIn(Text('琐事')), etc.:   0%|          | 0/8 [00:00<?, ?it/s]Animation 5: FadeIn(Text('琐事')), etc.:  50%|█████     | 4/8 [00:00<00:00, 30.07it/s]Animation 5: FadeIn(Text('琐事')), etc.: 100%|██████████| 8/8 [00:00<00:00, 28.24it/s]                                                                                                          INFO     Animation 5 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-op                         
+                             ener/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5OpenerAudit/uncached_00                         
+                             005.mp4'                                           
+[cam-dbg] i=5 frame=True n=2 tg=True :: ['Create(1.69x1.16)', 'FadeIn(1.39x0.33)']
+[cam] beat=5 cur=0.950 want=0.990 ratio=1.041 center=(0.40, 0.82)
+                    INFO     Caching disabled.              cairo_renderer.py:83
+Animation 6: Create(DashedVMobject), etc.:   0%|          | 0/12 [00:00<?, ?it/s]Animation 6: Create(DashedVMobject), etc.:  25%|██▌       | 3/12 [00:00<00:00, 24.61it/s]Animation 6: Create(DashedVMobject), etc.:  50%|█████     | 6/12 [00:00<00:00, 25.35it/s]Animation 6: Create(DashedVMobject), etc.:  75%|███████▌  | 9/12 [00:00<00:00, 25.84it/s]Animation 6: Create(DashedVMobject), etc.: 100%|██████████| 12/12 [00:00<00:00, 26.27it/s]                                                                                          [10/13/26 01:34:49] INFO     Animation 6 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-op                         
+                             ener/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5OpenerAudit/uncached_00                         
+                             006.mp4'                                           
+[cam-dbg] i=6 frame=True n=1 tg=True :: ['_AnimationBuilder(0.52x0.45)']
+[cam] beat=6 cur=0.990 want=0.939 ratio=0.949 center=(-0.18, 0.42)
+                    INFO     Caching disabled.              cairo_renderer.py:83
+Animation 7: _MethodAnimation(Triangle), etc.:   0%|          | 0/18 [00:00<?, ?it/s]Animation 7: _MethodAnimation(Triangle), etc.:  17%|█▋        | 3/18 [00:00<00:00, 27.04it/s]Animation 7: _MethodAnimation(Triangle), etc.:  33%|███▎      | 6/18 [00:00<00:00, 26.90it/s]Animation 7: _MethodAnimation(Triangle), etc.:  50%|█████     | 9/18 [00:00<00:00, 26.82it/s]Animation 7: _MethodAnimation(Triangle), etc.:  67%|██████▋   | 12/18 [00:00<00:00, 26.45it/s]Animation 7: _MethodAnimation(Triangle), etc.:  83%|████████▎ | 15/18 [00:00<00:00, 26.20it/s]Animation 7: _MethodAnimation(Triangle), etc.: 100%|██████████| 18/18 [00:00<00:00, 25.93it/s]                                                                                              [10/13/26 01:34:50] INFO     Animation 7 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-op                         
+                             ener/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5OpenerAudit/uncached_00                         
+                             007.mp4'                                           
+                    INFO     Caching disabled.              cairo_renderer.py:83
+                    INFO     Animation 8 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-op                         
+                             ener/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5OpenerAudit/uncached_00                         
+                             008.mp4'                                           
+                    INFO     Combining to Movie file.   scene_file_writer.py:742
+                    INFO                                scene_file_writer.py:893
+                             File ready at                                      
+                             '/private/tmp/v5-render-op                         
+                             ener/media/videos/script/1                         
+                             920p15/V5OpenerAudit.mp4'                          
+                                                                                
+                    INFO     Rendered V5OpenerAudit                 scene.py:278
+                             Played 9 animations                                
+You are using manim version v0.19.2, but version v0.22.0 is available.
+You should consider upgrading via pip install -U manim
+video=/tmp/v5-render-opener/media/videos/script/1920p15/V5OpenerAudit.mp4
+视觉检查：抽帧文件为 520x924 PNG；dayband 的标题、时间条、填充格和空置格均在画面内；背景为 paper 皮肤，呈米白手记质感。

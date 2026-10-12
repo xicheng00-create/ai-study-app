@@ -1,0 +1,88 @@
+Manim Community v0.19.2
+
+[theme] ink (墨蓝夜景)
+[10/13/26 01:34:43] INFO     Caching disabled.              cairo_renderer.py:83
+                    INFO     Animation 0 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-le                         
+                             gacy/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5LegacyAudit/uncached_00                         
+                             000.mp4'                                           
+[cam-dbg] i=0 frame=True n=1 tg=True :: ['FadeIn(0.68x0.68)']
+[cam] beat=0 cur=1.100 want=0.946 ratio=0.860 center=(-0.21, 0.47)
+                    INFO     Caching disabled.              cairo_renderer.py:83
+Animation 1: FadeIn(Circle), etc.:   0%|          | 0/9 [00:00<?, ?it/s]Animation 1: FadeIn(Circle), etc.:  33%|███▎      | 3/9 [00:00<00:00, 29.32it/s]Animation 1: FadeIn(Circle), etc.:  78%|███████▊  | 7/9 [00:00<00:00, 30.34it/s]                                                                                                    INFO     Animation 1 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-le                         
+                             gacy/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5LegacyAudit/uncached_00                         
+                             001.mp4'                                           
+[cam-dbg] i=1 frame=True n=1 tg=True :: ['FadeIn(0.93x0.44)']
+[cam] beat=1 cur=0.946 want=0.956 ratio=1.011 center=(-0.25, 0.55)
+                    INFO     Caching disabled.              cairo_renderer.py:83
+Animation 2: FadeIn(Text('原因')), etc.:   0%|          | 0/8 [00:00<?, ?it/s]Animation 2: FadeIn(Text('原因')), etc.:  38%|███▊      | 3/8 [00:00<00:00, 27.90it/s]Animation 2: FadeIn(Text('原因')), etc.:  75%|███████▌  | 6/8 [00:00<00:00, 28.21it/s]                                                                                      [10/13/26 01:34:44] INFO     Animation 2 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-le                         
+                             gacy/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5LegacyAudit/uncached_00                         
+                             002.mp4'                                           
+                    INFO     Caching disabled.              cairo_renderer.py:83
+                    INFO     Animation 3 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-le                         
+                             gacy/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5LegacyAudit/uncached_00                         
+                             003.mp4'                                           
+[cam-dbg] i=2 frame=True n=1 tg=True :: ['FadeIn(0.26x0.26)']
+[cam] beat=2 cur=0.956 want=0.930 ratio=0.972 center=(-0.13, 0.34)
+                    INFO     Caching disabled.              cairo_renderer.py:83
+Animation 4: FadeIn(Dot), etc.:   0%|          | 0/6 [00:00<?, ?it/s]Animation 4: FadeIn(Dot), etc.:  50%|█████     | 3/6 [00:00<00:00, 28.45it/s]Animation 4: FadeIn(Dot), etc.: 100%|██████████| 6/6 [00:00<00:00, 27.59it/s]                                                                                                 INFO     Animation 4 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-le                         
+                             gacy/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5LegacyAudit/uncached_00                         
+                             004.mp4'                                           
+                    INFO     Caching disabled.              cairo_renderer.py:83
+                    INFO     Animation 5 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-le                         
+                             gacy/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5LegacyAudit/uncached_00                         
+                             005.mp4'                                           
+[cam-dbg] i=3 frame=True n=4 tg=True :: ['GrowArrow(0.35x3.30)', 'MoveAlongPath(0.26x0.26)', 'FadeIn(0.95x0.46)', '_AnimationBuilder(0.68x0.68)']
+[cam] beat=3 cur=0.930 want=1.039 ratio=1.117 center=(-0.62, -0.10)
+                    INFO     Caching disabled.              cairo_renderer.py:83
+Animation 6: GrowArrow(Arrow), etc.:   0%|          | 0/14 [00:00<?, ?it/s]Animation 6: GrowArrow(Arrow), etc.:  21%|██▏       | 3/14 [00:00<00:00, 27.20it/s]Animation 6: GrowArrow(Arrow), etc.:  43%|████▎     | 6/14 [00:00<00:00, 27.26it/s]Animation 6: GrowArrow(Arrow), etc.:  64%|██████▍   | 9/14 [00:00<00:00, 28.15it/s]Animation 6: GrowArrow(Arrow), etc.:  93%|█████████▎| 13/14 [00:00<00:00, 29.13it/s]                                                                                    [10/13/26 01:34:45] INFO     Animation 6 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-le                         
+                             gacy/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5LegacyAudit/uncached_00                         
+                             006.mp4'                                           
+                    INFO     Caching disabled.              cairo_renderer.py:83
+                    INFO     Animation 7 : Partial      scene_file_writer.py:590
+                             movie file written in                              
+                             '/private/tmp/v5-render-le                         
+                             gacy/media/videos/script/1                         
+                             920p15/partial_movie_files                         
+                             /V5LegacyAudit/uncached_00                         
+                             007.mp4'                                           
+                    INFO     Combining to Movie file.   scene_file_writer.py:742
+                    INFO                                scene_file_writer.py:893
+                             File ready at                                      
+                             '/private/tmp/v5-render-le                         
+                             gacy/media/videos/script/1                         
+                             920p15/V5LegacyAudit.mp4'                          
+                                                                                
+                    INFO     Rendered V5LegacyAudit                 scene.py:278
+                             Played 8 animations                                
+You are using manim version v0.19.2, but version v0.22.0 is available.
+You should consider upgrading via pip install -U manim
+video=/tmp/v5-render-legacy/media/videos/script/1920p15/V5LegacyAudit.mp4
+视觉检查：抽帧文件为 520x924 PNG；chain 的节点、连线和标签均在画面内；背景为 ink 皮肤，呈墨蓝夜景质感。

@@ -1,0 +1,11 @@
+[delete STYLES dialogue] exit=1
+FAIL: script.py 的 KINDS 注册了 ['dialogue']，但本文件 STYLES 白名单里没有
+
+
+[空片] exit=1
+FAIL: 成片时长异常：0.0s，但配音合计 30.0s（疑似截断或空片）
+
+
+[只拼第一拍] exit=1
+FAIL: 成片时长异常：10.0s，但配音合计 30.0s（疑似截断或空片）
+

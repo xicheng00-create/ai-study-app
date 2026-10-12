@@ -1948,6 +1948,10 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **REQ-VID-021 同结构分组**：视频页复用知识卡 API 与 `topicGroups()`，完整显示章→主题（包括无 ready 视频的主题），主题名、顺序与卡片页一致，不缩小断言范围。
 - **REQ-VID-022 多对一**：索引与列表返回核心卡、覆盖数量；浏览器断言逐张关联卡调用实际 `openCardVideo()`，验证解析出的播放 ID 与共享视频 ID 一致。
 - **REQ-VID-023 反向导航**：相关卡片入口显示真实覆盖数；浏览器逐张点击 sheet 卡片，验证知识页、所属章和主题实际展开后显示详情。
+- **REQ-VID-030 皮肤层**：视频渲染器按内容稳定选择 `ink/paper/grid/ember` 主题皮肤；皮肤同时提供配色、背景质感、圆角与填充参数，重复渲染同稿保持稳定，连续不同稿避免重复；背景质感使用 `Group` 承载图像层。
+- **REQ-VID-031 镜头层**：场景使用 `MovingCameraScene`；每拍按动画对象包围范围自动取景，缩放限制在 `0.92–1.06`，平移边界随缩放动态计算为横向 `4.5*s−4.05`、纵向 `8*s−7.10`，不得裁出安全区。
+- **REQ-VID-032 开场器**：`dayband`、`object`、`dialogue` 注册于 `script.py` 的 `KINDS`，并同步 director 白名单、prompt 与 `daily_video.py` 的 `STYLES`；director 读取最近开场器避免连续重复。
+- **REQ-VID-033 渲染闸门**：渲染前不 import Manim 的 `script.py`，而按文本解析 `KINDS` 与 `STYLES`；缺失 style 必须失败，多余 style 只警告。拼接后必须确认 `final.mp4` mtime 新鲜并用 ffprobe 检查其时长位于各拍配音总和的 `0.85–1.6` 倍；闸门需有真实坏构建 RED 原始输出及旧 style/新开场器真渲证据。
 - **A12–A19 验收证据**：`docs/audit/video/REQ-VID-A12-A19-GREEN.txt`；逐项 `REQ-VID-Axx-RED.txt` 为临时坏实现运行真实 pytest/浏览器断言的原始输出。runner 除非零退出码外必须命中目标断言失败标识，环境错误不计 RED。既有 `audit/video/*red.txt` 为早期字符串模拟，作废，不作为验收依据。
 - **UI 技能自查**：已全文读取 taste 路由、redesign-existing-projects 与 impeccable 规范；沿用既有字体、颜色令牌、卡片与导航结构，仅修正常显状态、语义分组、后台静默与导航目的地，不进行无关视觉重设计。
 

@@ -1,0 +1,21 @@
+R1 皮肤层在册（THEMES/_pick_theme/bg_layer）          PASS
+R1 镜头层在册（MovingCameraScene + _beat_target）     PASS
+R2 KINDS 注册三开场器                                PASS
+R2 director V3 白名单含三开场器（防 repair 删拍）           PASS
+R7 STYLES ⊇ KINDS（第 4 个白名单不漂移）                 PASS  缺 []
+R7 渲染前真跑漂移校验（check_style_drift）                PASS
+R8 成片时长体检在册（0.85–1.6 × 配音之和）                   PASS
+R7 闸门 RED：删除 STYLES 键打印缺失                      PASS  rc=1 FAIL: script.py 的 KINDS 注册了 ['dialogue']，但本文件 STYLES 白名单里没有
+R7 闸门输出包含缺失 style                              PASS
+R8 闸门 RED：空片                                   PASS  rc=1 FAIL: 成片时长异常：0.0s，但配音合计 30.0s（疑似截断或空片）
+R8 闸门输出包含时长异常（空片）                              PASS
+R8 闸门 RED：只拼第一拍                                PASS  rc=1 FAIL: 成片时长异常：10.0s，但配音合计 30.0s（疑似截断或空片）
+R8 闸门输出包含时长异常（只拼第一拍）                           PASS
+R3 同稿重渲皮肤稳定                                    PASS  ink / ink
+R4 换一份稿子皮肤不重复                                  FAIL  ink → ink
+R5 镜头推拉（want∈[0.92,1.06] 且至少两拍不同）              PASS  want=[1.06, 1.06, 1.06, 0.968, 0.99, 0.939]
+R6 recent_openers 读到历史                         PASS  [('2026-10-10', 'dayband'), ('2026-10-11', 'dialogue')]
+R6 prompt 注入「不许重复」段                            PASS
+R7 反证：假 style 能被判据抓住（此项应 FAIL）                 FAIL  假 style 被漏过了
+
+反证成功：皮肤钉死后 R4 真红（该断言可证伪）
