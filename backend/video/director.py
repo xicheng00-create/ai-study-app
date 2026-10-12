@@ -13,7 +13,9 @@
   1. **先减法**：强制先写一句因果骨架，页面上没进骨架的句子不许上屏。像「打字幕」的
      唯一原因就是原句漏进画面，所以约束写在最前面、并且要自检。
   2. **画面由逻辑决定**，不由页面行决定 —— 每拍先选「哪类图形」（style），再填标签。
-  3. **先破后立**：situation → crossout 是固定开头两拍，没有误解就没有「剥开」。
+  3. **先破后立**：开场两拍必须是「先演他以为的答案」，但**画法四选一**
+     （situation / dayband / object / dialogue），且**最近 N 集用过的开场器不许重复**
+     —— 2026-10-12 查出来的病：5 集里 4 集的分镜序列完全一样，开场永远「两个人 + 线 + 叉」。
 
 用法：
     python3 director.py --page <md 路径> --out <card.json>
@@ -42,7 +44,42 @@ V3 = {"situation": ("caption", "left", "right", "gap"),
       "nodes": ("center", "nodes"),
       "steps": ("steps",),
       "close": (),
-      "source": ()}
+      "source": (),
+      # v5 开场器变体：与 situation 同功能（先演他以为的答案），但画法完全不同。
+      # 不加进这张白名单，repair() 会把导演选的新画法当「未知 style」直接删掉。
+      "dayband": ("caption",),
+      "object": ("caption",),
+      "dialogue": ("lines",)}
+
+OPENERS = ("situation", "dayband", "object", "dialogue")
+
+# 开场器轮换要靠历史。brain 侧由 cron 把卡片写进 cards/；本仓没有这个写入方，
+# 所以 director 产出后自己归档一份（见文件末尾），默认落在 gitignore 的 instance/ 里。
+CARDS_DIR = os.environ.get("VIDEO_CARDS_DIR") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "instance", "video_state", "cards")
+
+
+def recent_openers(limit=7):
+    """最近 N 集用过的开场器 —— 直接读已产出的卡片，不另存状态文件。
+
+    为什么要它：开场器是「每条片子开头长什么样」的唯一来源。不给导演看历史，
+    它每次都会退回最熟悉的那个 —— 实测 5 集里 4 集序列完全一样。
+    """
+    out = []
+    try:
+        fs = sorted(f for f in os.listdir(CARDS_DIR) if f.endswith(".json"))[-limit:]
+    except Exception:
+        return out
+    for f in fs:
+        try:
+            sc = (json.load(open(os.path.join(CARDS_DIR, f), encoding="utf-8")).get("scenes") or [])
+            if sc:
+                out.append((f[:10], sc[0].get("style") or "?"))
+        except Exception:
+            continue
+    return out
+
 
 PROMPT = """你是「讲解视频」的导演。给你知识库里的**一页概念笔记**，你要交出一条 60–120 秒竖屏视频的拍摄脚本。
 只输出 JSON，不要任何解释。
@@ -63,9 +100,15 @@ PROMPT = """你是「讲解视频」的导演。给你知识库里的**一页概
 配音要重写成人话，不是原文句子的裁剪。
 
 ## 可用图形（style → stage 字段；字段名与格式必须严格照抄，一个字都不要改）
-- situation  一个他见过的具体处境，只用于开场
+- situation  开场器之一：两个人 + 中间那条跨不过去的距离。**已经用太多了，优先考虑下面三种**
   stage: {"caption":"≤14字标题","left":"≤5字","right":"≤5字","gap":"≤8字"}
-- crossout   先把他想当然的答案画出来，再打一个叉，必须紧跟 situation
+- dayband    开场器之一：一天被某件事逐格填满，而要做的那一格一直空着（内容里有「时间在流逝 / 一直在做别的」时首选）
+  stage: {"caption":"≤14字标题","fill":"≤5字（填满一天的那件事）","empty":"≤6字（一直空着的那格）"}
+- object     开场器之一：把主角换成一个**具体物件**（手机 / 床 / 日历 / 账单 / 门 / 容器…），让它自己演
+  stage: {"caption":"≤14字标题","clock":"一个在变化的读数（如 23:41）","clock2":"变化后的读数（如 23:42）","task":"≤6字（一直没发生的那件事）"}
+- dialogue   开场器之一：人不出场，只有 2–3 句自我对话，左右交错排列（最不像「图解」，适合内心拉扯）
+  stage: {"caption":"≤14字标题","lines":["≤12字","≤12字","≤12字"]}
+- crossout   紧跟在开场器之后的第二拍：把他想当然的答案画出来，再打一个叉。**它不是开场器**
   stage: {"claim":"≤11字的错误答案","note":"≤6字的转折"}
 - chain      机制。一环一拍，点会沿线穿过、节点被点亮
   stage: {"nodes":[{"label":"≤7字"},{"label":"≤7字"}]}   ← 2–4 个，必须是因果链上相邻的环节
@@ -90,10 +133,20 @@ PROMPT = """你是「讲解视频」的导演。给你知识库里的**一页概
 - source     出处卡，固定放最后
   stage: {"headline":"这页从哪来","lines":["文件路径","书名 · 章节"]}
 
-## 全片结构（按此顺序；中间拍可增删，首两拍与末两拍固定）
-situation → crossout → （chain / axis / loop / threshold / transform / balance / stack 里挑 1–5 拍）
+## 全片结构（按此顺序；中间拍可增删，末两拍固定）
+（situation / dayband / object / dialogue —— **四选一**做开场器）→ crossout
+→ （chain / axis / loop / threshold / transform / balance / stack 里挑 1–5 拍）
 → steps → close → source
 总长 60–120 秒 = 配音 300–560 字。每拍 5–14 秒（约 20–55 字）。
+
+## 开场器轮换（硬规则，先读这段再选开场器）
+%(recent)s
+
+上面列过的开场器，**这次一个都不许再选**。选择顺序：
+1. 内容讲「时间被耗掉 / 一直在做别的」→ `dayband`
+2. 有一个具体主角物件（手机、床、日历、账单、门、容器…）→ `object`
+3. 内容是自我对话、内心拉扯 → `dialogue`
+4. 以上都不成立 → 才退回 `situation`
 
 ## 配音（text）的写法
 - 一句只讲一件事；因果必须显式说出连接词（因为 / 所以 / 于是 / 结果）。
@@ -103,6 +156,7 @@ situation → crossout → （chain / axis / loop / threshold / transform / bala
   （用「大概率 / 往往」这类词）。
 
 ## 输出前自检（逐条过，不过就改）
+0. 开场器是不是又用了 recent 里列过的那个？（撞了就必须换，这是硬规则）
 1. 每一拍的 stage 文字**全擦掉**，还能看出这一步在发生什么变化吗？看不出就换图形。
 2. 有没有哪一拍的画面文字，与 text 逐字重叠？（有就删画面文字）
 3. 有没有哪句话是原页的句子直接搬过来的？（有就删，只留骨架派生的）
@@ -200,6 +254,8 @@ def main():
     ap.add_argument("--date", default=dt.date.today().isoformat())
     ap.add_argument("--max-chars", type=int, default=6000)
     ap.add_argument("--tries", type=int, default=1)
+    ap.add_argument("--recent", type=int, default=7,
+                    help="避开最近 N 集用过的开场器（默认 7，从 cards/ 读）")
     a = ap.parse_args()
 
     page = open(a.page, encoding="utf-8").read()
@@ -208,8 +264,16 @@ def main():
     title = a.title or os.path.splitext(os.path.basename(a.page))[0]
     nbs = [x.strip() for x in a.neighbours.split(",") if x.strip()]
 
+    rec = recent_openers(a.recent)
+    if rec:
+        recent_txt = ("最近 %d 集用过的开场器：\n" % len(rec)
+                      + "\n".join("- %s → %s" % (d, s) for d, s in rec))
+    else:
+        recent_txt = "（没有历史记录 —— 挑一个最贴内容的，别默认用 situation）"
+    print("[director] 要避开的开场器：%s" % [s for _, s in rec], file=sys.stderr)
+
     prompt = PROMPT % {"date": a.date, "title": title, "source": a.source or a.page,
-                       "page": page,
+                       "page": page, "recent": recent_txt,
                        "neighbours": "、".join(nbs) if nbs else "（本页没有可用邻居）"}
 
     best = None          # 最好的一次输出（无致命问题的），用于「重试反而更差」时兜底
@@ -244,6 +308,15 @@ def main():
     if soft:
         print("导演：有瑕疵但采用（%s）" % "；".join(soft), file=sys.stderr)
     json.dump(card, open(a.out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    # 开场器轮换靠历史：本仓没有别的卡片写入方，所以自己归档一份（失败不影响出片）
+    try:
+        os.makedirs(CARDS_DIR, exist_ok=True)
+        stem = os.path.splitext(os.path.basename(a.out))[0]
+        with open(os.path.join(CARDS_DIR, "%s-%s.json" % (card.get("date") or a.date, stem)),
+                  "w", encoding="utf-8") as fh:
+            json.dump(card, fh, ensure_ascii=False, indent=1)
+    except Exception as exc:
+        print("[director] 归档卡片失败（不影响出片）：%s" % exc, file=sys.stderr)
     print("-->", a.out)
     return 0
 

@@ -45,6 +45,9 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJ = HERE
 PROJ = os.path.abspath(PROJ)
+ROOT = os.path.dirname(os.path.dirname(PROJ))
+# 皮肤状态（.last_theme）与背景质感 PNG 的持久目录；见 video_base.STATE_DIR 注释。
+STATE_DIR = os.environ.get("VIDEO_STATE_DIR") or os.path.join(ROOT, "instance", "video_state")
 MANIM = os.path.expanduser(
     # 目录名里的 312 是笔误：venv 实际建在 Python 3.14.7 上（manim 0.19.2）。
     # 不要重命名目录——venv 的 console script 里 shebang 写死了这个绝对路径。
@@ -67,6 +70,10 @@ STYLES = {"title", "body", "action", "source",
           "nodes",       # 关系：中心 + 轨道上的真邻居（拿不到真关联就别用）
           "steps",       # 可操作：一步一拍，最后打勾
           "close",       # 收束：回到钩子的画面，把距离连上
+          # v5 开场器变体（开场不必再是「两个人 + 一条线 + 一个叉」）
+          "dayband",     # 一天的时间条被别的事填满，要做的那格一直空着
+          "object",      # 物件特写：手机/床/日历…自己演，时间在跳
+          "dialogue",    # 人不出场，只有自我对话气泡
           "text"}        # 兜底（旧卡片；新卡片不用）
 
 
@@ -177,7 +184,10 @@ def main():
     run(["bash", "build_audio_zh.sh"], cwd=proj, label="edge-tts")
 
     print("② 渲染 …", flush=True)
-    run([MANIM, "-qm", "script.py"] + ids, cwd=proj, label="manim")
+    # 渲染跑在一次性 project 目录里，皮肤状态必须外置到持久目录，否则「不撞脸」静默失效。
+    os.makedirs(STATE_DIR, exist_ok=True)
+    run([MANIM, "-qm", "script.py"] + ids, cwd=proj, label="manim",
+        env=dict(os.environ, VIDEO_STATE_DIR=STATE_DIR))
 
     print("③ 拼接 …", flush=True)
     vids = []
