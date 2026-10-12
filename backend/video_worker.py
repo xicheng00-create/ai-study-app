@@ -27,11 +27,14 @@ def recover(con):
 
 
 def claim(con):
-    row = con.execute("SELECT * FROM card_videos WHERE status='queued' ORDER BY requested_at,id LIMIT 1").fetchone()
-    if row:
-        con.execute("UPDATE card_videos SET status='generating' WHERE id=? AND status='queued'", (row["id"],))
-        con.commit()
-    return row
+    row = con.execute("SELECT id FROM card_videos WHERE status='queued' ORDER BY requested_at,id LIMIT 1").fetchone()
+    if not row:
+        return None
+    cur = con.execute("UPDATE card_videos SET status='generating' WHERE id=? AND status='queued'", (row["id"],))
+    con.commit()
+    if cur.rowcount != 1:
+        return None
+    return con.execute("SELECT * FROM card_videos WHERE id=?", (row["id"],)).fetchone()
 
 
 def neighbours(con, card):
