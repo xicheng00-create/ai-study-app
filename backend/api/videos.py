@@ -3,6 +3,7 @@ import json
 
 from auth.jwt_utils import jwt_required, role_required
 from data import models
+from data.video_queue import enqueue
 from data.db import get_db
 from flask import Blueprint, g, request
 from middleware.errors import e_input, e_not_found, ok
@@ -76,13 +77,7 @@ def batch_videos():
         if row and row["status"] in ("queued", "generating"):
             pass
         else:
-            card = con.execute("SELECT id,chapter_id,front FROM knowledge_cards WHERE id=?", (cid,)).fetchone()
-            if row:
-                con.execute("UPDATE card_videos SET status='queued',error=NULL,requested_by=?,requested_at=? WHERE id=? AND status='failed'", (g.user_id, now, row["id"]))
-            else:
-                vid = models.new_id()
-                con.execute("INSERT INTO card_videos(id,core_card_id,chapter_id,status,title,requested_by,requested_at) VALUES(?,?,?,'queued',?,?,?)", (vid, cid, card["chapter_id"], card["front"], g.user_id, now))
-                row = con.execute("SELECT * FROM card_videos WHERE id=?", (vid,)).fetchone()
+            row = enqueue(con, cid, g.user_id)
             queued += 1
         row = _video(con, cid)
         if row:
@@ -160,10 +155,7 @@ def request_video(card_id):
                 con.execute("INSERT INTO card_video_requests(id,video_id,card_id,user_id,source,notify,created_at) VALUES(?,?,?,?, 'manual',1,?)", (models.new_id(), row["id"], card_id, g.user_id, models.utcnow()))
             con.commit()
         return ok(_state(row))
-    if row:
-        con.execute("UPDATE card_videos SET status='queued', error=NULL, requested_by=?, requested_at=? WHERE id=? AND status='failed'", (g.user_id, models.utcnow(), row["id"]))
-    else:
-        con.execute("INSERT OR IGNORE INTO card_videos(id,core_card_id,chapter_id,status,title,requested_by,requested_at) SELECT ?,id,chapter_id,'queued',front,?,? FROM knowledge_cards WHERE id=?", (models.new_id(), g.user_id, models.utcnow(), card_id))
+    enqueue(con, card_id, g.user_id)
     con.commit()
     queued_row = _video(con, card_id)
     if queued_row and queued_row["status"] in ("queued", "generating"):

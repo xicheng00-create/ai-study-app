@@ -158,11 +158,11 @@ def test_video_index_card_link_set_and_core_flags(client, teacher_headers, monke
             con.execute("INSERT INTO card_videos(id,core_card_id,chapter_id,status,title,requested_at) VALUES(?,?,?,?,?,?)", (vid, cards[i]['id'], chapter, status, cards[i]['front'], models.utcnow()))
             con.execute('INSERT INTO card_video_links(video_id,card_id,is_core) VALUES(?,?,1)', (vid, cards[i]['id']))
         con.execute('INSERT INTO card_video_links(video_id,card_id,is_core) VALUES(?,?,0)', (video_ids[0], cards[1]['id'])); con.commit()
-        linked_ids = {r[0] for r in con.execute('SELECT DISTINCT card_id FROM card_video_links')}
+        linked_ids = {r[0] for r in con.execute('SELECT card_id FROM card_video_links UNION SELECT core_card_id FROM card_videos')}
     data = client.get('/api/videos/index', headers=student).get_json()['data']
     assert set(data['cards']) == linked_ids
     assert not data['cards'][cards[1]['id']]['is_core']
-    assert {cid for cid, entry in data['cards'].items() if entry['is_core']} == {cards[0]['id'], cards[2]['id']}
+    assert {c['id'] for c in cards if data['cards'][c['id']]['is_core']} == {cards[0]['id'], cards[2]['id']}
     assert [data['cards'][c['id']]['status'] for c in cards] == ['ready', 'ready', 'failed']
     assert [data['cards'][c['id']]['n_cards'] for c in cards] == [2, 2, 1]
     assert data['cards'][cards[1]['id']]['video_id'] == video_ids[0]
@@ -260,11 +260,11 @@ def test_manual_requests_create_one_notification(client, teacher_headers, monkey
             con.execute('INSERT INTO card_video_links(video_id,card_id,is_core) VALUES(?,?,1)', (vid, cards[i]['id']))
         con.execute('INSERT INTO card_video_links(video_id,card_id,is_core) VALUES(?,?,0)', (video_ids[0], cards[1]['id']))
         con.commit()
-        linked_ids = {r[0] for r in con.execute('SELECT DISTINCT card_id FROM card_video_links')}
+        linked_ids = {r[0] for r in con.execute('SELECT card_id FROM card_video_links UNION SELECT core_card_id FROM card_videos')}
     data = client.get('/api/videos/index', headers=student).get_json()['data']
     assert set(data['cards']) == linked_ids
     assert cards[1]['id'] in data['cards'] and not data['cards'][cards[1]['id']]['is_core']
-    assert {cid for cid, entry in data['cards'].items() if entry['is_core']} == {cards[0]['id'], cards[2]['id']}
+    assert {c['id'] for c in cards if data['cards'][c['id']]['is_core']} == {cards[0]['id'], cards[2]['id']}
     assert [data['cards'][c['id']]['status'] for c in cards] == ['ready', 'ready', 'failed']
     assert [data['cards'][c['id']]['n_cards'] for c in cards] == [2, 2, 1]
     assert data['cards'][cards[0]['id']]['video_id'] == video_ids[0]

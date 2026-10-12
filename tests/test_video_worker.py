@@ -55,3 +55,34 @@ def test_claim_returns_none_if_another_worker_won(client, teacher_headers):
             assert con.execute('SELECT status FROM card_videos WHERE id=?',(vid,)).fetchone()[0] == 'generating'
         finally:
             other.close()
+
+
+def test_concurrent_queue_sources(client, teacher_headers):
+    import sqlite3
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from data.video_queue import enqueue
+    chapter = client.post('/api/chapters', json={'name': 'queue-race'}, headers=teacher_headers).get_json()['data']['id']
+    with client.application.app_context():
+        con = get_db(); card = models.new_id()
+        uid = con.execute("SELECT id FROM users WHERE role='teacher'").fetchone()[0]
+        con.execute('INSERT INTO knowledge_cards(id,chapter_id,front,back,created_at) VALUES(?,?,?,?,?)', (card,chapter,'卡','解',models.utcnow())); con.commit()
+        path = con.execute('PRAGMA database_list').fetchone()[2]
+        barrier = Barrier(3)
+        def submit(source):
+            db = sqlite3.connect(path, timeout=10); db.row_factory = sqlite3.Row
+            try:
+                # All callers observe missing before any INSERT.
+                assert db.execute('SELECT id FROM card_videos WHERE core_card_id=?', (card,)).fetchone() is None
+                barrier.wait(timeout=5)
+                row = enqueue(db, card, uid)
+                db.execute('INSERT INTO card_video_requests(id,video_id,card_id,user_id,source,notify,created_at) VALUES(?,?,?,?,?,?,?)', (models.new_id(),row['id'],card,uid,source,int(source != 'prewarm'),models.utcnow()))
+                db.commit()
+                return row['id']
+            finally:
+                db.close()
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            ids = list(pool.map(submit, ['manual','batch','prewarm']))
+        assert len(set(ids)) == 1
+        assert con.execute('SELECT count(*) FROM card_videos WHERE core_card_id=?', (card,)).fetchone()[0] == 1
+        assert con.execute('SELECT count(*) FROM card_video_requests WHERE card_id=?', (card,)).fetchone()[0] == 3

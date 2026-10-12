@@ -12,6 +12,7 @@ from ai.agents import _chat
 from app import create_app
 from data import checkin, models, timeutil
 from data.db import get_db
+from data.video_queue import enqueue
 from services.notify import notify_users
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -172,19 +173,12 @@ def warm_today_decks(con):
                 row = con.execute("SELECT v.* FROM card_videos v LEFT JOIN card_video_links l ON l.video_id=v.id WHERE (v.core_card_id=? OR l.card_id=?) ORDER BY CASE WHEN v.status='ready' THEN 0 ELSE 1 END LIMIT 1", (cid, cid)).fetchone()
                 if row and row["status"] in ("ready", "queued", "generating"):
                     skipped += 1
-                    continue
                 card = con.execute("SELECT kc.id,kc.chapter_id,kc.front FROM knowledge_cards kc JOIN chapters ch ON ch.id=kc.chapter_id WHERE kc.id=? AND ch.status='published'", (cid,)).fetchone()
                 if not card:
                     skipped += 1
                     continue
-                now = models.utcnow()
-                if row:
-                    cur = con.execute("UPDATE card_videos SET status='queued',error=NULL,requested_at=? WHERE id=? AND status='failed'", (now, row["id"]))
-                    queued += cur.rowcount
-                else:
-                    cur = con.execute("INSERT OR IGNORE INTO card_videos(id,core_card_id,chapter_id,status,title,requested_at) VALUES(?,?,?,'queued',?,?)", (models.new_id(), cid, card["chapter_id"], card["front"], now))
-                    queued += cur.rowcount
-                current = con.execute("SELECT id FROM card_videos WHERE core_card_id=?", (cid,)).fetchone()
+                current = enqueue(con, cid)
+                queued += int(current['status'] == 'queued')
                 if current:
                     con.execute("INSERT INTO card_video_requests(id,video_id,card_id,user_id,source,notify,created_at) SELECT ?,?,?,?,'prewarm',0,? WHERE NOT EXISTS (SELECT 1 FROM card_video_requests WHERE user_id=? AND card_id=? AND source='prewarm')", (models.new_id(), current["id"], cid, uid, models.utcnow(), uid, cid))
             con.execute("INSERT INTO card_video_daily_runs(date,user_id,total,queued,skipped,ran_at) VALUES(?,?,?,?,?,?)", (day, uid, len(ids), queued, skipped, models.utcnow()))
