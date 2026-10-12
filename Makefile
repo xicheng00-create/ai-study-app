@@ -42,6 +42,7 @@ backup:
 
 ui-audit:
 	UI_AUDIT_SELF_BOOT=1 node scripts/ui_audit.js
+	UI_AUDIT_SELF_BOOT=1 node scripts/video_ui_audit.js
 
 # LLM 成本纪律护栏（Design-Spec §7.4 / REQ-NFR-LLMCOST-001）；违规退出 1
 cost-guard:

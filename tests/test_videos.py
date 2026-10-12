@@ -140,6 +140,9 @@ def test_video_listing_adjacent_topics_fields(client, teacher_headers, monkeypat
         con.commit()
     item = client.get('/api/videos', headers=student).get_json()['data'][0]
     assert item['n_cards'] == 2 and item['adjacent_cards'] == 1 and item['adjacent_topics'] == 2
+    index = client.get('/api/videos/index', headers=student).get_json()['data']
+    assert index['cards'][cards[0]['id']]['n_cards'] == 2
+    assert index['cards'][cards[1]['id']]['n_cards'] == 2
 
 
 def test_video_index_card_link_set_and_core_flags(client, teacher_headers, monkeypatch):
@@ -154,11 +157,15 @@ def test_video_index_card_link_set_and_core_flags(client, teacher_headers, monke
             vid = models.new_id(); video_ids.append(vid)
             con.execute("INSERT INTO card_videos(id,core_card_id,chapter_id,status,title,requested_at) VALUES(?,?,?,?,?,?)", (vid, cards[i]['id'], chapter, status, cards[i]['front'], models.utcnow()))
             con.execute('INSERT INTO card_video_links(video_id,card_id,is_core) VALUES(?,?,1)', (vid, cards[i]['id']))
+        con.execute('INSERT INTO card_video_links(video_id,card_id,is_core) VALUES(?,?,0)', (video_ids[0], cards[1]['id']))
         con.commit()
         linked_ids = {r[0] for r in con.execute('SELECT DISTINCT card_id FROM card_video_links')}
     data = client.get('/api/videos/index', headers=student).get_json()['data']
-    assert set(data['cards']) >= linked_ids
-    assert {cid for cid, entry in data['cards'].items() if entry['is_core']} == {c['id'] for c in cards}
-    assert [data['cards'][c['id']]['status'] for c in cards] == ['ready', 'queued', 'failed']
-    assert all(data['cards'][c['id']]['n_cards'] == 1 for c in cards)
-    assert all(data['cards'][c['id']]['video_id'] == video_ids[i] for i, c in enumerate(cards))
+    assert set(data['cards']) == linked_ids
+    assert cards[1]['id'] in data['cards'] and not data['cards'][cards[1]['id']]['is_core']
+    assert {cid for cid, entry in data['cards'].items() if entry['is_core']} == {cards[0]['id'], cards[2]['id']}
+    assert [data['cards'][c['id']]['status'] for c in cards] == ['ready', 'ready', 'failed']
+    assert [data['cards'][c['id']]['n_cards'] for c in cards] == [2, 2, 1]
+    assert data['cards'][cards[0]['id']]['video_id'] == video_ids[0]
+    assert data['cards'][cards[1]['id']]['video_id'] == video_ids[0]
+    assert data['cards'][cards[2]['id']]['video_id'] == video_ids[2]
