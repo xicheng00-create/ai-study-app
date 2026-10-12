@@ -146,9 +146,31 @@ def test_video_listing_adjacent_topics_fields(client, teacher_headers, monkeypat
     assert index['cards'][cards[1]['id']]['n_cards'] == 2
 
 
+def test_video_index_card_link_set_and_core_flags(client, teacher_headers, monkeypatch):
+    chapter = client.post('/api/chapters', json={'name': '链接集合章'}, headers=teacher_headers).get_json()['data']['id']
+    make_student(client, teacher_headers, 'linksetstudent'); student = {'Authorization': 'Bearer ' + login(client, 'linksetstudent', 'student123')}
+    monkeypatch.setattr(knowledge, 'generate_knowledge_cards', lambda ids: [{'front': f'卡{i}', 'back': '解', 'sub_concept': '主题'} for i in range(3)])
+    cards = client.post('/api/knowledge/generate', json={'chapter_ids': [chapter]}, headers=student).get_json()['data']['cards']
+    with client.application.app_context():
+        con = get_db(); video_ids = []
+        for i, status in enumerate(('ready', 'queued', 'failed')):
+            vid = models.new_id(); video_ids.append(vid)
+            con.execute("INSERT INTO card_videos(id,core_card_id,chapter_id,status,title,requested_at) VALUES(?,?,?,?,?,?)", (vid, cards[i]['id'], chapter, status, cards[i]['front'], models.utcnow()))
+            con.execute('INSERT INTO card_video_links(video_id,card_id,is_core) VALUES(?,?,1)', (vid, cards[i]['id']))
+        con.execute('INSERT INTO card_video_links(video_id,card_id,is_core) VALUES(?,?,0)', (video_ids[0], cards[1]['id'])); con.commit()
+        linked_ids = {r[0] for r in con.execute('SELECT DISTINCT card_id FROM card_video_links')}
+    data = client.get('/api/videos/index', headers=student).get_json()['data']
+    assert set(data['cards']) == linked_ids
+    assert not data['cards'][cards[1]['id']]['is_core']
+    assert {cid for cid, entry in data['cards'].items() if entry['is_core']} == {cards[0]['id'], cards[2]['id']}
+    assert [data['cards'][c['id']]['status'] for c in cards] == ['ready', 'ready', 'failed']
+    assert [data['cards'][c['id']]['n_cards'] for c in cards] == [2, 2, 1]
+    assert data['cards'][cards[1]['id']]['video_id'] == video_ids[0]
+
 
 def test_prewarm_daily_idempotency_and_exact_deck(monkeypatch, client, teacher_headers):
     import video_worker
+
     from data import checkin
     chapter = client.post('/api/chapters', json={'name': '预热章'}, headers=teacher_headers).get_json()['data']['id']
     make_student(client, teacher_headers, 'warmstudent')

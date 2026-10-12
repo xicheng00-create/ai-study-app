@@ -4,8 +4,8 @@ F                                                                        [100%]
 __________________ test_video_listing_adjacent_topics_fields ___________________
 
 client = <FlaskClient <Flask 'app'>>
-teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3YzRlMmU3OC1mMzBkLTRiZmMtYjY1OS1mY2Q0NWQ2MTU4NzMiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgxNzg2NSwiZXhwIjoxNzkxODYxMDY1fQ.0Ccrt4Xsg3yuvb4RlheMhDp-OZ0vNu4lT-a5htZClK8'}
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1081dc2b0>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjMjgzMzY4My0yMTA3LTRmZmEtODlmNy1kNTE3ZWU4YjMzZTciLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMjg3NSwiZXhwIjoxNzkxODY2MDc1fQ.4YzHxMOMYneKMtAgra51uSOlO_m97fvP7CwhIVdy6Ok'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1080bc510>
 
     def test_video_listing_adjacent_topics_fields(client, teacher_headers, monkeypatch):
         chapter = client.post('/api/chapters', json={'name': '跨主题章'}, headers=teacher_headers).get_json()['data']['id']
@@ -29,7 +29,7 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1081dc2b0>
 >       assert index['cards'][cards[0]['id']]['n_cards'] == 2
 E       assert 1 == 2
 
-tests/test_videos.py:144: AssertionError
+tests/test_videos.py:145: AssertionError
 =========================== short test summary info ============================
 FAILED ../../../../../../../../Users/xicheng/WorkBuddy/AI学习小组app::test_video_listing_adjacent_topics_fields
 EXIT=1

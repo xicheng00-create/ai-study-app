@@ -58,7 +58,16 @@ AUDIT_PAGE {
 ⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
 ⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
 ⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+  ✓ A1 shared poll remains silent
+  ✓ A2 poll preserves card DOM and review state
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
 A19_REQUESTS {"shown":0,"transitions":0,"requests":[["/api/videos",{"silent":true}],["/api/videos/index",{"silent":true}],["/api/knowledge/2d91a36d-8c9a-4cef-aff5-05522e5209f3",{"silent":true}],["/api/knowledge/2f757690-1d2c-4c52-86e8-84807e56f382",{"silent":true}],["/api/knowledge/cd62fa13-3dc6-4b41-bbce-c493b210245f",{"silent":true}],["/api/knowledge/d6213d0c-0c1d-406c-8aff-037a120618c8",{"silent":true}],["/api/notifications/unread",{"silent":true}]]}
+  ✓ A9 batch/index request remains silent
   ✓ A19 no global loading display transitions during page fetches
 A12-A19 browser checks captured against isolated data; RED mutation runs are managed by video_red_audit.py
 ⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
