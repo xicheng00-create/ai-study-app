@@ -1,14 +1,29 @@
 """共享卡片视频：学生查询、入队及状态。"""
 import json
+import logging
 
 from auth.jwt_utils import jwt_required, role_required
 from data import models
-from data.video_queue import enqueue
 from data.db import get_db
+from data.video_queue import enqueue
 from flask import Blueprint, g, request
 from middleware.errors import e_input, e_not_found, ok
 
 videos_bp = Blueprint("videos_bp", __name__, url_prefix="/api/videos")
+
+
+def _log_link_anomalies(con):
+    # Do not silently mask missing/incorrect core links or orphan associations.
+    rows = con.execute("""SELECT v.id FROM card_videos v
+        WHERE NOT EXISTS (SELECT 1 FROM card_video_links l
+          WHERE l.video_id=v.id AND l.card_id=v.core_card_id AND l.is_core=1)
+        UNION SELECT l.video_id FROM card_video_links l
+        LEFT JOIN card_videos v ON v.id=l.video_id
+        LEFT JOIN knowledge_cards kc ON kc.id=l.card_id
+        WHERE v.id IS NULL OR kc.id IS NULL OR
+          (l.is_core=1 AND l.card_id!=v.core_card_id)""").fetchall()
+    for row in rows:
+        logging.getLogger(__name__).warning("video_link_anomaly video_id=%s", row[0])
 
 
 def _visible_card(con, card_id):
@@ -170,6 +185,7 @@ def request_video(card_id):
 @role_required("student")
 def video_index():
     con = get_db()
+    _log_link_anomalies(con)
     cards = {}
     topics = {}
     chapters = {}
@@ -181,7 +197,9 @@ def video_index():
         LEFT JOIN card_topics ct ON ct.card_id=kc.id
         LEFT JOIN card_videos v ON v.id=(SELECT cv.id FROM card_videos cv LEFT JOIN card_video_links l ON l.video_id=cv.id
           WHERE cv.core_card_id=kc.id OR l.card_id=kc.id ORDER BY CASE cv.status WHEN 'ready' THEN 0 WHEN 'queued' THEN 1 WHEN 'generating' THEN 2 ELSE 3 END LIMIT 1)
-        LEFT JOIN (SELECT video_id,COUNT(*) n_cards FROM card_video_links GROUP BY video_id) link_count ON link_count.video_id=v.id""").fetchall()
+        LEFT JOIN (SELECT video_id,COUNT(DISTINCT card_id) n_cards FROM (
+            SELECT video_id,card_id FROM card_video_links
+            UNION SELECT id video_id,core_card_id card_id FROM card_videos) GROUP BY video_id) link_count ON link_count.video_id=v.id""").fetchall()
     for r in rows:
         cards[r["card_id"]] = {"video_id": r["video_id"], "status": r["status"] or "none", "duration_s": r["duration_s"],
                                 "n_cards": r["n_cards"] or 0, "core_card_id": r["core_card_id"], "is_core": bool(r["video_id"] and r["card_id"] == r["core_card_id"])}
@@ -229,9 +247,10 @@ def video_cards(video_id):
 @role_required("student")
 def list_videos():
     con = get_db()
+    _log_link_anomalies(con)
     rows = con.execute("""SELECT v.*,ch.name AS chapter_name,kc.front,kc.id core_card_id,
         COALESCE(ct.topic,'全部卡片') AS topic,
-        (SELECT COUNT(*) FROM card_video_links WHERE video_id=v.id) n_cards,
+        (SELECT COUNT(DISTINCT card_id) FROM (SELECT card_id FROM card_video_links WHERE video_id=v.id UNION SELECT v.core_card_id AS card_id)) n_cards,
         (SELECT COUNT(DISTINCT COALESCE(t2.topic,'全部卡片')) FROM card_video_links l2 JOIN knowledge_cards k2 ON k2.id=l2.card_id
          LEFT JOIN card_topics t2 ON t2.card_id=k2.id
          WHERE l2.video_id=v.id) adjacent_topics,
@@ -242,7 +261,7 @@ def list_videos():
         JOIN knowledge_cards kc ON kc.id=v.core_card_id LEFT JOIN card_topics ct ON ct.card_id=kc.id
         WHERE v.status='ready' ORDER BY ch.order_no,ch.name,ct.ord,kc.rowid""").fetchall()
     return ok([{**_state(r), "chapter_id": r["chapter_id"], "chapter_name": r["chapter_name"], "front": r["front"],
-                "topic": r["topic"], "core_card_id": r["core_card_id"], "n_cards": max(1, r["n_cards"]),
+                "topic": r["topic"], "core_card_id": r["core_card_id"], "n_cards": r["n_cards"],
                 "adjacent_cards": r["adjacent_cards"], "adjacent_topics": r["adjacent_topics"]} for r in rows])
 
 

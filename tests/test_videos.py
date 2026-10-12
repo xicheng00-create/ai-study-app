@@ -309,3 +309,18 @@ def test_batch_shared_noncore_settles_once(client, teacher_headers, monkeypatch)
         video_worker._notify_video_requests(con, vid); video_worker._notify_video_requests(con, vid)
         assert con.execute('SELECT notified_at FROM card_video_batches WHERE id=?', (bid,)).fetchone()[0]
         assert con.execute("SELECT count(*) FROM notifications WHERE type='card_video_batch_ready' AND ref_id=?", (bid,)).fetchone()[0] == 1
+
+
+def test_api_core_count_fallback_logs_anomaly(client, teacher_headers, monkeypatch, caplog):
+    chapter = client.post('/api/chapters', json={'name': 'count-fallback'}, headers=teacher_headers).get_json()['data']['id']
+    make_student(client, teacher_headers, 'countfallback')
+    student = {'Authorization': 'Bearer ' + login(client, 'countfallback', 'student123')}
+    monkeypatch.setattr(knowledge, 'generate_knowledge_cards', lambda ids: [{'front': 'count', 'back': '解', 'sub_concept': '主题'}])
+    card = client.post('/api/knowledge/generate', json={'chapter_ids': [chapter]}, headers=student).get_json()['data']['cards'][0]['id']
+    with client.application.app_context():
+        con = get_db(); vid = models.new_id()
+        con.execute("INSERT INTO card_videos(id,core_card_id,chapter_id,status,title,requested_at) VALUES(?,?,?,'ready','count',?)", (vid, card, chapter, models.utcnow())); con.commit()
+    data = client.get('/api/videos/index', headers=student).get_json()['data']
+    assert data['cards'][card]['n_cards'] == 1
+    assert next(v for v in client.get('/api/videos', headers=student).get_json()['data'] if v['video_id'] == vid)['n_cards'] == 1
+    assert 'video_link_anomaly' in caplog.text
