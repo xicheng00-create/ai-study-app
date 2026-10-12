@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ai.agents import _chat
 from app import create_app
-from data import checkin, models, timeutil
+from data import models, timeutil
 from data.db import get_db
 from services.notify import notify_users
 
