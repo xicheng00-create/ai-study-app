@@ -1936,7 +1936,15 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
   4. 前端：卡片复习态存在「AI 视频讲解」按钮；点击未生成卡 → 页面出现「生成中」文案且库中新增 `queued` 行（**不静默**）；列表页不含非 ready 视频。
   5. 通知：ready 后该视频对全部学生各产生 1 条 `card_video_ready` 通知，`ref_id` = video_id。
   6. 反证：临时关掉 UNIQUE 幂等 / 去掉 Range 支持 → 对应断言必须真红（记录退出码）。
-- **实现状态**：**已落地并上线 v2.15.0 → v2.15.4（2026-10-09）**，端到端真片验收通过。三段 CC 交付：`316ac38`（M1 数据表＋幂等 API＋Range 媒体路由）、`db907c4`（M2 独立 worker＋本地出片管线）、`d517e2a`（M3 卡片按钮／学习页列表／全屏播放器／通知直达）；Hermes 收尾 `2.15.3`：worker 调导演补 `--tries 3`（原默认 1 次，LLM 偶尔只出 282 字 < 300 字门限即硬失败）、新增 `_run()` 把子进程 stdout/stderr 末 600 字写进 `card_videos.error`（原来只留 exit code，无法定位）、补齐 `deploy/run-video-worker.sh` + `deploy/com.aistudy.video-worker.plist`（label `com.aistudy.video-worker`，RunAtLoad + KeepAlive 单实例）。
+- **REQ-VID-010 静默请求**：`API.get/post/put/del(path, {silent:true})` 不操作全局加载提示，其余调用默认既有行为。
+- **REQ-VID-011 共享轮询与定点更新**：复习视图只有一个 15 秒轮询器；静默轮询所有 active 卡，只更新按钮状态与批次进度文本，不调用全局 `render()`；离开视图停止轮询。
+- **REQ-VID-012 批量队列与进度**：学生 `POST /api/videos/batch` 限 100 张，基于 `_video()` 复用 ready/queued/generating/failed 判据；相同学生卡集活动批次复用；本人可查批次 ready/pending/failed。
+- **REQ-VID-013 请求来源通知**：`card_video_requests` 按 `manual|batch|prewarm` 记录请求；manual 完成通知请求者一次，batch 全部终结通知请求者一次；批次服务于进度和批次通知，不给全体学生推送。
+- **REQ-VID-014 复习进度**：复习态一行显示 `AI 视频 ready/total`，不具交互；静默更新，不 toast。
+- **REQ-VID-015 每日静默预热**：worker 按 `timeutil.today_str()` 为活跃学生调用 `checkin.build_today_deck(..., limit=TASK_CARDS_REQUIRED, mode='task')`；每日每人一次，启动/跨日 catch-up；prewarm request 的 notify=0，不触发 notifications，仅记录运行日志。
+- **REQ-VID-016 三入口共存**：每日预热（notify=0）、按需单卡 manual（notify=1）、复习组 batch（notify=1、整批一次）并存；同卡去重沿用全局唯一视频，source 请求互不覆盖。预热视频全 ready 的组不建待处理项，不发通知。
+- **状态**：v2.16.0 本阶段开发中。语法检查与聚焦 video 测试通过；全量 lint/test/smoke 尚未全绿，A1-A11 原始输出及坏构建反证未完成。视频 ↔ 卡片双向索引待 REQ-VID-020~023 独立阶段实现。
+
 - **真片实测（真库真卡，2026-10-09 00:40）**：核心卡「Qdrant 向量数据库的特点是什么？」（第 3 章 · AIPM vs 传统 PM）→ worker 全自动出片 **89.1s / 1080×1920 / 3.07MB**；挂载 **11 张卡**（核心 1＋辐射 10）；通知 **4 条 / 4 名学生**；`curl -r 0-1023` → **HTTP 206 + `Content-Range: bytes 0-1023/3220859`**（无 Range 时 200/全量，非 mp4 后缀 404）；`/api/videos` 只含 ready 且含本卡；**另一名学生（Winnie）读同卡拿到同一 `video_id`**（全局共享成立）。
 - **反证（真跑，记录退出码/观测值）**：① Range：媒体路由 `conditional=True` → `False` 后 `-r 0-1023` 返回 **200 ＋ 全量 3220859 字节、无 `Content-Range`**（断言会红），还原后 206；② 幂等：副本库把 `core_card_id UNIQUE` 从建表语句摘掉后同一卡连插 2 次得 **3 行**（「行数=1」断言会红），真库同卡 3 次请求仍 **1 行**；③ 上述两条已固化为 `make ui-audit` 断言（「幂等：3 次请求仅 1 行」/「媒体路由支持 Range（206 + Content-Range）」）。
 - **CC 受阻项（如实）**：launchd 模板创建、幂等/Range 反证被其权限策略拦下 → 全部由 Hermes 补齐（见上）。

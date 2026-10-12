@@ -353,6 +353,7 @@ async function markAllRead() {
 async function openNotification(id, ref_kind, ref_id, type) {
   try { await API.post("/api/notifications/read", { ids: [id] }); App.unread = Math.max(0, (App.unread || 0) - 1); } catch (e) {}
   if (ref_kind === "card_video") { go("learn"); await Student.openVideoPlayer(ref_id); return; }
+  if (ref_kind === "card_videos") { go("learn"); await Student.enterVideos(); return; }
   let h = "learn";
   if (type === "path_published" || ref_kind === "session") h = "path";
   else if (type === "quiz_published" || ref_kind === "quiz") h = "quiz";

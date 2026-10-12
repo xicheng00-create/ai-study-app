@@ -11,7 +11,7 @@ const API = (() => {
     const token = getToken();
     if (token) headers["Authorization"] = "Bearer " + token;
     // 全局加载指示器（无则静默跳过，兼容 api.js 先于 app.js 加载）
-    if (typeof loadingOn === "function") loadingOn();
+    if (!opts.silent && typeof loadingOn === "function") loadingOn();
     try {
       const resp = await fetch(path, {
         method: opts.method || "GET",
@@ -31,16 +31,16 @@ const API = (() => {
       }
       return body.data;
     } finally {
-      if (typeof loadingOff === "function") loadingOff();
+      if (!opts.silent && typeof loadingOff === "function") loadingOff();
     }
   }
 
   return {
-    get: (p) => request(p),
-    post: (p, json) => request(p, { method: "POST", json }),
-    put: (p, json) => request(p, { method: "PUT", json }),
-    patch: (p, json) => request(p, { method: "PATCH", json }),
-    del: (p) => request(p, { method: "DELETE" }),
+    get: (p, options = {}) => request(p, options),
+    post: (p, json, options = {}) => request(p, { ...options, method: "POST", json }),
+    put: (p, json, options = {}) => request(p, { ...options, method: "PUT", json }),
+    patch: (p, json, options = {}) => request(p, { ...options, method: "PATCH", json }),
+    del: (p, options = {}) => request(p, { ...options, method: "DELETE" }),
     upload: (p, formData) => request(p, { method: "POST", body: formData }),
     // 方案B：下载源文件（带 Bearer，分块流式 + 进度百分比）
     async download(id, filename) {

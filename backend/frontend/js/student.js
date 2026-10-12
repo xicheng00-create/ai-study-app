@@ -96,7 +96,7 @@ const Student = {
   selChapters: null,    // 学习多选集（hub 资料库勾选，localStorage 记忆；null=未初始化 → 全选）
   _kcBusy: false,       // 翻卡异步锁：飞出动画/提交期间防连点与重入
   learnChat: false,     // 学习 tab 子视图：true=对话页；false=学习主菜单（hub：对话/知识卡片两入口）
-  videoList: false, videoItems: [], videoOpen: {}, videoStates: {}, videoTimers: {},
+  videoList: false, videoItems: [], videoOpen: {}, videoStates: {}, _videoPoll: null, _videoBatchId: null, _videoBatchTotal: 0,
   relatedVideos: [],   // 最近一次对话返回的相关视频课（CHAT-010）
   askCtx: null,        // 从「路径」进入提问时携带的 chapter_ids/concept_tags
   curriculum: null,
@@ -115,7 +115,7 @@ const Student = {
   async render() {
     const h = App.state.hash;
     // 离开学习区：退出知识卡片全屏态（复习进度已存 localStorage，回来可续）
-    if (h !== "learn") { this.videoList = false; this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false; this._kcBusy = false; this.todayDeck = false; this.todayExtra = false; }
+    if (h !== "learn") { this._videoStop(); this.videoList = false; this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false; this._kcBusy = false; this.todayDeck = false; this.todayExtra = false; }
     if (this.knowledgeDeck) return this.viewKnowledgeDeck();
     if (this.videoList) return this.viewVideos();
     if (this.knowledgeIdx) return await this.viewKnowledge();
@@ -239,7 +239,7 @@ const Student = {
   // NOTIF-012：「立即去做」——关闭弹窗、跳学习首页，并高亮今日任务卡给用户明显提示
   doNagNow() {
     closeSheet();
-    this.learnChat = false; this.knowledgeIdx = false; this.knowledgeDeck = false;
+    this.learnChat = false; this.knowledgeIdx = false; this.knowledgeDeck = false; this._videoStop();
     if (App.state.hash !== 'learn') go('learn'); else render();
     // 学习首页渲染后高亮今日任务卡（内联样式，不引入新 CSS，避免 ?v= 缓存失效）
     requestAnimationFrame(() => {
@@ -353,6 +353,7 @@ const Student = {
     // 一键续学（silent）或首次进入：直接按存档位置进卡组
     this.knowledgePos = (opts.silent && saved && saved.pos) ? Math.min(saved.pos, cards.length - 1) : 0;
     this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
+    if (this.todayDeck) setTimeout(() => this._warmDeckVideos(), 0);
   },
   // 一键续学（首页入口）：拿今日卡 → 直接进到存档位置，不弹 sheet
   async resumeTodayDeckDirect() {
@@ -362,9 +363,11 @@ const Student = {
     const saved = this._kcLoad(); closeSheet();
     this.knowledgePos = (saved && saved.pos) ? saved.pos : 0;
     this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
+    if (this.todayDeck) setTimeout(() => this._warmDeckVideos(), 0);
   },
   resetTodayDeck() {
     closeSheet(); this._kcClear(); this.knowledgePos = 0; this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
+    if (this.todayDeck) setTimeout(() => this._warmDeckVideos(), 0);
   },
   // 「再学一组」（CHECKIN-011）：mode=extra 卡组，排除今日已复习的卡，从第 0 张开始（不走续学弹层）
   async startExtraDeck() {
@@ -377,6 +380,7 @@ const Student = {
     this.knowledgeCards = cards;
     this.knowledgeIdx = false;
     this.knowledgePos = 0; this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
+    if (this.todayDeck) setTimeout(() => this._warmDeckVideos(), 0);
   },
   // 「继续刷题」：POST /api/checkin/start-practice → 进现有 viewPracticeTake
   async continuePractice() {
@@ -423,11 +427,11 @@ const Student = {
     try { localStorage.setItem('aistudy_sel_chapters', JSON.stringify(this.selChapters)); } catch (e) {}
   },
   // 主菜单 → 对话页
-  openChat() { this.learnChat = true; this.knowledgeIdx = false; this.knowledgeDeck = false; render(); },
+  openChat() { this.learnChat = true; this.knowledgeIdx = false; this.knowledgeDeck = false; this._videoStop(); render(); },
   // 学习 tab 再点：卡片/对话子视图 → 强制回主菜单
   goLearn() {
     if (App.state.hash === 'learn' && (this.learnChat || this.knowledgeIdx || this.knowledgeDeck)) {
-      this.learnChat = false; this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false;
+      this.learnChat = false; this.knowledgeIdx = false; this.knowledgeDeck = false; this._videoStop(); this.knowledgeFlipped = false;
       return render();
     }
     go('learn');
@@ -436,7 +440,7 @@ const Student = {
   backToLearn() { this.learnChat = false; render(); },
   // 知识卡片视图退出：落回来源（从对话进→回对话；从主菜单进→回主菜单）
   leaveKnowledge() {
-    this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false;
+    this.knowledgeIdx = false; this.knowledgeDeck = false; this._videoStop(); this.knowledgeFlipped = false;
     // 复习卡组是 knowledgeAllCards 的子集（本次上限 100 张），退出时恢复全量供列表页/详情用
     if (this.knowledgeAllCards && this.knowledgeAllCards.length) this.knowledgeCards = this.knowledgeAllCards;
     render();
@@ -498,7 +502,7 @@ const Student = {
   async enterKnowledge() {
     const sel = this.selChapterIds();
     if (!sel.length) return toast('请先选择章节');
-    this.knowledgeIdx = true; this.knowledgeDeck = false; await render();
+    this.knowledgeIdx = true; this.knowledgeDeck = false; this._videoStop(); await render();
   },
   async viewKnowledge() {
     const sel = this.selChapterIds();
@@ -607,7 +611,7 @@ const Student = {
     const c = this._kcFind(id); if (!c) return;
     closeSheet();
     this.askCtx = null;                 // 卡片自带章节范围，不继承「路径」上下文
-    this.learnChat = true; this.knowledgeIdx = false; this.knowledgeDeck = false;
+    this.learnChat = true; this.knowledgeIdx = false; this.knowledgeDeck = false; this._videoStop();
     // 选中相关课题：资料范围切到该卡所属章，否则 viewLearnChat 会把 activeChapter 覆盖成旧选集首章（scope 与卡片不符）
     if (c.chapter_id) { this.selChapters = [c.chapter_id]; this.saveSelChapters(); }
     App.activeChapter = c.chapter_id;
@@ -717,14 +721,14 @@ const Student = {
   viewKnowledgeDeck() {
     const c = this.knowledgeCards[this.knowledgePos];
     if (!c) {
-      this.knowledgeDeck = false; this._kcClear();
+      this.knowledgeDeck = false; this._videoStop(); this._kcClear();
       if (this.todayDeck) { this.todayDeck = false; this.todayExtra = false; return this.viewLearnHome(); }
       return this.viewKnowledge();
     }
     const total = this.knowledgeCards.length;
     const chTxt = c.chName || '';
     // 卡面：正面小字显示「章 · 知识点」；翻转动画由 flipKnowledge 切 class 驱动（不再整页 render，保证 3D 过渡生效）
-    return appbar('复习知识卡片', `第 ${this.knowledgePos + 1} / ${total} 张`, 'Student.pauseKnowledge()') + `<div class="content"><div class="kc-progress"><i style="width:${(this.knowledgePos + 1) / total * 100}%"></i></div>
+    return appbar('复习知识卡片', `第 ${this.knowledgePos + 1} / ${total} 张`, 'Student.pauseKnowledge()') + `<div class="content"><div class="video-batch-progress" id="videoBatchProgress"${this._videoBatchTotal ? '' : ' hidden'}>AI 视频 ${this._videoBatchReady || 0}/${this._videoBatchTotal || 0}</div><div class="kc-progress"><i style="width:${(this.knowledgePos + 1) / total * 100}%"></i></div>
     <div class="kc-scene" ontouchstart="Student.kcTouchStart(event)" ontouchmove="Student.kcTouchMove(event)" ontouchend="Student.kcTouchEnd(event)" ontouchcancel="Student.kcTouchEnd(event)">
       <div class="kc-card ${this.knowledgeFlipped ? 'is-flipped' : ''} kc-in" onmousedown="Student.kcMouseDown(event)" onclick="Student.flipKnowledge()">
         <div class="kc-face kc-front"><small>${esc(chTxt)} · ${esc(c.sub_concept || '知识点')}</small><b>${esc(c.front)}</b><span>点击翻转查看答案</span></div>
@@ -735,7 +739,7 @@ const Student = {
     <button class="btn ghost kc-quit" onclick="Student.pauseKnowledge()">${ic('back')}暂停退出（保存进度）</button></div>` + tabbar();
   },
   async enterVideos() {
-    try { this.videoItems = await API.get('/api/videos'); this.videoList = true; this.knowledgeIdx = false; this.knowledgeDeck = false; render(); }
+    try { this.videoItems = await API.get('/api/videos'); this.videoList = true; this.knowledgeIdx = false; this.knowledgeDeck = false; this._videoStop(); render(); }
     catch (e) { toast(e.message); }
   },
   viewVideos() {
@@ -747,24 +751,68 @@ const Student = {
     </div>`).join('');
     return appbar('AI 视频讲解', '已完成的视频', 'Student.videoList=false;render()') + `<div class="content">${rows || '<div class="card sm muted">暂无已生成的视频，从知识卡片点击「AI 视频讲解」开始生成</div>'}</div>` + tabbar();
   },
+  _videoPaint(cardId, status) {
+    const button = cardId ? document.querySelector('.kc-video') : null;
+    if (button && this.knowledgeCards[this.knowledgePos]?.id === cardId) {
+      button.textContent = status === 'ready' ? '▶ 视频 · 已就绪' : status === 'failed' ? '↻ 重试生成视频' : '生成中，请稍后回看';
+      button.classList.toggle('ready', status === 'ready');
+      button.classList.toggle('failed', status === 'failed');
+    }
+    const label = document.getElementById('videoBatchProgress');
+    if (label && this._videoBatchTotal) label.textContent = `AI 视频 ${this._videoBatchReady || 0}/${this._videoBatchTotal}`;
+  },
+  _videoStop() {
+    if (this._videoPoll) clearInterval(this._videoPoll);
+    this._videoPoll = null;
+  },
+  _videoStart() {
+    if (this._videoPoll || !this.knowledgeDeck) return;
+    this._videoPoll = setInterval(async () => {
+      if (!this.knowledgeDeck) return this._videoStop();
+      const active = this.knowledgeCards.filter(c => ['queued', 'generating'].includes(this.videoStates[c.id]));
+      if (!active.length && !this._videoBatchId) return this._videoStop();
+      for (const card of active) {
+        try {
+          const next = await API.get(`/api/videos/card/${encodeURIComponent(card.id)}`, { silent: true });
+          this.videoStates[card.id] = next.status;
+          this._videoPaint(card.id, next.status);
+          if (['ready','failed'].includes(next.status)) toast(next.status === 'ready' ? 'AI 视频讲解已就绪，点击播放' : '视频生成失败，点击重试');
+        } catch (e) { /* 暂时性轮询错误不影响复习，后续周期重试 */ }
+      }
+      if (this._videoBatchId) {
+        try {
+          const batch = await API.get(`/api/videos/batch/${encodeURIComponent(this._videoBatchId)}`, { silent: true });
+          this._videoBatchReady = batch.ready;
+          this._videoBatchTotal = batch.total;
+          this._videoPaint(null, null);
+          if (!batch.pending) this._videoBatchId = null;
+        } catch (e) { /* 下一周期重试 */ }
+      }
+      if (!this.knowledgeDeck || (!this._videoBatchId && !this.knowledgeCards.some(c => ['queued', 'generating'].includes(this.videoStates[c.id])))) this._videoStop();
+    }, 15000);
+  },
+  async _warmDeckVideos() {
+    const ids = this.knowledgeCards.map(c => c.id);
+    if (!ids.length) return;
+    try {
+      const batch = await API.post('/api/videos/batch', { card_ids: ids }, { silent: true });
+      this._videoBatchId = batch.batch_id;
+      this._videoBatchTotal = batch.total;
+      this._videoBatchReady = batch.ready;
+      this.knowledgeCards.forEach(c => { this.videoStates[c.id] = 'queued'; });
+      const label = document.getElementById('videoBatchProgress');
+      if (label) { label.hidden = false; label.textContent = `AI 视频 ${batch.ready}/${batch.total}`; }
+      this._videoStart();
+    } catch (e) { /* 静默补漏失败，保留手动单卡入口 */ }
+  },
   async openCardVideo(cardId) {
     try {
       let v = await API.get(`/api/videos/card/${encodeURIComponent(cardId)}`);
       if (v.status === 'ready') return this.openVideoPlayer(v.video_id);
       if (v.status === 'none' || v.status === 'failed') v = await API.post(`/api/videos/card/${encodeURIComponent(cardId)}/request`, {});
       if (v.status === 'ready') return this.openVideoPlayer(v.video_id);
-      this.videoStates[cardId] = v.status; toast('生成中，请稍后回看'); render();
-      if (!this.videoTimers[cardId]) this.videoTimers[cardId] = setInterval(async () => {
-        try {
-          const next = await API.get(`/api/videos/card/${encodeURIComponent(cardId)}`);
-          this.videoStates[cardId] = next.status;
-          if (next.status === 'ready' || next.status === 'failed') {
-            clearInterval(this.videoTimers[cardId]); delete this.videoTimers[cardId];
-            toast(next.status === 'ready' ? 'AI 视频讲解已就绪，点击播放' : '视频生成失败，点击重试');
-          }
-          if (this.knowledgeDeck) render();
-        } catch (e) { clearInterval(this.videoTimers[cardId]); delete this.videoTimers[cardId]; toast(e.message); }
-      }, 15000);
+      this.videoStates[cardId] = v.status; toast('生成中，请稍后回看');
+      this._videoPaint(cardId, v.status); this._videoStart();
     } catch (e) { toast(e.message); }
   },
   async openVideoPlayer(videoId) {
@@ -873,7 +921,7 @@ const Student = {
   // 暂停退出：存进度 + 退出复习视图（落回来源：对话或主菜单）
   pauseKnowledge() {
     if (this.knowledgeCards.length && this.knowledgePos < this.knowledgeCards.length) this._kcSave();
-    this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false; this._kcBusy = false; this.todayDeck = false; this.todayExtra = false;
+    this.knowledgeIdx = false; this.knowledgeDeck = false; this._videoStop(); this.knowledgeFlipped = false; this._kcBusy = false; this.todayDeck = false; this.todayExtra = false;
     render();
   },
   async reviewKnowledge(remembered) {
@@ -1067,7 +1115,7 @@ const Student = {
     App.activeChapter = chapter_ids[0] || null;
     this.relatedVideos = [];
     // 必须显式进对话子视图：历史 bug —— 只置 hash 不置 learnChat，render() 会落回学习主页（点了没进对话）
-    this.knowledgeIdx = false; this.knowledgeDeck = false; this.knowledgeFlipped = false;
+    this.knowledgeIdx = false; this.knowledgeDeck = false; this._videoStop(); this.knowledgeFlipped = false;
     this.learnChat = true;
     if (App.state.hash === "learn") render(); else go("learn");
     toast(`已进入「${(s && s.title) || '该章'}」提问 · 资料范围已选中该章`);

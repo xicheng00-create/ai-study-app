@@ -10,9 +10,9 @@ from pathlib import Path
 
 from ai.agents import _chat
 from app import create_app
-from data import models
+from data import models, timeutil
 from data.db import get_db
-from services.notify import active_student_ids, notify_users
+from services.notify import notify_users
 
 ROOT = Path(__file__).resolve().parent.parent
 VIDEO = Path(__file__).resolve().parent / "video"
@@ -88,6 +88,27 @@ def render(con, row):
             raise
 
 
+def _notify_video_requests(con, video_id):
+    rows = con.execute("SELECT * FROM card_video_requests WHERE video_id=? AND notify=1 ORDER BY created_at", (video_id,)).fetchall()
+    for req in rows:
+        if req["source"] == "manual":
+            notify_users(con, [req["user_id"]], "card_video_ready", "AI 视频讲解已完成", "点击观看", ref_kind="card_video", ref_id=video_id)
+            con.execute("UPDATE card_video_requests SET notify=2 WHERE id=?", (req["id"],))
+            con.commit()
+        elif req["source"] == "batch" and req["batch_id"]:
+            remaining = con.execute("SELECT COUNT(*) FROM card_video_batch_items i JOIN card_videos v ON v.id=i.video_id WHERE i.batch_id=? AND v.status IN ('queued','generating')", (req["batch_id"],)).fetchone()[0]
+            already = con.execute("SELECT notified_at FROM card_video_batches WHERE id=?", (req["batch_id"],)).fetchone()
+            if not remaining and already and not already["notified_at"]:
+                total = con.execute("SELECT COUNT(*) FROM card_video_batch_items WHERE batch_id=?", (req["batch_id"],)).fetchone()[0]
+                if not total:
+                    continue
+                counts = con.execute("SELECT SUM(v.status='ready') ready,SUM(v.status='failed') failed FROM card_video_batch_items i JOIN card_videos v ON v.id=i.video_id WHERE i.batch_id=?", (req["batch_id"],)).fetchone()
+                notify_users(con, [req["user_id"]], "card_video_batch_ready", "今日卡组 AI 视频已就绪", f"{int(counts['ready'] or 0)} 张已就绪 · {int(counts['failed'] or 0)} 张失败，点开即可观看", ref_kind="card_videos", ref_id=req["batch_id"])
+                con.execute("UPDATE card_video_batches SET notified_at=? WHERE id=?", (models.utcnow(), req["batch_id"]))
+                con.execute("UPDATE card_video_requests SET notify=2 WHERE batch_id=? AND source='batch'", (req["batch_id"],))
+                con.commit()
+
+
 def process(con, row):
     try:
         linked, script, duration, size = render(con, row)
@@ -96,12 +117,60 @@ def process(con, row):
         for cid in linked:
             con.execute("INSERT OR IGNORE INTO card_video_links(video_id,card_id,is_core) VALUES(?,?,0)", (row["id"], cid))
         con.commit()
-        notify_users(con, active_student_ids(con), "card_video_ready", "AI 视频讲解已完成", row["title"] or "点击观看", ref_kind="card_video", ref_id=row["id"])
+        _notify_video_requests(con, row["id"])
     except Exception as exc:
         con.rollback()
         logger.exception("生成失败 %s", row["id"])
         con.execute("UPDATE card_videos SET status='failed',error=? WHERE id=?", (str(exc)[:1000], row["id"]))
         con.commit()
+        _notify_video_requests(con, row["id"])
+
+
+def warm_today_decks(con):
+    """按上海日历日为每位活跃学生静默预热当日任务卡组，主键保证每日幂等。"""
+    from config import TASK_CARDS_REQUIRED
+    from data import checkin
+
+    day = timeutil.today_str()
+    students = con.execute("SELECT id FROM users WHERE role='student' AND is_active=1").fetchall()
+    for student in students:
+        uid = student["id"]
+        if con.execute("SELECT 1 FROM card_video_daily_runs WHERE date=? AND user_id=?", (day, uid)).fetchone():
+            continue
+        started = time.monotonic()
+        deck = checkin.build_today_deck(con, uid, limit=TASK_CARDS_REQUIRED, mode="task")
+        ids = [card["id"] for card in deck["cards"]]
+        queued = skipped = 0
+        con.execute("SAVEPOINT daily_video_warmup")
+        try:
+            for cid in ids:
+                row = con.execute("SELECT v.* FROM card_videos v LEFT JOIN card_video_links l ON l.video_id=v.id WHERE (v.core_card_id=? OR l.card_id=?) ORDER BY CASE WHEN v.status='ready' THEN 0 ELSE 1 END LIMIT 1", (cid, cid)).fetchone()
+                if row and row["status"] in ("ready", "queued", "generating"):
+                    skipped += 1
+                    continue
+                card = con.execute("SELECT kc.id,kc.chapter_id,kc.front FROM knowledge_cards kc JOIN chapters ch ON ch.id=kc.chapter_id WHERE kc.id=? AND ch.status='published'", (cid,)).fetchone()
+                if not card:
+                    skipped += 1
+                    continue
+                now = models.utcnow()
+                if row:
+                    cur = con.execute("UPDATE card_videos SET status='queued',error=NULL,requested_at=? WHERE id=? AND status='failed'", (now, row["id"]))
+                    queued += cur.rowcount
+                else:
+                    cur = con.execute("INSERT OR IGNORE INTO card_videos(id,core_card_id,chapter_id,status,title,requested_at) VALUES(?,?,?,'queued',?,?)", (models.new_id(), cid, card["chapter_id"], card["front"], now))
+                    queued += cur.rowcount
+                current = con.execute("SELECT id FROM card_videos WHERE core_card_id=?", (cid,)).fetchone()
+                if current:
+                    con.execute("INSERT INTO card_video_requests(id,video_id,card_id,user_id,source,notify,created_at) SELECT ?,?,?,?,'prewarm',0,? WHERE NOT EXISTS (SELECT 1 FROM card_video_requests WHERE user_id=? AND card_id=? AND source='prewarm')", (models.new_id(), current["id"], cid, uid, models.utcnow(), uid, cid))
+            con.execute("INSERT INTO card_video_daily_runs(date,user_id,total,queued,skipped,ran_at) VALUES(?,?,?,?,?,?)", (day, uid, len(ids), queued, skipped, models.utcnow()))
+            con.execute("RELEASE SAVEPOINT daily_video_warmup")
+            con.commit()
+            logger.info("daily_warmup date=%s user_id=%s queued=%s skipped=%s elapsed_s=%.3f", day, uid, queued, skipped, time.monotonic() - started)
+        except Exception:
+            con.execute("ROLLBACK TO SAVEPOINT daily_video_warmup")
+            con.execute("RELEASE SAVEPOINT daily_video_warmup")
+            con.commit()
+            logger.exception("daily_warmup failed date=%s user_id=%s queued=%s skipped=%s elapsed_s=%.3f", day, uid, queued, skipped, time.monotonic() - started)
 
 
 def main():
@@ -109,8 +178,25 @@ def main():
     logging.basicConfig(filename=LOG, level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     app = create_app(os.getenv("FLASK_ENV", "production"))
     with app.app_context():
+        con = get_db()
+        models.migrate(con)
+        con.commit()
+        con.execute("""CREATE TABLE IF NOT EXISTS card_video_requests (
+          id TEXT PRIMARY KEY, video_id TEXT NOT NULL REFERENCES card_videos(id) ON DELETE CASCADE,
+          card_id TEXT NOT NULL REFERENCES knowledge_cards(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          source TEXT NOT NULL CHECK(source IN ('manual','batch','prewarm')),
+          notify INTEGER NOT NULL DEFAULT 0, batch_id TEXT REFERENCES card_video_batches(id),
+          created_at TEXT NOT NULL
+        )""")
+        con.commit()
         recover(get_db())
+        warmed_day = None
         while True:
+            day = timeutil.today_str()
+            if day != warmed_day:
+                warm_today_decks(get_db())
+                warmed_day = day
             row = claim(get_db())
             if row:
                 process(get_db(), row)
