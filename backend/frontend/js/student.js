@@ -503,7 +503,7 @@ const Student = {
     const sel = this.selChapterIds();
     if (!sel.length) return toast('请先选择章节');
     this.knowledgeIdx = true; this.knowledgeDeck = false; this._videoStop();
-    try { this.videoIndex = await API.get('/api/videos/index', { silent: true }); } catch (e) { this.videoIndex = { cards: {}, topics: {}, chapters: {} }; }
+    try { this.videoIndex = await API.get('/api/videos/index', { silent: true }); } catch (e) { this.videoIndex = { cards: {}, all_cards: {}, topics: {}, chapters: {} }; }
     await render();
   },
   async viewKnowledge() {
