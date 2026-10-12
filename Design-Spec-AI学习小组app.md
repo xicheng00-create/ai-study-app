@@ -1969,3 +1969,12 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **违规处置**：出现「上一下一」、横纵间距不等、行内不等高、文案溢出/换行 → 该 commit 回滚重做。
 - **机械断言**（`scripts/ui_audit.js`，REQ-UI-016 块）：复习态取 `.kc-actions .btn` 的 `getBoundingClientRect()` → 断言「按钮 4 个 / 2 行 / 2 列」、「`|横向间距 − 纵向间距| ≤ 1px`」、「行内高度差 ≤ 1px」、「无 `scrollWidth > clientWidth`」。**反证真跑（v2.15.4）**：把 `.kc-actions` 的 `grid-template-columns` 由 `1fr 1fr` 改成 `1fr`（单列）→ `make ui-audit` **EXIT=2**、真红 `✗ 复习态按钮不是二乘二：按钮 4 个 / 4 行 / 1 列`；还原后 EXIT=0 全绿。
 - **实现状态**：**已落地并上线 v2.15.4（2026-10-09）**。实现：`.kc-actions` 由 `flex` 改 `grid-template-columns:1fr 1fr;gap:12px`，`问 TUTOR`／`AI 视频讲解` 从独立整行移入同一容器，`.kc-tutor{margin-top:0}`；实测 390 宽下 `✓ 复习态四按钮二乘二（横 12px = 纵 12px，行内等高）`。版本三件套：`app.py 2.15.4`、`sw.js CACHE v82`、`index.html ?v=2.15.4`。
+
+### REQ-VID PM 只读审查修复验收（2026-10-13）
+
+- REQ-VID-020/022/023：迁移幂等回填所有存量视频核心 link；索引与反向卡片查询保留 core_card_id 回退；API 覆盖数按 distinct link 与核心卡并集计算，异常核心/孤儿 link 记录 video_link_anomaly 日志。
+- REQ-VID-013：批次结算按与卡片 API 相同的核心/关联覆盖判据，非核心共享卡 ready/failed 后可以终结并仅通知一次。
+- REQ-VID-015/016：条件 UPDATE 仅 rowcount=1 认领成功；manual/batch/prewarm 共用 ON CONFLICT(core_card_id) 原子入队，各来源保留独立 request。两连接抢占及三线程同卡争用均有真实失败构建与通过输出。
+- REQ-VID-033：保留总时长比例闸门，逐 scene 输出必须存在且达到 max(0.5s, 配音时长×0.85)；场次不得重复、顺序必须匹配 narration；成片音频/视频轨均覆盖配音，轨长差不超过 max(0.25s, 配音总长×0.05)。白名单保持冻结规则：渲染器 kind 缺白名单项 die，额外 legacy style 只 warn。
+- 六项按序独立提交：9023dc9、914f1b3、092d375、0674da4、080d998、7be8060。原始 RED/GREEN：docs/audit/video/REQ-VID-FIX{1..6}-{RED,GREEN}.txt；RED 为真实旧/故障实现执行 pytest，并发触发 UNIQUE 冲突，媒体反证使用 ffmpeg 真产物，不用源码字符串模拟。
+- 验收通过：make lint test ui-audit（240 个 pytest 用例及完整浏览器审计）、临时 SQLite 库 make smoke SMOKE_PORT=5299、py_compile。完整输出：REQ-VID-FIX-FINAL-GATES.txt、REQ-VID-FIX-SMOKE.txt。未 push、未重启已有服务、未碰 launchd 或 5003 生产库。版本维持本次尚未发布的 2.16.0。

@@ -3,8 +3,8 @@ F                                                                        [100%]
 ________________ test_legacy_ready_video_backfill_and_fallback _________________
 
 client = <FlaskClient <Flask 'app'>>
-teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NTVmOGE2OC02MDA5LTQ3OGUtYmQ1MS1kZDJiYTM1MDgxZjEiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyODU4NCwiZXhwIjoxNzkxODcxNzg0fQ.YAwfTtOH3jO0Ha1iomSJMrStcBOC84y1m-7u1Eq1Q7U'}
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1098543e0>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5MDQzOWY0NS0yODhmLTRjZWMtOWM3OC0xZDQwZGI2MjI4YTUiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyOTQyNSwiZXhwIjoxNzkxODcyNjI1fQ.MbUUNjVvNfc2op8PNQclhzHVUfeDyWAb89DcM31enc8'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10bfd4510>
 
     def test_legacy_ready_video_backfill_and_fallback(client, teacher_headers, monkeypatch):
         chapter = client.post('/api/chapters', json={'name': 'legacy-link'}, headers=teacher_headers).get_json()['data']['id']
@@ -16,14 +16,9 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1098543e0>
             con = get_db(); vid = models.new_id()
             con.execute("INSERT INTO card_videos(id,core_card_id,chapter_id,status,title,file_name,requested_at) VALUES(?,?,?,'ready','旧核心','old.mp4',?)", (vid, card, chapter, models.utcnow())); con.commit()
             models.migrate(con); con.commit(); models.migrate(con)
-            assert con.execute('SELECT count(*) FROM card_video_links WHERE video_id=? AND card_id=? AND is_core=1', (vid, card)).fetchone()[0] == 1
-            con.execute('DELETE FROM card_video_links WHERE video_id=?', (vid,)); con.commit()
-        assert client.get('/api/videos/index', headers=student).get_json()['data']['all_cards'][card]['video_id'] == vid
-        resp = client.get(f'/api/videos/{vid}/cards', headers=student)
->       assert resp.status_code == 200 and resp.get_json()['data'][0]['id'] == card
-E       assert (500 == 200)
-E        +  where 500 = <WrapperTestResponse streamed [500 INTERNAL SERVER ERROR]>.status_code
+>           assert con.execute('SELECT count(*) FROM card_video_links WHERE video_id=? AND card_id=? AND is_core=1', (vid, card)).fetchone()[0] == 1
+E           assert 0 == 1
 
-tests/test_videos.py:289: AssertionError
+tests/test_videos.py:285: AssertionError
 =========================== short test summary info ============================
 FAILED tests/test_videos.py::test_legacy_ready_video_backfill_and_fallback - ...
