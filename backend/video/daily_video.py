@@ -45,7 +45,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJ = HERE
 PROJ = os.path.abspath(PROJ)
-ROOT = os.path.dirname(os.path.dirname(PROJ))
+ROOT = os.path.dirname(os.path.dirname(HERE))   # 仓库根（由脚本位置算，不受 --project 影响）
 # 皮肤状态（.last_theme）与背景质感 PNG 的持久目录；见 video_base.STATE_DIR 注释。
 STATE_DIR = os.environ.get("VIDEO_STATE_DIR") or os.path.join(ROOT, "instance", "video_state")
 MANIM = os.path.expanduser(
