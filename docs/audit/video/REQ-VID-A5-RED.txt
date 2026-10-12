@@ -4,8 +4,8 @@ F                                                                        [100%]
 _____________________ test_batch_notification_exactly_once _____________________
 
 client = <FlaskClient <Flask 'app'>>
-teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0ZjY4YWMzNy0yYjU3LTRhOTMtODdjNC03MGQ4Y2M4MTg2NDEiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMDkwOSwiZXhwIjoxNzkxODY0MTA5fQ.nPFHhXhnq2tCxSL15MiwfLPMdLjC2A6Xqm3_FIt_05A'}
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a370510>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZmViODU4NC0wMjA0LTQzNjUtYjJkYS04MzNkZmNiZDg0NjYiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMjM5NSwiZXhwIjoxNzkxODY1NTk1fQ.Z0KCh56I5v6KhhMySLMVHpbDCtfJFBkjyv6ovXyQZbA'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a670510>
 
     def test_batch_notification_exactly_once(client, teacher_headers, monkeypatch):
         import video_worker

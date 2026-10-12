@@ -4,8 +4,8 @@ F                                                                        [100%]
 __________________ test_manual_notification_and_prewarm_dedup __________________
 
 client = <FlaskClient <Flask 'app'>>
-teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmNzg1YjA5OS1kMThhLTQ0ZjItOGFmYy1iNDY1NjgyYzMyZTUiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgxOTUyOSwiZXhwIjoxNzkxODYyNzI5fQ.1gWo-Eai8CPZVAbr_Mowsge1PLn25dPS-7LZpo4yPHo'}
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109da4510>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YTExMzFjMi05OGI4LTQxYjEtODA1Mi0wMDMwYzZmOWQ3MDYiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMjQ4MywiZXhwIjoxNzkxODY1NjgzfQ.dK5uAfOOBKMcYl4Q7hFevWZpR6vlbsBEDYbK8eB5wMs'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109708510>
 
     def test_manual_notification_and_prewarm_dedup(client, teacher_headers, monkeypatch):
         import video_worker

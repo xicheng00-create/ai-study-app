@@ -3,15 +3,16 @@ F                                                                        [100%]
 =================================== FAILURES ===================================
 _____________________ test_prewarm_uses_task_deck_card_set _____________________
 
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a048510>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a4ec510>
+client = <FlaskClient <Flask 'app'>>
 
-    def test_prewarm_uses_task_deck_card_set(monkeypatch):
+    def test_prewarm_uses_task_deck_card_set(monkeypatch, client):
         import video_worker
         from data import checkin
         calls = []
         monkeypatch.setattr(video_worker.timeutil, 'today_str', lambda: '2099-01-03')
         monkeypatch.setattr(video_worker.checkin, 'build_today_deck', lambda con, user_id, limit, mode: calls.append((user_id, limit, mode)) or {'cards': []})
-        with create_app('testing').app_context():
+        with client.application.app_context():
             con = get_db()
             # 测试 fixture 可能没有 active student，直接构造一个观察调用的用户行。
             con.execute("INSERT OR IGNORE INTO users(id,username,password_hash,role,is_active,display_name,created_at) VALUES('warm-user','warm-user','x','student',1,'Warm','2099')")
@@ -19,7 +20,7 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a048510>
             video_worker.warm_today_decks(con)
 >       assert calls and all(limit == 30 and mode == 'task' for _, limit, mode in calls)
 E       AssertionError: assert ([('warm-user', 30, 'extra')] and False)
-E        +  where False = all(<generator object test_prewarm_uses_task_deck_card_set.<locals>.<genexpr> at 0x10a2417e0>)
+E        +  where False = all(<generator object test_prewarm_uses_task_deck_card_set.<locals>.<genexpr> at 0x10a7b0900>)
 
 tests/test_videos.py:191: AssertionError
 =========================== short test summary info ============================

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ai.agents import _chat
 from app import create_app
-from data import models, timeutil
+from data import checkin, models, timeutil
 from data.db import get_db
 from services.notify import notify_users
 
@@ -145,8 +145,6 @@ def process(con, row):
 def warm_today_decks(con):
     """按上海日历日为每位活跃学生静默预热当日任务卡组，主键保证每日幂等。"""
     from config import TASK_CARDS_REQUIRED
-    from data import checkin
-
     day = timeutil.today_str()
     students = con.execute("SELECT id FROM users WHERE role='student' AND is_active=1").fetchall()
     for student in students:

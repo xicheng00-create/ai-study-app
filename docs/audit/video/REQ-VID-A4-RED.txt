@@ -4,8 +4,8 @@ F                                                                        [100%]
 _______________ test_batch_api_dedup_idempotency_and_permissions _______________
 
 client = <FlaskClient <Flask 'app'>>
-teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MDc0OGNlNy00NzBhLTRkYWUtODYzZC04YzhhZDJmMDUxMzUiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMDkwOCwiZXhwIjoxNzkxODY0MTA4fQ.TTnuO274wFti4eBM7rsSLQJovxC6H-mPSzNVU2JQ9GI'}
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109d90510>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0Mjg5ZWE1NC01MTZiLTQ1NjEtOWY4Mi03M2ZiOThhNmRiZmIiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMjM5NCwiZXhwIjoxNzkxODY1NTk0fQ.wZ3er6CZTuW2C3pZweSlTh3iEg1m4K-lQlaU5-vvqX0'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109818510>
 
     def test_batch_api_dedup_idempotency_and_permissions(client, teacher_headers, monkeypatch):
         chapter = client.post('/api/chapters', json={'name': '批量章'}, headers=teacher_headers).get_json()['data']['id']
@@ -28,10 +28,10 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109d90510>
         again = client.post('/api/videos/batch', json={'card_ids': list(reversed(ids[:3]))}, headers=student).get_json()['data']
         with client.application.app_context():
 >           assert again['batch_id'] == data['batch_id'] and get_db().execute('SELECT count(*) FROM card_video_batches').fetchone()[0] == 1
-E           AssertionError: assert ('2c183ed7-3a5...-911afb828c17' == '77d34469-a88...-d2edc6761c7a'
+E           AssertionError: assert ('6048e38d-bc0...-a1e136b4d69e' == '920b49ee-05e...-7d0b88c26c65'
 E             
-E             - 77d34469-a88b-4981-bb93-d2edc6761c7a
-E             + 2c183ed7-3a55-4402-94eb-911afb828c17)
+E             - 920b49ee-05ed-4e39-a01c-7d0b88c26c65
+E             + 6048e38d-bc07-418b-a93a-a1e136b4d69e)
 
 tests/test_videos.py:58: AssertionError
 =========================== short test summary info ============================

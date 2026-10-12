@@ -3,9 +3,9 @@ F                                                                        [100%]
 =================================== FAILURES ===================================
 ________________ test_prewarm_daily_idempotency_and_exact_deck _________________
 
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b8c4510>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10bbe0510>
 client = <FlaskClient <Flask 'app'>>
-teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMzhlNjVkZS1kYTcxLTQwMTQtYTZiOC0xOGYwZGRiOWE4OTMiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMDkxMSwiZXhwIjoxNzkxODY0MTExfQ.I3CA3IO5V4gadvdMj9LJMvZArCgjsdzOvNxy8ycUg-U'}
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkMTA1Njg0MS02Y2Y1LTRhZWEtYmYwNS1hNWNjNjA4YjM3NTEiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMjQ4MCwiZXhwIjoxNzkxODY1NjgwfQ._N5JqcaNiZ7P9PbcghteyASeGELAvPH7uJhsJRE5-38'}
 
     def test_prewarm_daily_idempotency_and_exact_deck(monkeypatch, client, teacher_headers):
         import video_worker
@@ -39,9 +39,9 @@ E         Use -v to get more diff
 
 tests/test_videos.py:174: AssertionError
 ------------------------------ Captured log call -------------------------------
-ERROR    video_worker:video_worker.py:189 daily_warmup failed date=2099-01-02 user_id=2254300a-4eac-4f68-82db-5c111264f6a4 queued=0 skipped=3 elapsed_s=0.000
+ERROR    video_worker:video_worker.py:187 daily_warmup failed date=2099-01-02 user_id=135afd34-1bdb-4406-b15c-410ddf3a993d queued=0 skipped=3 elapsed_s=0.000
 Traceback (most recent call last):
-  File "/private/var/folders/g9/0_d44k015gqc2klwz76hdfjm0000gn/T/vid-A7-42lk8fm5/repo/tests/../backend/video_worker.py", line 181, in warm_today_decks
+  File "/private/var/folders/g9/0_d44k015gqc2klwz76hdfjm0000gn/T/vid-A7-i0zqbgyp/repo/tests/../backend/video_worker.py", line 179, in warm_today_decks
     con.execute("INSERT INTO card_video_daily_runs(date,user_id,total,queued,skipped,ran_at) VALUES(?,?,?,?,?,?)", (day, uid, len(ids), queued, skipped, models.utcnow()))
     ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 sqlite3.IntegrityError: UNIQUE constraint failed: card_video_daily_runs.date, card_video_daily_runs.user_id

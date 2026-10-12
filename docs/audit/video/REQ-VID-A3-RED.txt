@@ -4,8 +4,8 @@ F                                                                        [100%]
 _______________ test_batch_api_dedup_idempotency_and_permissions _______________
 
 client = <FlaskClient <Flask 'app'>>
-teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4M2M5YWM3NC1hNTNmLTQzNGQtOGQ0ZC04YzE0NGZhZWE5NjYiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMDkwNywiZXhwIjoxNzkxODY0MTA3fQ.cGkXQ9iiIgF_x5kB0QOzesi3nRgae-0OkWmyGQqAmvA'}
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b808510>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2Yzc2YjU2MC0wNDQ1LTRjMzctYjUwZi04M2NiY2M1OTIyZWQiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMjM5MywiZXhwIjoxNzkxODY1NTkzfQ.tQqe6iBvkFjblIZkZnUrs5JuKV5WIyTqbHe9jJB2xGg'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1079cc510>
 
     def test_batch_api_dedup_idempotency_and_permissions(client, teacher_headers, monkeypatch):
         chapter = client.post('/api/chapters', json={'name': '批量章'}, headers=teacher_headers).get_json()['data']['id']
