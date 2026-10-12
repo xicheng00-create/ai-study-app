@@ -88,6 +88,14 @@ def render(con, row):
             raise
 
 
+def _batch_card_state(con, card_id):
+    """批次结算与学生卡片查询使用同一覆盖判据，支持复用他人生成的视频。"""
+    return con.execute("""SELECT v.status FROM card_videos v
+        LEFT JOIN card_video_links l ON l.video_id=v.id
+        WHERE v.core_card_id=? OR l.card_id=?
+        ORDER BY CASE WHEN v.status='ready' THEN 0 ELSE 1 END LIMIT 1""", (card_id, card_id)).fetchone()
+
+
 def _notify_video_requests(con, video_id):
     # manual 单卡请求仍单独通知请求者。
     rows = con.execute("SELECT * FROM card_video_requests WHERE video_id=? AND notify=1 ORDER BY created_at", (video_id,)).fetchall()
@@ -103,7 +111,7 @@ def _notify_video_requests(con, video_id):
         card_ids = json.loads(batch["card_ids_json"])
         ready = failed = pending = 0
         for card_id in card_ids:
-            card = con.execute("SELECT status FROM card_videos WHERE core_card_id=?", (card_id,)).fetchone()
+            card = _batch_card_state(con, card_id)
             if card is None:
                 pending += 1
             elif card["status"] == "ready":

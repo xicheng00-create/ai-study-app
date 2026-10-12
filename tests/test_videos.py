@@ -290,3 +290,22 @@ def test_legacy_ready_video_backfill_and_fallback(client, teacher_headers, monke
 
 
 
+
+
+def test_batch_shared_noncore_settles_once(client, teacher_headers, monkeypatch):
+    import video_worker
+    chapter = client.post('/api/chapters', json={'name': 'shared-batch'}, headers=teacher_headers).get_json()['data']['id']
+    make_student(client, teacher_headers, 'sharedbatch')
+    student = {'Authorization': 'Bearer ' + login(client, 'sharedbatch', 'student123')}
+    monkeypatch.setattr(knowledge, 'generate_knowledge_cards', lambda ids: [{'front': str(i), 'back': '解', 'sub_concept': str(i)} for i in range(2)])
+    cards = client.post('/api/knowledge/generate', json={'chapter_ids': [chapter]}, headers=student).get_json()['data']['cards']
+    with client.application.app_context():
+        con = get_db(); vid = models.new_id()
+        con.execute("INSERT INTO card_videos(id,core_card_id,chapter_id,status,title,requested_at) VALUES(?,?,?,'queued','shared',?)", (vid, cards[0]['id'], chapter, models.utcnow()))
+        con.execute('INSERT INTO card_video_links VALUES(?,?,0)', (vid, cards[1]['id'])); con.commit()
+    bid = client.post('/api/videos/batch', json={'card_ids': [cards[1]['id']]}, headers=student).get_json()['data']['batch_id']
+    with client.application.app_context():
+        con = get_db(); con.execute("UPDATE card_videos SET status='ready' WHERE id=?", (vid,)); con.commit()
+        video_worker._notify_video_requests(con, vid); video_worker._notify_video_requests(con, vid)
+        assert con.execute('SELECT notified_at FROM card_video_batches WHERE id=?', (bid,)).fetchone()[0]
+        assert con.execute("SELECT count(*) FROM notifications WHERE type='card_video_batch_ready' AND ref_id=?", (bid,)).fetchone()[0] == 1
