@@ -280,7 +280,7 @@ const Student = {
     const cardsAll = [];
     for (const cid of sel) {
       let d = null;
-      try { d = await API.get('/api/knowledge/' + cid); } catch (e) { continue; }
+      try { d = await API.get('/api/knowledge/' + cid, { silent: true }); } catch (e) { continue; }
       const cs = (d && d.cards) || [];
       if (d && d.deck_max) this.kcDeckMax = d.deck_max;
       const chName = App.chapterName(cid);
@@ -515,7 +515,7 @@ const Student = {
     let errN = 0;
     for (const cid of sel) {
       let d = null;
-      try { d = await API.get('/api/knowledge/' + cid); } catch (e) { errN++; continue; }
+      try { d = await API.get('/api/knowledge/' + cid, { silent: true }); } catch (e) { errN++; continue; }
       const cs = (d && d.cards) || [];
       if (d && d.deck_max) this.kcDeckMax = d.deck_max;   // 单次卡组上限随响应下发（KNOW-004）
       if (!cs.length) continue;
@@ -558,14 +558,14 @@ const Student = {
         const topicVideo = this.videoIndex?.topics?.[g.cid + '|' + t.name];
         return `<div class="kc-topic">
           <div class="kc-topic-head" onclick="Student.toggleKnowledgeTopic('${g.cid}',${ti})">
-            <div style="flex:1"><b>${esc(t.name)}</b><small>${t.cards.length} 张 · 已掌握 ${tcount('mastered')} · 学习中 ${tcount('learning') + tcount('reviewing')} · 未学 ${tcount('new')}${tdue ? ` · 今日待复习 ${tdue}` : ''} · 视频 ${topicVideo?.videos || 0}/${topicVideo?.cards_total ?? t.cards.length} 卡</small></div>
+            <div style="flex:1"><b>${esc(t.name)}</b><small>${t.cards.length} 张 · 已掌握 ${tcount('mastered')} · 学习中 ${tcount('learning') + tcount('reviewing')} · 未学 ${tcount('new')}${tdue ? ` · 今日待复习 ${tdue}` : ''} · 视频 ${topicVideo?.cards_with_video || 0}/${topicVideo?.cards_total ?? t.cards.length} 卡</small></div>
             <span class="caret">${to ? '▾' : '▸'}</span></div>
           ${to ? `<div class="kc-grid">${t.cards.map(mini).join('')}</div>` : ''}</div>`;
       }).join('') : '';
       const chapterVideo = this.videoIndex?.chapters?.[g.cid];
       return `<div class="kc-ch">
         <div class="kc-ch-head" onclick="Student.toggleKnowledgeGroup('${g.cid}')">
-          <div style="flex:1"><b>${esc(g.name)}</b><small>${gc.length} 张 · 预计 ${App.daysFor(gc.length)} 天学完 · 已掌握 ${gcount('mastered')} · 学习中 ${gcount('learning') + gcount('reviewing')} · 未学 ${gcount('new')} · 今日待复习 ${gdue} · 视频 ${chapterVideo?.videos || 0}/${chapterVideo?.cards_total ?? gc.length} 卡</small></div>
+          <div style="flex:1"><b>${esc(g.name)}</b><small>${gc.length} 张 · 预计 ${App.daysFor(gc.length)} 天学完 · 已掌握 ${gcount('mastered')} · 学习中 ${gcount('learning') + gcount('reviewing')} · 未学 ${gcount('new')} · 今日待复习 ${gdue} · 视频 ${chapterVideo?.cards_with_video || 0}/${chapterVideo?.cards_total ?? gc.length} 卡</small></div>
           <span class="caret">${open ? '▾' : '▸'}</span></div>
         ${open ? `<div class="kc-ch-body"><div class="muted" style="font-size:12px;margin:0 0 8px">共 ${tGroups.length} 个主题 · 点主题展开卡片</div>${tBody}</div>` : ''}</div>`;
     }).join('');
@@ -754,7 +754,7 @@ const Student = {
     <button class="btn ghost kc-quit" onclick="Student.pauseKnowledge()">${ic('back')}暂停退出（保存进度）</button></div>` + tabbar();
   },
   async enterVideos() {
-    try { this.videoItems = await API.get('/api/videos', { silent: true }); this.videoIndex = await API.get('/api/videos/index', { silent: true }); this.videoList = true; this.knowledgeIdx = false; this.knowledgeDeck = false; this._videoStop(); render(); }
+    try { this.videoItems = await API.get('/api/videos', { silent: true }); this.videoIndex = await API.get('/api/videos/index', { silent: true }); this.videoTopicGroups = {}; for (const cid of Object.keys(this.videoIndex.chapters)) { const data = await API.get('/api/knowledge/' + cid, { silent: true }); this.videoTopicGroups[cid] = this.topicGroups(data.cards || []).map(t => t.name); } this.videoList = true; this.knowledgeIdx = false; this.knowledgeDeck = false; this._videoStop(); render(); }
     catch (e) { toast(e.message); }
   },
   viewVideos() {
@@ -765,13 +765,14 @@ const Student = {
       const chapter = chapters[key] ||= { name: v.chapter_name, videos: {} };
       (chapter.videos[topic] ||= []).push(v);
     }
+    for (const [cid, names] of Object.entries(this.videoTopicGroups || {})) {
+      const chapter = chapters[cid] ||= { name: App.chapterName(cid), videos: {} };
+      for (const name of names) chapter.videos[name] ||= [];
+    }
     const rows = Object.entries(chapters).map(([id, chapter]) => {
       const names = Object.keys(chapter.videos);
-      const ordered = names.sort((a, b) => {
-        const ga = this.videoIndex?.topics?.[id + '|' + a], gb = this.videoIndex?.topics?.[id + '|' + b];
-        return (gb?.cards_total || 0) - (ga?.cards_total || 0) || (ga?.ord || 2147483647) - (gb?.ord || 2147483647);
-      });
-      const topics = ordered.map(name => `<section class="video-topic"><h4>${esc(name)}</h4>${chapter.videos[name].map(v => `<div class="home-card video-entry"><button class="video-play" onclick="Student.openVideoPlayer('${v.video_id}')">${ic('video')}<span><b>${esc(v.front)}</b><small>覆盖 ${v.n_cards} 张卡 · ${esc(v.duration_s ? Math.round(v.duration_s) + ' 秒' : '时长未知')}${v.adjacent_cards ? ` · 另含 ${v.adjacent_cards} 张相邻卡` : ''}</small></span></button><button class="video-related" onclick="Student.openVideoCards('${v.video_id}')">相关卡片 (${v.n_cards})</button></div>`).join('')}</section>`).join('');
+      const ordered = this.videoTopicGroups?.[id] || names;
+      const topics = ordered.map(name => `<section class="video-topic" data-chapter="${esc(id)}" data-topic="${esc(name)}"><h4>${esc(name)}</h4>${chapter.videos[name].map(v => `<div class="home-card video-entry"><button class="video-play" onclick="Student.openVideoPlayer('${v.video_id}')">${ic('video')}<span><b>${esc(v.front)}</b><small>覆盖 ${v.n_cards} 张卡 · ${esc(v.duration_s ? Math.round(v.duration_s) + ' 秒' : '时长未知')}${v.adjacent_cards ? ` · 另含 ${v.adjacent_cards} 张相邻卡` : ''}</small></span></button><button class="video-related" onclick="Student.openVideoCards('${v.video_id}')">相关卡片 (${v.n_cards})</button></div>`).join('')}</section>`).join('');
       return `<div class="card sm mb-12"><div class="lib-head" onclick="Student.videoOpen['${id}']=!Student.videoOpen['${id}'];render()"><b>${esc(chapter.name)}</b><span>${Object.values(chapter.videos).reduce((n, a) => n + a.length, 0)} 条 ›</span></div>${this.videoOpen[id] === false ? '' : topics}</div>`;
     }).join('');
     return appbar('AI 视频讲解', '按章节与主题浏览', 'Student.videoList=false;render()') + `<div class="content">${rows || '<div class="card sm muted">暂无已生成的视频，从知识卡片点击「AI 视频讲解」开始生成</div>'}</div>` + tabbar();
@@ -785,6 +786,7 @@ const Student = {
   },
   async openRelatedCard(id) {
     closeSheet();
+    this.videoList = false; this.knowledgeIdx = true; this.knowledgeDeck = false;
     let card = this._kcFind(id);
     if (!card) {
       const related = await API.get(`/api/videos/${encodeURIComponent(this._relatedVideoId || '')}/cards`).catch(() => []);
@@ -807,6 +809,7 @@ const Student = {
       const topicIndex = groups.findIndex(group => group.cards.some(item => item.id === id));
       this.knowledgeGroupOpen[card.chapter_id] = true;
       if (topicIndex >= 0) this.knowledgeTopicOpen[card.chapter_id + '|' + topicIndex] = true;
+      await render();
       this.kcDetail(id);
     } else toast('知识卡片已定位到对应章节与主题');
   },

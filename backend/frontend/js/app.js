@@ -399,7 +399,7 @@ async function render() {
 async function refreshUnread() {
   if (!App.state.role) return;
   try {
-    const d = await API.get("/api/notifications/unread");
+    const d = await API.get("/api/notifications/unread", { silent: true });
     const n = d.unread || 0;
     if (n === App.unread) return;
     App.unread = n;

@@ -1943,7 +1943,13 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **REQ-VID-014 复习进度**：复习态一行显示 `AI 视频 ready/total`，不具交互；静默更新，不 toast。
 - **REQ-VID-015 每日静默预热**：worker 按 `timeutil.today_str()` 为活跃学生调用 `checkin.build_today_deck(..., limit=TASK_CARDS_REQUIRED, mode='task')`；每日每人一次，启动/跨日 catch-up；prewarm request 的 notify=0，不触发 notifications，仅记录运行日志。
 - **REQ-VID-016 三入口共存**：每日预热（notify=0）、按需单卡 manual（notify=1）、复习组 batch（notify=1、整批一次）并存；同卡去重沿用全局唯一视频，source 请求互不覆盖。预热视频全 ready 的组不建待处理项，不发通知。
-- **状态**：v2.16.0 本阶段开发中。语法检查与聚焦 video 测试通过；全量 lint/test/smoke 尚未全绿，A1-A11 原始输出及坏构建反证未完成。视频 ↔ 卡片双向索引待 REQ-VID-020~023 独立阶段实现。
+- **状态（2026-10-12 验收回写）**：v2.16.0 三件套一致；`make lint test smoke SMOKE_PORT=5299`（副本库）及完整 `make ui-audit` 全绿。A1–A11 逐项真实坏构建证据仍未闭环，故任务总体验收未完成，不创建完成标记。
+- **REQ-VID-020 卡片视频态**：卡片墙徽章与详情视频入口常显；无片显示「＋视频」。章/主题「视频 N/M」使用服务端 `cards_with_video/cards_total`，不是视频支数；索引 `cards` 维持链接卡 ID 集合，`all_cards` 补充无片状态。
+- **REQ-VID-021 同结构分组**：视频页复用知识卡 API 与 `topicGroups()`，完整显示章→主题（包括无 ready 视频的主题），主题名、顺序与卡片页一致，不缩小断言范围。
+- **REQ-VID-022 多对一**：索引与列表返回核心卡、覆盖数量；浏览器断言逐张关联卡调用实际 `openCardVideo()`，验证解析出的播放 ID 与共享视频 ID 一致。
+- **REQ-VID-023 反向导航**：相关卡片入口显示真实覆盖数；浏览器逐张点击 sheet 卡片，验证知识页、所属章和主题实际展开后显示详情。
+- **A12–A19 验收证据**：`docs/audit/video/REQ-VID-A12-A19-GREEN.txt`；逐项 `REQ-VID-Axx-RED.txt` 为临时坏实现运行真实 pytest/浏览器断言的原始输出。runner 除非零退出码外必须命中目标断言失败标识，环境错误不计 RED。既有 `audit/video/*red.txt` 为早期字符串模拟，作废，不作为验收依据。
+- **UI 技能自查**：已全文读取 taste 路由、redesign-existing-projects 与 impeccable 规范；沿用既有字体、颜色令牌、卡片与导航结构，仅修正常显状态、语义分组、后台静默与导航目的地，不进行无关视觉重设计。Impeccable detector 尚未验证，不能宣称其通过。
 
 - **真片实测（真库真卡，2026-10-09 00:40）**：核心卡「Qdrant 向量数据库的特点是什么？」（第 3 章 · AIPM vs 传统 PM）→ worker 全自动出片 **89.1s / 1080×1920 / 3.07MB**；挂载 **11 张卡**（核心 1＋辐射 10）；通知 **4 条 / 4 名学生**；`curl -r 0-1023` → **HTTP 206 + `Content-Range: bytes 0-1023/3220859`**（无 Range 时 200/全量，非 mp4 后缀 404）；`/api/videos` 只含 ready 且含本卡；**另一名学生（Winnie）读同卡拿到同一 `video_id`**（全局共享成立）。
 - **反证（真跑，记录退出码/观测值）**：① Range：媒体路由 `conditional=True` → `False` 后 `-r 0-1023` 返回 **200 ＋ 全量 3220859 字节、无 `Content-Range`**（断言会红），还原后 206；② 幂等：副本库把 `core_card_id UNIQUE` 从建表语句摘掉后同一卡连插 2 次得 **3 行**（「行数=1」断言会红），真库同卡 3 次请求仍 **1 行**；③ 上述两条已固化为 `make ui-audit` 断言（「幂等：3 次请求仅 1 行」/「媒体路由支持 Range（206 + Content-Range）」）。

@@ -1,0 +1,302 @@
+$ node scripts/video_ui_audit.js
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+  ✓ A12 linked card index exact (34)
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+AUDIT_PAGE {
+  hash: 'learn',
+  idx: true,
+  deck: false,
+  chapter: [ '2d91a36d-8c9a-4cef-aff5-05522e5209f3' ],
+  body: '知识卡片\n' +
+    '已选 1 章 · 共 573 张\n' +
+    '80\n' +
+    '5\n' +
+    '🔥\n' +
+    '0\n' +
+    '天\n' +
+    '0/30 卡 · 0/5 题\n' +
+    '今天还没打卡\n' +
+    '❄ 2\n' +
+    '开始复习（本次 100 张 · 上限 100）\n' +
+    '总览\n' +
+    '共 573 张 · 预计 20 天学完（每天 30 张） · 已掌握 0 · 学习中 0 · 未学 573 · 今日待复习 0 · 每次最多 100 张，学习记录长期累计\n' +
+    '第 3 章 ·'
+}
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+  ✓ A15 card topic groups visible
+  ✓ A14 card wall has visible entries; expanded card no-video badges=64
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+  ✗ A13 商业模式与求职方向: DOM has-video 0 != DB ready linked 6
+  ✗ A13 落地原则与场景数据: DOM has-video 0 != DB ready linked 10
+  ✗ A13 RAG与知识库: DOM has-video 0 != DB ready linked 11
+  ✓ A14 546 no-video badges visibly say ＋视频
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+  ✓ A15 complete rendered chapter/topic sets and order equal card topicGroups
+  ✓ A16 list link counts checked (4)
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+  ✓ A17 all reverse lists and chapter-topic destinations checked (4 videos)
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+  ✓ A18 chapter video N/M matches API aggregate
+  ✓ A18 every visible topic summary matches API aggregate
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+  ✓ Detail sheet always exposes manual video entry
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+A19_REQUESTS {"shown":0,"transitions":0,"requests":[["/api/videos",{"silent":true}],["/api/videos/index",{"silent":true}],["/api/knowledge/2d91a36d-8c9a-4cef-aff5-05522e5209f3",{"silent":true}],["/api/knowledge/2f757690-1d2c-4c52-86e8-84807e56f382",{"silent":true}],["/api/knowledge/cd62fa13-3dc6-4b41-bbce-c493b210245f",{"silent":true}],["/api/knowledge/d6213d0c-0c1d-406c-8aff-037a120618c8",{"silent":true}],["/api/notifications/unread",{"silent":true}]]}
+  ✓ A19 no global loading display transitions during page fetches
+A12-A19 browser checks captured against isolated data; RED mutation runs are managed by video_red_audit.py
+⚠ --profile ignored: daemon already running. Use 'agent-browser close' first to restart with new options.
+EXIT=1
