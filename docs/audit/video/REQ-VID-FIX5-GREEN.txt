@@ -1,0 +1,5 @@
+FAIL: 缺 scene 输出：/private/var/folders/g9/0_d44k015gqc2klwz76hdfjm0000gn/T/pytest-of-xicheng/pytest-407/test_reject_real_bad_media_mis0/S2.mp4
+.FAIL: scene S2 视频不足最小有效时长 1.70s
+.FAIL: 成片 audio 轨缺失或未覆盖配音
+.FAIL: 配音表与 scene 顺序不一致或重复
+..

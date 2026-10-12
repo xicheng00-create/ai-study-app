@@ -135,6 +135,8 @@ def check_style_drift():
     keys = set(re.findall(r"[\"']([A-Za-z_]+)[\"']\s*:", body))
     if not keys:
         die("script.py 的 KINDS 没有可解析的键")
+    # Frozen PM contract: renderer kinds missing from whitelist die; extra legacy
+    # whitelist styles only warn, preserving old card.json compatibility.
     missing = keys - STYLES
     if missing:
         die("script.py 的 KINDS 注册了 %s，但本文件 STYLES 白名单里没有"
@@ -162,6 +164,57 @@ def check_duration(proj, dur):
     if not 0.85 * want <= got <= 1.6 * want:
         die("成片时长异常：%.1fs，但配音合计 %.1fs（疑似截断或空片）" % (got, want))
     return want
+
+
+def _probe_streams(path):
+    result = subprocess.run(["ffprobe", "-v", "error", "-show_streams",
+                             "-of", "json", path], capture_output=True, text=True)
+    try:
+        if result.returncode:
+            raise ValueError(result.stderr.strip())
+        return json.loads(result.stdout)["streams"]
+    except (ValueError, KeyError) as exc:
+        die("无法探测媒体 %s：%s" % (path, exc))
+
+
+def _track_duration(stream):
+    try:
+        return float(stream["duration"])
+    except (KeyError, TypeError, ValueError):
+        die("媒体轨道缺有效时长")
+
+
+def check_scene_outputs(proj, video_dir, final):
+    """Each scene must cover its narration; final audio and video must cover both."""
+    try:
+        rows = json.load(open(os.path.join(proj, "durations.json"), encoding="utf-8"))
+        ids = [r["id"] for r in rows]
+        narration = json.load(open(os.path.join(proj, "narration.json"), encoding="utf-8"))
+        if not ids or ids != [r["id"] for r in narration["scenes"]] or len(ids) != len(set(ids)):
+            die("配音表与 scene 顺序不一致或重复")
+        want = sum(float(r["dur"]) for r in rows)
+        for row in rows:
+            sid = row["id"]
+            if not re.fullmatch(r"[0-9A-Za-z_]+", sid):
+                die("无效 scene id")
+            path = os.path.join(video_dir, sid + ".mp4")
+            if not os.path.isfile(path):
+                die("缺 scene 输出：%s" % path)
+            tracks = [t for t in _probe_streams(path) if t.get("codec_type") == "video"]
+            minimum = max(0.5, 0.85 * float(row["dur"]))
+            if not tracks or _track_duration(tracks[0]) < minimum:
+                die("scene %s 视频不足最小有效时长 %.2fs" % (sid, minimum))
+        streams = _probe_streams(final)
+        lengths = []
+        for kind in ("video", "audio"):
+            tracks = [t for t in streams if t.get("codec_type") == kind]
+            if not tracks or _track_duration(tracks[0]) < 0.85 * want:
+                die("成片 %s 轨缺失或未覆盖配音" % kind)
+            lengths.append(_track_duration(tracks[0]))
+        if abs(lengths[0] - lengths[1]) > max(0.25, 0.05 * want):
+            die("成片音视频轨覆盖不一致")
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        die("无效 scene 时长数据：%s" % exc)
 
 
 def seed_project(proj):
@@ -272,6 +325,7 @@ def main():
 
     # 时长体检：见 check_duration() 注释 ——「文件变新」不等于「不是废片」。
     check_duration(proj, dur)
+    check_scene_outputs(proj, os.path.join(proj, vdir), final)
 
     os.makedirs(args.out_dir, exist_ok=True)
     stamp = card.get("date") or time.strftime("%Y-%m-%d")

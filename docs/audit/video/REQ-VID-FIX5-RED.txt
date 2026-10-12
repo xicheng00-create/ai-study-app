@@ -1,0 +1,91 @@
+FFFF.                                                                    [100%]
+=================================== FAILURES ===================================
+_____________________ test_reject_real_bad_media[missing] ______________________
+
+tmp_path = PosixPath('/private/var/folders/g9/0_d44k015gqc2klwz76hdfjm0000gn/T/pytest-of-xicheng/pytest-406/test_reject_real_bad_media_mis0')
+bad = 'missing'
+
+    @pytest.mark.parametrize('bad', ['missing', 'short', 'no_audio', 'duplicate'])
+    def test_reject_real_bad_media(tmp_path, bad):
+        rows = [{'id': 'S1', 'dur': 2}, {'id': 'S2', 'dur': 2}]
+        (tmp_path / 'narration.json').write_text(json.dumps({'scenes': rows}))
+        (tmp_path / 'durations.json').write_text(json.dumps(rows if bad != 'duplicate' else [rows[0], rows[0]]))
+        media(tmp_path / 'S1.mp4', 2)
+        if bad != 'missing':
+            media(tmp_path / 'S2.mp4', 0.2 if bad == 'short' else 2)
+        media(tmp_path / 'final.mp4', 4, audio=bad != 'no_audio')
+        # All of these genuinely generated bad builds pass the old total-only gate.
+        assert check_duration(str(tmp_path), 4) == 4
+>       with pytest.raises(SystemExit):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE SystemExit
+
+tests/test_video_media_gate.py:30: Failed
+______________________ test_reject_real_bad_media[short] _______________________
+
+tmp_path = PosixPath('/private/var/folders/g9/0_d44k015gqc2klwz76hdfjm0000gn/T/pytest-of-xicheng/pytest-406/test_reject_real_bad_media_sho0')
+bad = 'short'
+
+    @pytest.mark.parametrize('bad', ['missing', 'short', 'no_audio', 'duplicate'])
+    def test_reject_real_bad_media(tmp_path, bad):
+        rows = [{'id': 'S1', 'dur': 2}, {'id': 'S2', 'dur': 2}]
+        (tmp_path / 'narration.json').write_text(json.dumps({'scenes': rows}))
+        (tmp_path / 'durations.json').write_text(json.dumps(rows if bad != 'duplicate' else [rows[0], rows[0]]))
+        media(tmp_path / 'S1.mp4', 2)
+        if bad != 'missing':
+            media(tmp_path / 'S2.mp4', 0.2 if bad == 'short' else 2)
+        media(tmp_path / 'final.mp4', 4, audio=bad != 'no_audio')
+        # All of these genuinely generated bad builds pass the old total-only gate.
+        assert check_duration(str(tmp_path), 4) == 4
+>       with pytest.raises(SystemExit):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE SystemExit
+
+tests/test_video_media_gate.py:30: Failed
+_____________________ test_reject_real_bad_media[no_audio] _____________________
+
+tmp_path = PosixPath('/private/var/folders/g9/0_d44k015gqc2klwz76hdfjm0000gn/T/pytest-of-xicheng/pytest-406/test_reject_real_bad_media_no_0')
+bad = 'no_audio'
+
+    @pytest.mark.parametrize('bad', ['missing', 'short', 'no_audio', 'duplicate'])
+    def test_reject_real_bad_media(tmp_path, bad):
+        rows = [{'id': 'S1', 'dur': 2}, {'id': 'S2', 'dur': 2}]
+        (tmp_path / 'narration.json').write_text(json.dumps({'scenes': rows}))
+        (tmp_path / 'durations.json').write_text(json.dumps(rows if bad != 'duplicate' else [rows[0], rows[0]]))
+        media(tmp_path / 'S1.mp4', 2)
+        if bad != 'missing':
+            media(tmp_path / 'S2.mp4', 0.2 if bad == 'short' else 2)
+        media(tmp_path / 'final.mp4', 4, audio=bad != 'no_audio')
+        # All of these genuinely generated bad builds pass the old total-only gate.
+        assert check_duration(str(tmp_path), 4) == 4
+>       with pytest.raises(SystemExit):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE SystemExit
+
+tests/test_video_media_gate.py:30: Failed
+____________________ test_reject_real_bad_media[duplicate] _____________________
+
+tmp_path = PosixPath('/private/var/folders/g9/0_d44k015gqc2klwz76hdfjm0000gn/T/pytest-of-xicheng/pytest-406/test_reject_real_bad_media_dup0')
+bad = 'duplicate'
+
+    @pytest.mark.parametrize('bad', ['missing', 'short', 'no_audio', 'duplicate'])
+    def test_reject_real_bad_media(tmp_path, bad):
+        rows = [{'id': 'S1', 'dur': 2}, {'id': 'S2', 'dur': 2}]
+        (tmp_path / 'narration.json').write_text(json.dumps({'scenes': rows}))
+        (tmp_path / 'durations.json').write_text(json.dumps(rows if bad != 'duplicate' else [rows[0], rows[0]]))
+        media(tmp_path / 'S1.mp4', 2)
+        if bad != 'missing':
+            media(tmp_path / 'S2.mp4', 0.2 if bad == 'short' else 2)
+        media(tmp_path / 'final.mp4', 4, audio=bad != 'no_audio')
+        # All of these genuinely generated bad builds pass the old total-only gate.
+        assert check_duration(str(tmp_path), 4) == 4
+>       with pytest.raises(SystemExit):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE SystemExit
+
+tests/test_video_media_gate.py:30: Failed
+=========================== short test summary info ============================
+FAILED tests/test_video_media_gate.py::test_reject_real_bad_media[missing] - ...
+FAILED tests/test_video_media_gate.py::test_reject_real_bad_media[short] - Fa...
+FAILED tests/test_video_media_gate.py::test_reject_real_bad_media[no_audio]
+FAILED tests/test_video_media_gate.py::test_reject_real_bad_media[duplicate]
