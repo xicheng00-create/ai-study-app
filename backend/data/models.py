@@ -390,14 +390,38 @@ def _add_column(con, table: str, column: str, ddl: str) -> bool:
 
 def migrate(con) -> None:
     """幂等迁移：老库补 status / 百分制评分模型列（DM-004/005/006）。"""
-    con.execute("""CREATE TABLE IF NOT EXISTS card_video_requests (
+    con.executescript("""
+    CREATE TABLE IF NOT EXISTS card_video_batches (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      card_ids_json TEXT NOT NULL, total INTEGER NOT NULL, created_at TEXT NOT NULL,
+      notified_at TEXT, status TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS card_video_batch_items (
+      batch_id TEXT NOT NULL REFERENCES card_video_batches(id) ON DELETE CASCADE,
+      card_id TEXT NOT NULL REFERENCES knowledge_cards(id) ON DELETE CASCADE,
+      video_id TEXT REFERENCES card_videos(id), PRIMARY KEY(batch_id,card_id)
+    );
+    CREATE TABLE IF NOT EXISTS card_video_daily_runs (
+      date TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      total INTEGER NOT NULL, queued INTEGER NOT NULL, skipped INTEGER NOT NULL,
+      ran_at TEXT NOT NULL, PRIMARY KEY(date,user_id)
+    );
+    CREATE TABLE IF NOT EXISTS card_video_links (
+      video_id TEXT NOT NULL REFERENCES card_videos(id) ON DELETE CASCADE,
+      card_id TEXT NOT NULL REFERENCES knowledge_cards(id) ON DELETE CASCADE,
+      is_core INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(video_id,card_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_cvl_card ON card_video_links(card_id);
+    CREATE INDEX IF NOT EXISTS idx_card_video_batch_user ON card_video_batches(user_id,created_at);
+    CREATE TABLE IF NOT EXISTS card_video_requests (
       id TEXT PRIMARY KEY, video_id TEXT NOT NULL REFERENCES card_videos(id) ON DELETE CASCADE,
       card_id TEXT NOT NULL REFERENCES knowledge_cards(id) ON DELETE CASCADE,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       source TEXT NOT NULL CHECK(source IN ('manual','batch','prewarm')),
       notify INTEGER NOT NULL DEFAULT 0, batch_id TEXT REFERENCES card_video_batches(id),
       created_at TEXT NOT NULL
-    )""")
+    );
+    """)
     for table in ("chapters", "materials"):
         _add_column(con, table, "status", "TEXT NOT NULL DEFAULT 'published'")
 

@@ -86,6 +86,7 @@ const Student = {
   practiceSessions: [],  // 练习历史列表
   practiceCount: 5,     // 每次练习题数
   knowledgeIdx: false, knowledgeDeck: false, knowledgeCards: [], knowledgeAllCards: [], knowledgePos: 0,
+  videoList: false, videoItems: [], videoOpen: {}, videoStates: {}, videoIndex: null, _videoPoll: null, _videoBatchId: null, _videoBatchTotal: 0, _videoBatchPending: null, _videoBatchToastId: null,
   kcDeckMax: 0,  // 单次复习卡组上限（服务端 config.SESSION_DECK_MAX 下发；前端不硬编码，缺字段兜底 100）
   knowledgeFlipped: false, knowledgeSwipe: null, knowledgeGroupOpen: {},  // 知识卡片列表页按章分组展开态（cid → bool）
   knowledgeTopicOpen: {},  // 章内主题组展开态（v2.7.0：键 = cid|主题下标，避免主题名含引号时拼串出错）
@@ -96,7 +97,6 @@ const Student = {
   selChapters: null,    // 学习多选集（hub 资料库勾选，localStorage 记忆；null=未初始化 → 全选）
   _kcBusy: false,       // 翻卡异步锁：飞出动画/提交期间防连点与重入
   learnChat: false,     // 学习 tab 子视图：true=对话页；false=学习主菜单（hub：对话/知识卡片两入口）
-  videoList: false, videoItems: [], videoOpen: {}, videoStates: {}, _videoPoll: null, _videoBatchId: null, _videoBatchTotal: 0,
   relatedVideos: [],   // 最近一次对话返回的相关视频课（CHAT-010）
   askCtx: null,        // 从「路径」进入提问时携带的 chapter_ids/concept_tags
   curriculum: null,
@@ -502,7 +502,9 @@ const Student = {
   async enterKnowledge() {
     const sel = this.selChapterIds();
     if (!sel.length) return toast('请先选择章节');
-    this.knowledgeIdx = true; this.knowledgeDeck = false; this._videoStop(); await render();
+    this.knowledgeIdx = true; this.knowledgeDeck = false; this._videoStop();
+    try { this.videoIndex = await API.get('/api/videos/index', { silent: true }); } catch (e) { this.videoIndex = { cards: {}, topics: {}, chapters: {} }; }
+    await render();
   },
   async viewKnowledge() {
     const sel = this.selChapterIds();
@@ -547,16 +549,23 @@ const Student = {
         const to = this.knowledgeTopicOpen[g.cid + '|' + ti] === true;
         const tcount = k => t.cards.filter(c => c.status === k).length;
         const tdue = t.cards.filter(c => this.kcDue(c)).length;
-        const mini = c => `<div class="kc-mini ${c.status}" onclick="Student.kcDetail('${c.id}')"><b>${esc(c.front)}</b><small>${esc(c.sub_concept || '知识点')}</small></div>`;
+        const mini = c => {
+          const video = this.videoIndex?.all_cards?.[c.id] || this.videoIndex?.cards?.[c.id];
+          const state = video?.status || 'none';
+          const badge = state === 'ready' ? '▶ 视频' : state === 'queued' || state === 'generating' ? '⏳ 生成中' : state === 'failed' ? '↻ 重试' : '＋视频';
+          return `<div class="kc-mini ${c.status}${state === 'ready' ? ' has-video' : ''}" onclick="Student.kcDetail('${c.id}')"><b>${esc(c.front)}</b><small>${esc(c.sub_concept || '知识点')}</small><button class="kc-video-badge" onclick="event.stopPropagation();Student.openCardVideo('${c.id}')">${badge}</button></div>`;
+        };
+        const topicVideo = this.videoIndex?.topics?.[g.cid + '|' + t.name];
         return `<div class="kc-topic">
           <div class="kc-topic-head" onclick="Student.toggleKnowledgeTopic('${g.cid}',${ti})">
-            <div style="flex:1"><b>${esc(t.name)}</b><small>${t.cards.length} 张 · 已掌握 ${tcount('mastered')} · 学习中 ${tcount('learning') + tcount('reviewing')} · 未学 ${tcount('new')}${tdue ? ` · 今日待复习 ${tdue}` : ''}</small></div>
+            <div style="flex:1"><b>${esc(t.name)}</b><small>${t.cards.length} 张 · 已掌握 ${tcount('mastered')} · 学习中 ${tcount('learning') + tcount('reviewing')} · 未学 ${tcount('new')}${tdue ? ` · 今日待复习 ${tdue}` : ''} · 视频 ${topicVideo?.videos || 0}/${topicVideo?.cards_total ?? t.cards.length} 卡</small></div>
             <span class="caret">${to ? '▾' : '▸'}</span></div>
           ${to ? `<div class="kc-grid">${t.cards.map(mini).join('')}</div>` : ''}</div>`;
       }).join('') : '';
+      const chapterVideo = this.videoIndex?.chapters?.[g.cid];
       return `<div class="kc-ch">
         <div class="kc-ch-head" onclick="Student.toggleKnowledgeGroup('${g.cid}')">
-          <div style="flex:1"><b>${esc(g.name)}</b><small>${gc.length} 张 · 预计 ${App.daysFor(gc.length)} 天学完 · 已掌握 ${gcount('mastered')} · 学习中 ${gcount('learning') + gcount('reviewing')} · 未学 ${gcount('new')} · 今日待复习 ${gdue}</small></div>
+          <div style="flex:1"><b>${esc(g.name)}</b><small>${gc.length} 张 · 预计 ${App.daysFor(gc.length)} 天学完 · 已掌握 ${gcount('mastered')} · 学习中 ${gcount('learning') + gcount('reviewing')} · 未学 ${gcount('new')} · 今日待复习 ${gdue} · 视频 ${chapterVideo?.videos || 0}/${chapterVideo?.cards_total ?? gc.length} 卡</small></div>
           <span class="caret">${open ? '▾' : '▸'}</span></div>
         ${open ? `<div class="kc-ch-body"><div class="muted" style="font-size:12px;margin:0 0 8px">共 ${tGroups.length} 个主题 · 点主题展开卡片</div>${tBody}</div>` : ''}</div>`;
     }).join('');
@@ -598,10 +607,15 @@ const Student = {
   },
   kcDetail(id) {
     const c = this._kcFind(id); if (!c) return;
+    const video = this.videoIndex?.all_cards?.[id] || this.videoIndex?.cards?.[id];
+    const state = video?.status || 'none';
+    const videoLabel = state === 'ready' ? '▶ 看 AI 视频讲解' : state === 'queued' || state === 'generating' ? '⏳ 视频生成中，完成后通知你' : state === 'failed' ? '↻ 重新生成视频' : '▶ 生成 AI 视频讲解';
+    const videoAction = state === 'ready' ? `Student.openVideoPlayer('${video.video_id}')` : (state === 'queued' || state === 'generating') ? '' : `Student.openCardVideo('${c.id}')`;
     openSheet(`<div class="row" style="font-weight:700;cursor:default;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${ic('cards')}知识卡片${c.chName ? `<span class="muted" style="font-size:12px;font-weight:500">${esc(c.chName)}</span>` : ''}${this.kcStatusBadge(c.status)}</div>
       <div class="muted">掌握度 ${c.mastery ? c.mastery.m + "%" : "未评估"} · ${c.mastery && c.mastery.acc != null ? "作答正确率 " + c.mastery.acc + "%" : "无练习证据"}</div>
       <div class="sheet-txt"><b>${esc(c.front)}</b></div>
       <div class="sheet-txt dim">${esc(c.back)}</div>
+      <div class="row" ${videoAction ? `onclick="${videoAction}"` : 'style="opacity:.65;cursor:default"'}>${ic('video')}${videoLabel}${video?.n_cards ? ` · 本片覆盖 ${video.n_cards} 张卡` : ''}</div>
       <div class="row" onclick="Student.askKcTutor('${c.id}')">${ic('chat')}去问 TUTOR · 就这个知识点深入讲解</div>
       <div class="row cancel" onclick="closeSheet()">关闭</div>`);
   },
@@ -702,10 +716,11 @@ const Student = {
     this.knowledgeCards = this.kcDeckOrder(all);   // 本次卡组（≤ kcDeckMax）
     const saved = this._kcLoad();
     if (saved && this._kcSavedMatch(saved) && saved.pos > 0 && saved.pos < this.knowledgeCards.length) {
-      this.resumeKnowledgeDeck();   // 一键续学：直接进到存档位置，去掉二次确认 sheet（resetKnowledgeDeck 仍可在卡组内重开）
+      this.resumeKnowledgeDeck();
       return;
     }
     this.knowledgePos = 0; this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
+    setTimeout(() => this._warmDeckVideos(), 0);
   },
   resumeKnowledgeDeck() {
     const saved = this._kcLoad(); closeSheet();
@@ -739,17 +754,61 @@ const Student = {
     <button class="btn ghost kc-quit" onclick="Student.pauseKnowledge()">${ic('back')}暂停退出（保存进度）</button></div>` + tabbar();
   },
   async enterVideos() {
-    try { this.videoItems = await API.get('/api/videos'); this.videoList = true; this.knowledgeIdx = false; this.knowledgeDeck = false; this._videoStop(); render(); }
+    try { this.videoItems = await API.get('/api/videos', { silent: true }); this.videoIndex = await API.get('/api/videos/index', { silent: true }); this.videoList = true; this.knowledgeIdx = false; this.knowledgeDeck = false; this._videoStop(); render(); }
     catch (e) { toast(e.message); }
   },
   viewVideos() {
-    const groups = {};
-    for (const v of this.videoItems) (groups[v.chapter_id] ||= { name: v.chapter_name, rows: [] }).rows.push(v);
-    const rows = Object.entries(groups).map(([id, group]) => `<div class="card sm mb-12">
-      <div class="lib-head" onclick="Student.videoOpen['${id}']=!Student.videoOpen['${id}'];render()"><b>${esc(group.name)}</b><span>${group.rows.length} 条 ›</span></div>
-      ${this.videoOpen[id] === false ? '' : group.rows.map(v => `<button class="home-card" onclick="Student.openVideoPlayer('${v.video_id}')">${ic('video')} ${esc(v.front)}${v.topic ? ` · ${esc(v.topic)}` : ''}</button>`).join('')}
-    </div>`).join('');
-    return appbar('AI 视频讲解', '已完成的视频', 'Student.videoList=false;render()') + `<div class="content">${rows || '<div class="card sm muted">暂无已生成的视频，从知识卡片点击「AI 视频讲解」开始生成</div>'}</div>` + tabbar();
+    const chapters = {};
+    for (const v of this.videoItems) {
+      const key = String(v.chapter_id);
+      const topic = v.topic || '全部卡片';
+      const chapter = chapters[key] ||= { name: v.chapter_name, videos: {} };
+      (chapter.videos[topic] ||= []).push(v);
+    }
+    const rows = Object.entries(chapters).map(([id, chapter]) => {
+      const names = Object.keys(chapter.videos);
+      const ordered = names.sort((a, b) => {
+        const ga = this.videoIndex?.topics?.[id + '|' + a], gb = this.videoIndex?.topics?.[id + '|' + b];
+        return (gb?.cards_total || 0) - (ga?.cards_total || 0) || (ga?.ord || 2147483647) - (gb?.ord || 2147483647);
+      });
+      const topics = ordered.map(name => `<section class="video-topic"><h4>${esc(name)}</h4>${chapter.videos[name].map(v => `<div class="home-card video-entry"><button class="video-play" onclick="Student.openVideoPlayer('${v.video_id}')">${ic('video')}<span><b>${esc(v.front)}</b><small>覆盖 ${v.n_cards} 张卡 · ${esc(v.duration_s ? Math.round(v.duration_s) + ' 秒' : '时长未知')}${v.adjacent_cards ? ` · 另含 ${v.adjacent_cards} 张相邻卡` : ''}</small></span></button><button class="video-related" onclick="Student.openVideoCards('${v.video_id}')">相关卡片 (${v.n_cards})</button></div>`).join('')}</section>`).join('');
+      return `<div class="card sm mb-12"><div class="lib-head" onclick="Student.videoOpen['${id}']=!Student.videoOpen['${id}'];render()"><b>${esc(chapter.name)}</b><span>${Object.values(chapter.videos).reduce((n, a) => n + a.length, 0)} 条 ›</span></div>${this.videoOpen[id] === false ? '' : topics}</div>`;
+    }).join('');
+    return appbar('AI 视频讲解', '按章节与主题浏览', 'Student.videoList=false;render()') + `<div class="content">${rows || '<div class="card sm muted">暂无已生成的视频，从知识卡片点击「AI 视频讲解」开始生成</div>'}</div>` + tabbar();
+  },
+  async openVideoCards(videoId) {
+    try {
+      const cards = await API.get(`/api/videos/${encodeURIComponent(videoId)}/cards`);
+      this._relatedVideoId = videoId;
+      openSheet(`<div class="row" style="font-weight:700">相关知识卡片（${cards.length}）</div>${cards.map(c => `<button class="home-card" onclick="Student.openRelatedCard('${c.id}')">${c.is_core ? '核心卡 · ' : ''}${esc(c.front)}${c.sub_concept ? ` · ${esc(c.sub_concept)}` : ''}<small>${esc(c.topic || '全部卡片')}</small></button>`).join('')}<div class="row cancel" onclick="closeSheet()">关闭</div>`);
+    } catch (e) { toast(e.message); }
+  },
+  async openRelatedCard(id) {
+    closeSheet();
+    let card = this._kcFind(id);
+    if (!card) {
+      const related = await API.get(`/api/videos/${encodeURIComponent(this._relatedVideoId || '')}/cards`).catch(() => []);
+      const match = related.find(c => c.id === id);
+      if (!match) return toast('未找到对应知识卡片');
+      this.selChapters = [match.chapter_id]; this.saveSelChapters();
+      const data = await API.get(`/api/knowledge/${encodeURIComponent(match.chapter_id)}`).catch(() => null);
+      if (data) {
+        const chapterName = App.chapterName(match.chapter_id);
+        data.cards.forEach(item => { item.chName = chapterName; });
+        this.knowledgeGroups = [{ cid: match.chapter_id, name: chapterName, cards: data.cards }];
+        this.knowledgeCards = data.cards; this.knowledgeAllCards = data.cards;
+        this.knowledgeIdx = true; this.knowledgeDeck = false;
+      }
+      await render();
+      card = this._kcFind(id);
+    }
+    if (card) {
+      const groups = this.topicGroups(this.knowledgeGroups.find(group => group.cid === card.chapter_id)?.cards || []);
+      const topicIndex = groups.findIndex(group => group.cards.some(item => item.id === id));
+      this.knowledgeGroupOpen[card.chapter_id] = true;
+      if (topicIndex >= 0) this.knowledgeTopicOpen[card.chapter_id + '|' + topicIndex] = true;
+      this.kcDetail(id);
+    } else toast('知识卡片已定位到对应章节与主题');
   },
   _videoPaint(cardId, status) {
     const button = cardId ? document.querySelector('.kc-video') : null;
@@ -759,7 +818,10 @@ const Student = {
       button.classList.toggle('failed', status === 'failed');
     }
     const label = document.getElementById('videoBatchProgress');
-    if (label && this._videoBatchTotal) label.textContent = `AI 视频 ${this._videoBatchReady || 0}/${this._videoBatchTotal}`;
+    if (label && this._videoBatchTotal) {
+      label.textContent = `AI 视频 ${this._videoBatchReady || 0}/${this._videoBatchTotal}`;
+      if (this._videoBatchPending === 0) label.textContent += ' · 已终结';
+    }
   },
   _videoStop() {
     if (this._videoPoll) clearInterval(this._videoPoll);
@@ -782,10 +844,17 @@ const Student = {
       if (this._videoBatchId) {
         try {
           const batch = await API.get(`/api/videos/batch/${encodeURIComponent(this._videoBatchId)}`, { silent: true });
+          this._videoBatchPending = batch.pending;
           this._videoBatchReady = batch.ready;
           this._videoBatchTotal = batch.total;
           this._videoPaint(null, null);
-          if (!batch.pending) this._videoBatchId = null;
+          if (!batch.pending) {
+            this._videoBatchId = null;
+            if (batch.skipped !== batch.total && this._videoBatchToastId !== batch.batch_id) {
+              this._videoBatchToastId = batch.batch_id;
+              toast(`今日卡组 AI 视频已就绪：${batch.ready} 张可观看`);
+            }
+          }
         } catch (e) { /* 下一周期重试 */ }
       }
       if (!this.knowledgeDeck || (!this._videoBatchId && !this.knowledgeCards.some(c => ['queued', 'generating'].includes(this.videoStates[c.id])))) this._videoStop();
@@ -797,9 +866,10 @@ const Student = {
     try {
       const batch = await API.post('/api/videos/batch', { card_ids: ids }, { silent: true });
       this._videoBatchId = batch.batch_id;
-      this._videoBatchTotal = batch.total;
       this._videoBatchReady = batch.ready;
-      this.knowledgeCards.forEach(c => { this.videoStates[c.id] = 'queued'; });
+      this._videoBatchTotal = batch.total;
+      this._videoBatchPending = batch.pending;
+      this.videoStates = Object.fromEntries(this.knowledgeCards.map(c => [c.id, batch.pending ? 'queued' : (this.videoIndex?.cards?.[c.id]?.status || 'ready')]));
       const label = document.getElementById('videoBatchProgress');
       if (label) { label.hidden = false; label.textContent = `AI 视频 ${batch.ready}/${batch.total}`; }
       this._videoStart();

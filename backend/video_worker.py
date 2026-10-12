@@ -89,24 +89,40 @@ def render(con, row):
 
 
 def _notify_video_requests(con, video_id):
+    # manual 单卡请求仍单独通知请求者。
     rows = con.execute("SELECT * FROM card_video_requests WHERE video_id=? AND notify=1 ORDER BY created_at", (video_id,)).fetchall()
     for req in rows:
         if req["source"] == "manual":
             notify_users(con, [req["user_id"]], "card_video_ready", "AI 视频讲解已完成", "点击观看", ref_kind="card_video", ref_id=video_id)
             con.execute("UPDATE card_video_requests SET notify=2 WHERE id=?", (req["id"],))
             con.commit()
-        elif req["source"] == "batch" and req["batch_id"]:
-            remaining = con.execute("SELECT COUNT(*) FROM card_video_batch_items i JOIN card_videos v ON v.id=i.video_id WHERE i.batch_id=? AND v.status IN ('queued','generating')", (req["batch_id"],)).fetchone()[0]
-            already = con.execute("SELECT notified_at FROM card_video_batches WHERE id=?", (req["batch_id"],)).fetchone()
-            if not remaining and already and not already["notified_at"]:
-                total = con.execute("SELECT COUNT(*) FROM card_video_batch_items WHERE batch_id=?", (req["batch_id"],)).fetchone()[0]
-                if not total:
-                    continue
-                counts = con.execute("SELECT SUM(v.status='ready') ready,SUM(v.status='failed') failed FROM card_video_batch_items i JOIN card_videos v ON v.id=i.video_id WHERE i.batch_id=?", (req["batch_id"],)).fetchone()
-                notify_users(con, [req["user_id"]], "card_video_batch_ready", "今日卡组 AI 视频已就绪", f"{int(counts['ready'] or 0)} 张已就绪 · {int(counts['failed'] or 0)} 张失败，点开即可观看", ref_kind="card_videos", ref_id=req["batch_id"])
-                con.execute("UPDATE card_video_batches SET notified_at=? WHERE id=?", (models.utcnow(), req["batch_id"]))
-                con.execute("UPDATE card_video_requests SET notify=2 WHERE batch_id=? AND source='batch'", (req["batch_id"],))
-                con.commit()
+
+    # 按每个未通知批次的完整原始卡集结算；触发者不必是最后一张卡的请求来源。
+    batches = con.execute("SELECT * FROM card_video_batches WHERE status='active' AND notified_at IS NULL").fetchall()
+    for batch in batches:
+        card_ids = json.loads(batch["card_ids_json"])
+        ready = failed = pending = 0
+        for card_id in card_ids:
+            card = con.execute("SELECT status FROM card_videos WHERE core_card_id=?", (card_id,)).fetchone()
+            if card is None:
+                pending += 1
+            elif card["status"] == "ready":
+                ready += 1
+            elif card["status"] == "failed":
+                failed += 1
+            else:
+                pending += 1
+        if pending:
+            continue
+        # 全 ready 的批次是纯 skip，不发通知；存在失败也属于批次完成，发一次总结。
+        if ready + failed:
+            notify_users(con, [batch["user_id"]], "card_video_batch_ready", "今日卡组 AI 视频已就绪",
+                         f"{ready} 张已就绪 · {failed} 张失败，点开即可观看",
+                         ref_kind="card_videos", ref_id=batch["id"])
+        con.execute("UPDATE card_video_batches SET notified_at=?,status='complete' WHERE id=? AND notified_at IS NULL",
+                    (models.utcnow(), batch["id"]))
+        con.execute("UPDATE card_video_requests SET notify=2 WHERE batch_id=? AND source='batch'", (batch["id"],))
+        con.commit()
 
 
 def process(con, row):
