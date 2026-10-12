@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from ai import knowledge
+from app import create_app
 from conftest import login, make_student
 from data import models
 from data.db import get_db
@@ -48,7 +49,7 @@ def test_batch_api_dedup_idempotency_and_permissions(client, teacher_headers, mo
     with client.application.app_context():
         before = get_db().execute('SELECT count(*) FROM card_videos').fetchone()[0]
     response = client.post('/api/videos/batch', json={'card_ids': ids[:3]}, headers=student); assert response.status_code == 200
-    data = response.get_json()['data']; assert data['skipped'] == 1 and data['queued'] == 1 and data['pending'] == 2
+    data = response.get_json()['data']; assert data['skipped'] == 1 and data['queued'] == 1 and data['pending'] == 2, 'A3 dedup bucket counts'
     with client.application.app_context():
         assert get_db().execute('SELECT count(*) FROM card_videos').fetchone()[0] - before == 1
         assert get_db().execute('SELECT count(*) FROM card_video_batch_items WHERE batch_id=?', (data['batch_id'],)).fetchone()[0] == 2
@@ -145,7 +146,85 @@ def test_video_listing_adjacent_topics_fields(client, teacher_headers, monkeypat
     assert index['cards'][cards[1]['id']]['n_cards'] == 2
 
 
-def test_video_index_card_link_set_and_core_flags(client, teacher_headers, monkeypatch):
+
+def test_prewarm_daily_idempotency_and_exact_deck(monkeypatch, client, teacher_headers):
+    import video_worker
+    from data import checkin
+    chapter = client.post('/api/chapters', json={'name': '预热章'}, headers=teacher_headers).get_json()['data']['id']
+    make_student(client, teacher_headers, 'warmstudent')
+    uid = login(client, 'warmstudent', 'student123')
+    student = {'Authorization': 'Bearer ' + uid}
+    monkeypatch.setattr(knowledge, 'generate_knowledge_cards', lambda ids: [{'front': f'预热{i}', 'back': '解', 'sub_concept': '主题'} for i in range(3)])
+    cards = client.post('/api/knowledge/generate', json={'chapter_ids': [chapter]}, headers=student).get_json()['data']['cards']
+    ids = [c['id'] for c in cards]
+    day = '2099-01-02'
+    calls = []
+    monkeypatch.setattr(video_worker.timeutil, 'today_str', lambda: day)
+    monkeypatch.setattr(video_worker.checkin, 'build_today_deck', lambda con, user_id, limit, mode: calls.append((limit, mode)) or {'cards': [{'id': cid} for cid in ids]})
+    with client.application.app_context():
+        con = get_db()
+        before = con.execute('SELECT count(*) FROM card_videos').fetchone()[0]
+        video_worker.warm_today_decks(con)
+        first = con.execute('SELECT count(*) FROM card_videos').fetchone()[0] - before
+        video_worker.warm_today_decks(con)
+        after = con.execute('SELECT count(*) FROM card_videos').fetchone()[0] - before
+        runs = con.execute('SELECT count(*) FROM card_video_daily_runs WHERE date=?', (day,)).fetchone()[0]
+        queued = {r[0] for r in con.execute("SELECT core_card_id FROM card_videos WHERE status='queued'")}
+        notes = con.execute("SELECT count(*) FROM notifications WHERE type LIKE 'card_video%'").fetchone()[0]
+    assert calls == [(30, 'task')]
+    assert first == len(ids) and after == first and runs == 1
+    assert queued == set(ids) and notes == 0
+
+
+def test_prewarm_uses_task_deck_card_set(monkeypatch, client):
+    import video_worker
+    from data import checkin
+    calls = []
+    monkeypatch.setattr(video_worker.timeutil, 'today_str', lambda: '2099-01-03')
+    monkeypatch.setattr(video_worker.checkin, 'build_today_deck', lambda con, user_id, limit, mode: calls.append((user_id, limit, mode)) or {'cards': []})
+    with client.application.app_context():
+        con = get_db()
+        # 测试 fixture 可能没有 active student，直接构造一个观察调用的用户行。
+        con.execute("INSERT OR IGNORE INTO users(id,username,password_hash,role,is_active,display_name,created_at) VALUES('warm-user','warm-user','x','student',1,'Warm','2099')")
+        con.commit()
+        video_worker.warm_today_decks(con)
+    assert calls and all(limit == 30 and mode == 'task' for _, limit, mode in calls)
+
+
+def test_manual_notification_and_prewarm_dedup(client, teacher_headers, monkeypatch):
+    import video_worker
+    chapter = client.post('/api/chapters', json={'name': '入口章'}, headers=teacher_headers).get_json()['data']['id']
+    make_student(client, teacher_headers, 'entrystudent')
+    student = {'Authorization': 'Bearer ' + login(client, 'entrystudent', 'student123')}
+    monkeypatch.setattr(knowledge, 'generate_knowledge_cards', lambda ids: [{'front': '入口卡', 'back': '解', 'sub_concept': '主题'}])
+    card = client.post('/api/knowledge/generate', json={'chapter_ids': [chapter]}, headers=student).get_json()['data']['cards'][0]['id']
+    with client.application.app_context():
+        con = get_db(); vid = models.new_id()
+        con.execute("INSERT INTO card_videos(id,core_card_id,chapter_id,status,title,requested_at) VALUES(?,?,?,'queued','入口卡',?)", (vid, card, chapter, models.utcnow()))
+        con.execute("INSERT INTO card_video_requests(id,video_id,card_id,user_id,source,notify,created_at) VALUES(?,?,?,?, 'prewarm',0,?)", (models.new_id(), vid, card, con.execute("SELECT id FROM users WHERE username='entrystudent'").fetchone()[0], models.utcnow()))
+        con.commit()
+    got = client.post(f'/api/videos/card/{card}/request', headers=student).get_json()['data']
+    assert got['video_id'] == vid
+    with client.application.app_context():
+        con = get_db(); con.execute("UPDATE card_videos SET status='ready',file_name='stub.mp4' WHERE id=?", (vid,)); con.commit(); video_worker._notify_video_requests(con, vid)
+        notes = con.execute("SELECT type,user_id FROM notifications WHERE type='card_video_ready'").fetchall()
+        total = con.execute('SELECT count(*) FROM card_videos WHERE core_card_id=?', (card,)).fetchone()[0]
+    assert len(notes) == 1 and total == 1
+
+
+def test_manual_requests_create_one_notification(client, teacher_headers, monkeypatch):
+    chapter = client.post('/api/chapters', json={'name': '单卡通知章'}, headers=teacher_headers).get_json()['data']['id']
+    make_student(client, teacher_headers, 'manualstudent')
+    student = {'Authorization': 'Bearer ' + login(client, 'manualstudent', 'student123')}
+    monkeypatch.setattr(knowledge, 'generate_knowledge_cards', lambda ids: [{'front': '单卡', 'back': '解', 'sub_concept': '主题'}])
+    card = client.post('/api/knowledge/generate', json={'chapter_ids': [chapter]}, headers=student).get_json()['data']['cards'][0]['id']
+    vid = client.post(f'/api/videos/card/{card}/request', headers=student).get_json()['data']['video_id']
+    with client.application.app_context():
+        con = get_db(); con.execute("UPDATE card_videos SET status='ready',file_name='stub.mp4' WHERE id=?", (vid,)); con.commit()
+        import video_worker; video_worker._notify_video_requests(con, vid); video_worker._notify_video_requests(con, vid)
+        n = con.execute("SELECT count(*) FROM notifications WHERE type='card_video_ready'").fetchone()[0]
+    assert n == 1
+
     chapter = client.post('/api/chapters', json={'name': '链接集合章'}, headers=teacher_headers).get_json()['data']['id']
     make_student(client, teacher_headers, 'linksetstudent')
     student = {'Authorization': 'Bearer ' + login(client, 'linksetstudent', 'student123')}

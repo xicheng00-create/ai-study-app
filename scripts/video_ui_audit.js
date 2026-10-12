@@ -16,7 +16,9 @@ function loadEnv(){for(const l of (fs.existsSync(path.join(ROOT,'.env'))?fs.read
 
   const token=py(`import os,sys;sys.path.insert(0,os.environ.get('UI_AUDIT_SOURCE_ROOT','')+'/backend' if os.environ.get('UI_AUDIT_SOURCE_ROOT') else 'backend');from app import create_app;from auth.jwt_utils import make_token;from data.db import get_db
 with create_app('development').app_context():
- r=get_db().execute("SELECT id,role FROM users WHERE role='student' AND is_active=1 ORDER BY id LIMIT 1").fetchone();print(make_token(r['id'],r['role']))`);
+ r=get_db().execute("SELECT id,role FROM users WHERE role='student' AND is_active=1 ORDER BY id LIMIT 1").fetchone()
+ if r: print(make_token(r['id'],r['role']))
+ else: print(make_token('audit-student','student'))`);
   ab(['open',`${base}/?audit=${Date.now()}#learn`]);ab(['eval',`(async()=>{for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister();for(const k of await caches.keys())await caches.delete(k)})()`]);ab(['wait','500']);ab(['eval',`localStorage.setItem('aistudy_token',${JSON.stringify(token)});location.reload()`]);ab(['wait','--fn',"document.querySelector('.home-card')!==null"]);
   const auth={Authorization:`Bearer ${token}`};
   // Snapshot source DB truth for the isolated replica and compare against browser API.
@@ -108,13 +110,25 @@ c=sqlite3.connect(os.environ['DATABASE_PATH']);r=c.execute("SELECT kc.chapter_id
     if(!sheet.text.includes('生成 AI 视频讲解'))fail('A20 detail sheet lacks manual video entry');else pass('Detail sheet always exposes manual video entry');
     ab(['eval','closeSheet()']);
   }else fail('Detail sheet test has no no-video card fixture');
-  // A19 request functions are instrumented at runtime: any non-silent API request while loading layer appears fails.
-  ab(['wait','500']);
+  // A1/A2: force one shared polling callback and observe loading/DOM/state invariants.
+  ab(['eval',`Student.knowledgeCards=[{id:${JSON.stringify(truth[0].card_id)},front:'轮询卡',back:'答案'}];Student.knowledgePos=0;Student.knowledgeFlipped=false;Student.videoStates={${JSON.stringify(truth[0].card_id)}:'queued'};Student.knowledgeDeck=true;render()`]);
+  ab(['wait','--fn',"document.querySelector('.kc-card')!==null"]);
+  ab(['eval',`window.__pollRoot=document.querySelector('.kc-card');window.__pollLoad=0;window.__pollObs=new MutationObserver(()=>{if(document.querySelector('.global-loading.show'))window.__pollLoad++});window.__pollObs.observe(document.body,{subtree:true,attributes:true,childList:true});window.__oldSetInterval=window.setInterval;window.setInterval=(fn)=>{window.__pollFn=fn;return 1};Student._videoStart();window.setInterval=window.__oldSetInterval`]);
+  ab(['wait','300']);
+  ab(['eval',`(async()=>{await window.__pollFn()})()`]);
+  ab(['wait','300']);
+  const poll=page(`JSON.stringify({load:window.__pollLoad||0,stable:document.querySelector('.kc-card')===window.__pollRoot,pos:Student.knowledgePos,flip:Student.knowledgeFlipped})`);
+  if(poll.load!==0)fail(`A1 silent poll showed global loading ${poll.load} times`);else pass('A1 shared poll remains silent');
+  if(!poll.stable||poll.pos!==0||poll.flip!==false)fail('A2 poll replaced card DOM or changed review state');else pass('A2 poll preserves card DOM and review state');
+  ab(['eval',`Student._videoStop()`]);
+
   ab(['eval',`window.__requests=[];window.__oldGet=API.get;API.get=(p,o)=>{window.__requests.push([p,o]);return window.__oldGet(p,o)};window.__globalLoadingShows=0;window.__loadingObs=new MutationObserver(()=>{if(document.querySelector('.global-loading.show'))window.__globalLoadingShows++});window.__loadingObs.observe(document.body,{subtree:true,attributes:true,attributeFilter:['class'],childList:true})`]);
   const loadingBefore=page(`JSON.stringify(document.querySelectorAll('.global-loading.show').length)`);
   ab(['eval',`Student.enterVideos()`]);ab(['wait','--fn',"document.querySelector('.video-entry')!==null || document.body.innerText.includes('暂无已生成的视频')"]);
   const loadingAfter=page(`JSON.stringify({shown:document.querySelectorAll('.global-loading.show').length,transitions:window.__globalLoadingShows||0,requests:window.__requests})`);
   console.log('A19_REQUESTS',JSON.stringify(loadingAfter));
+  const indexReq=loadingAfter.requests.find(x=>x[0]==='/api/videos/index');
+  if(!indexReq || !indexReq[1] || indexReq[1].silent!==true) fail('A9 batch/index request is not silent'); else pass('A9 batch/index request remains silent');
   if(loadingBefore||loadingAfter.shown||loadingAfter.transitions)fail(`A19 global loading visible/transition count (${loadingBefore}→${loadingAfter.shown}, transitions=${loadingAfter.transitions})`);else pass('A19 no global loading display transitions during page fetches');
   out('A12-A19 browser checks captured against isolated data; RED mutation runs are managed by video_red_audit.py');
  }finally{try{ab(['close']);}catch{}if(bootChild)bootChild.kill('SIGTERM');if(bootDir)fs.rmSync(bootDir,{recursive:true,force:true});fs.rmSync(profile,{recursive:true,force:true});}

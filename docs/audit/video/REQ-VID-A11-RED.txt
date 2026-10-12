@@ -1,0 +1,35 @@
+$ /Users/xicheng/WorkBuddy/AI学习小组app/.venv/bin/pytest -c /Users/xicheng/WorkBuddy/AI学习小组app/pytest.ini -q tests/test_videos.py::test_manual_notification_and_prewarm_dedup --no-cov
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__________________ test_manual_notification_and_prewarm_dedup __________________
+
+client = <FlaskClient <Flask 'app'>>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmNzg1YjA5OS1kMThhLTQ0ZjItOGFmYy1iNDY1NjgyYzMyZTUiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgxOTUyOSwiZXhwIjoxNzkxODYyNzI5fQ.1gWo-Eai8CPZVAbr_Mowsge1PLn25dPS-7LZpo4yPHo'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109da4510>
+
+    def test_manual_notification_and_prewarm_dedup(client, teacher_headers, monkeypatch):
+        import video_worker
+        chapter = client.post('/api/chapters', json={'name': '入口章'}, headers=teacher_headers).get_json()['data']['id']
+        make_student(client, teacher_headers, 'entrystudent')
+        student = {'Authorization': 'Bearer ' + login(client, 'entrystudent', 'student123')}
+        monkeypatch.setattr(knowledge, 'generate_knowledge_cards', lambda ids: [{'front': '入口卡', 'back': '解', 'sub_concept': '主题'}])
+        card = client.post('/api/knowledge/generate', json={'chapter_ids': [chapter]}, headers=student).get_json()['data']['cards'][0]['id']
+        with client.application.app_context():
+            con = get_db(); vid = models.new_id()
+            con.execute("INSERT INTO card_videos(id,core_card_id,chapter_id,status,title,requested_at) VALUES(?,?,?,'queued','入口卡',?)", (vid, card, chapter, models.utcnow()))
+            con.execute("INSERT INTO card_video_requests(id,video_id,card_id,user_id,source,notify,created_at) VALUES(?,?,?,?, 'prewarm',0,?)", (models.new_id(), vid, card, con.execute("SELECT id FROM users WHERE username='entrystudent'").fetchone()[0], models.utcnow()))
+            con.commit()
+        got = client.post(f'/api/videos/card/{card}/request', headers=student).get_json()['data']
+        assert got['video_id'] == vid
+        with client.application.app_context():
+            con = get_db(); con.execute("UPDATE card_videos SET status='ready',file_name='stub.mp4' WHERE id=?", (vid,)); con.commit(); video_worker._notify_video_requests(con, vid)
+            notes = con.execute("SELECT type,user_id FROM notifications WHERE type='card_video_ready'").fetchall()
+            total = con.execute('SELECT count(*) FROM card_videos WHERE core_card_id=?', (card,)).fetchone()[0]
+>       assert len(notes) == 1 and total == 1
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+tests/test_videos.py:212: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../../../../../../Users/xicheng/WorkBuddy/AI学习小组app::test_manual_notification_and_prewarm_dedup
+EXIT=1

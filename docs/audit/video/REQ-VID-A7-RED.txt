@@ -1,0 +1,50 @@
+$ /Users/xicheng/WorkBuddy/AI学习小组app/.venv/bin/pytest -c /Users/xicheng/WorkBuddy/AI学习小组app/pytest.ini -q tests/test_videos.py::test_prewarm_daily_idempotency_and_exact_deck --no-cov
+F                                                                        [100%]
+=================================== FAILURES ===================================
+________________ test_prewarm_daily_idempotency_and_exact_deck _________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b8c4510>
+client = <FlaskClient <Flask 'app'>>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMzhlNjVkZS1kYTcxLTQwMTQtYTZiOC0xOGYwZGRiOWE4OTMiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMDkxMSwiZXhwIjoxNzkxODY0MTExfQ.I3CA3IO5V4gadvdMj9LJMvZArCgjsdzOvNxy8ycUg-U'}
+
+    def test_prewarm_daily_idempotency_and_exact_deck(monkeypatch, client, teacher_headers):
+        import video_worker
+        from data import checkin
+        chapter = client.post('/api/chapters', json={'name': '预热章'}, headers=teacher_headers).get_json()['data']['id']
+        make_student(client, teacher_headers, 'warmstudent')
+        uid = login(client, 'warmstudent', 'student123')
+        student = {'Authorization': 'Bearer ' + uid}
+        monkeypatch.setattr(knowledge, 'generate_knowledge_cards', lambda ids: [{'front': f'预热{i}', 'back': '解', 'sub_concept': '主题'} for i in range(3)])
+        cards = client.post('/api/knowledge/generate', json={'chapter_ids': [chapter]}, headers=student).get_json()['data']['cards']
+        ids = [c['id'] for c in cards]
+        day = '2099-01-02'
+        calls = []
+        monkeypatch.setattr(video_worker.timeutil, 'today_str', lambda: day)
+        monkeypatch.setattr(video_worker.checkin, 'build_today_deck', lambda con, user_id, limit, mode: calls.append((limit, mode)) or {'cards': [{'id': cid} for cid in ids]})
+        with client.application.app_context():
+            con = get_db()
+            before = con.execute('SELECT count(*) FROM card_videos').fetchone()[0]
+            video_worker.warm_today_decks(con)
+            first = con.execute('SELECT count(*) FROM card_videos').fetchone()[0] - before
+            video_worker.warm_today_decks(con)
+            after = con.execute('SELECT count(*) FROM card_videos').fetchone()[0] - before
+            runs = con.execute('SELECT count(*) FROM card_video_daily_runs WHERE date=?', (day,)).fetchone()[0]
+            queued = {r[0] for r in con.execute("SELECT core_card_id FROM card_videos WHERE status='queued'")}
+            notes = con.execute("SELECT count(*) FROM notifications WHERE type LIKE 'card_video%'").fetchone()[0]
+>       assert calls == [(30, 'task')]
+E       AssertionError: assert [(30, 'task'), (30, 'task')] == [(30, 'task')]
+E         
+E         Left contains one more item: (30, 'task')
+E         Use -v to get more diff
+
+tests/test_videos.py:174: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    video_worker:video_worker.py:189 daily_warmup failed date=2099-01-02 user_id=2254300a-4eac-4f68-82db-5c111264f6a4 queued=0 skipped=3 elapsed_s=0.000
+Traceback (most recent call last):
+  File "/private/var/folders/g9/0_d44k015gqc2klwz76hdfjm0000gn/T/vid-A7-42lk8fm5/repo/tests/../backend/video_worker.py", line 181, in warm_today_decks
+    con.execute("INSERT INTO card_video_daily_runs(date,user_id,total,queued,skipped,ran_at) VALUES(?,?,?,?,?,?)", (day, uid, len(ids), queued, skipped, models.utcnow()))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.IntegrityError: UNIQUE constraint failed: card_video_daily_runs.date, card_video_daily_runs.user_id
+=========================== short test summary info ============================
+FAILED ../../../../../../../../Users/xicheng/WorkBuddy/AI学习小组app::test_prewarm_daily_idempotency_and_exact_deck
+EXIT=1

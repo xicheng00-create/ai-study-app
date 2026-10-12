@@ -1,0 +1,29 @@
+$ /Users/xicheng/WorkBuddy/AI学习小组app/.venv/bin/pytest -c /Users/xicheng/WorkBuddy/AI学习小组app/pytest.ini -q tests/test_videos.py::test_batch_notification_exactly_once --no-cov
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_____________________ test_batch_notification_exactly_once _____________________
+
+client = <FlaskClient <Flask 'app'>>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0ZjY4YWMzNy0yYjU3LTRhOTMtODdjNC03MGQ4Y2M4MTg2NDEiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMDkwOSwiZXhwIjoxNzkxODY0MTA5fQ.nPFHhXhnq2tCxSL15MiwfLPMdLjC2A6Xqm3_FIt_05A'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a370510>
+
+    def test_batch_notification_exactly_once(client, teacher_headers, monkeypatch):
+        import video_worker
+        chapter = client.post('/api/chapters', json={'name': '通知章'}, headers=teacher_headers).get_json()['data']['id']
+        make_student(client, teacher_headers, 'batchnotify'); student = {'Authorization': 'Bearer ' + login(client, 'batchnotify', 'student123')}
+        monkeypatch.setattr(knowledge, 'generate_knowledge_cards', lambda ids: [{'front': f'通知{i}', 'back': '解', 'sub_concept': '主题'} for i in range(3)])
+        cards = client.post('/api/knowledge/generate', json={'chapter_ids': [chapter]}, headers=student).get_json()['data']['cards']; ids = [c['id'] for c in cards]
+        batch = client.post('/api/videos/batch', json={'card_ids': ids}, headers=student).get_json()['data']
+        with client.application.app_context():
+            con = get_db()
+            for idx, cid in enumerate(ids):
+                vid = con.execute('SELECT id FROM card_videos WHERE core_card_id=?', (cid,)).fetchone()['id']
+                con.execute("UPDATE card_videos SET status='ready',file_name='stub.mp4' WHERE id=?", (vid,)); video_worker._notify_video_requests(con, vid)
+                count = con.execute("SELECT count(*) FROM notifications WHERE type='card_video_batch_ready'").fetchone()[0]
+>               assert count == (1 if idx == 2 else 0)
+E               assert 0 == 1
+
+tests/test_videos.py:77: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../../../../../../Users/xicheng/WorkBuddy/AI学习小组app::test_batch_notification_exactly_once
+EXIT=1

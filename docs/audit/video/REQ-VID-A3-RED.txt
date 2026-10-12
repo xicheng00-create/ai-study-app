@@ -1,0 +1,31 @@
+$ /Users/xicheng/WorkBuddy/AI学习小组app/.venv/bin/pytest -c /Users/xicheng/WorkBuddy/AI学习小组app/pytest.ini -q tests/test_videos.py::test_batch_api_dedup_idempotency_and_permissions --no-cov
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______________ test_batch_api_dedup_idempotency_and_permissions _______________
+
+client = <FlaskClient <Flask 'app'>>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4M2M5YWM3NC1hNTNmLTQzNGQtOGQ0ZC04YzE0NGZhZWE5NjYiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMDkwNywiZXhwIjoxNzkxODY0MTA3fQ.cGkXQ9iiIgF_x5kB0QOzesi3nRgae-0OkWmyGQqAmvA'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b808510>
+
+    def test_batch_api_dedup_idempotency_and_permissions(client, teacher_headers, monkeypatch):
+        chapter = client.post('/api/chapters', json={'name': '批量章'}, headers=teacher_headers).get_json()['data']['id']
+        make_student(client, teacher_headers, 'batchstudent')
+        student = {'Authorization': 'Bearer ' + login(client, 'batchstudent', 'student123')}
+        monkeypatch.setattr(knowledge, 'generate_knowledge_cards', lambda ids: [{'front': f'卡{i}', 'back': '解', 'sub_concept': '主题'} for i in range(4)])
+        cards = client.post('/api/knowledge/generate', json={'chapter_ids': [chapter]}, headers=student).get_json()['data']['cards']; ids = [c['id'] for c in cards]
+        with client.application.app_context():
+            con = get_db(); before = con.execute('SELECT count(*) FROM card_videos').fetchone()[0]
+            for cid, status in ((ids[0], 'ready'), (ids[1], 'queued')):
+                con.execute('INSERT INTO card_videos(id,core_card_id,chapter_id,status,title,requested_at) VALUES(?,?,?,?,?,?)', (models.new_id(), cid, chapter, status, cid, models.utcnow()))
+            con.commit()
+        with client.application.app_context():
+            before = get_db().execute('SELECT count(*) FROM card_videos').fetchone()[0]
+>       response = client.post('/api/videos/batch', json={'card_ids': ids[:3]}, headers=student); assert response.status_code == 200
+                                                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       assert 500 == 200
+E        +  where 500 = <WrapperTestResponse streamed [500 INTERNAL SERVER ERROR]>.status_code
+
+tests/test_videos.py:51: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../../../../../../Users/xicheng/WorkBuddy/AI学习小组app::test_batch_api_dedup_idempotency_and_permissions
+EXIT=1

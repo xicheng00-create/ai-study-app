@@ -1,0 +1,27 @@
+$ /Users/xicheng/WorkBuddy/AI学习小组app/.venv/bin/pytest -c /Users/xicheng/WorkBuddy/AI学习小组app/pytest.ini -q tests/test_videos.py::test_manual_requests_create_one_notification --no-cov
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________________ test_manual_requests_create_one_notification _________________
+
+client = <FlaskClient <Flask 'app'>>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4OGMzYTkxMC04NWI5LTQxMGMtODIxOS03YjI5YzE3N2JmYmQiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgxOTQ3OCwiZXhwIjoxNzkxODYyNjc4fQ.u8zQW1yUnT6IICCFATXGP1_Ou-Hi6snbT-YaUAJskDI'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x107c60510>
+
+    def test_manual_requests_create_one_notification(client, teacher_headers, monkeypatch):
+        chapter = client.post('/api/chapters', json={'name': '单卡通知章'}, headers=teacher_headers).get_json()['data']['id']
+        make_student(client, teacher_headers, 'manualstudent')
+        student = {'Authorization': 'Bearer ' + login(client, 'manualstudent', 'student123')}
+        monkeypatch.setattr(knowledge, 'generate_knowledge_cards', lambda ids: [{'front': '单卡', 'back': '解', 'sub_concept': '主题'}])
+        card = client.post('/api/knowledge/generate', json={'chapter_ids': [chapter]}, headers=student).get_json()['data']['cards'][0]['id']
+        vid = client.post(f'/api/videos/card/{card}/request', headers=student).get_json()['data']['video_id']
+        with client.application.app_context():
+            con = get_db(); con.execute("UPDATE card_videos SET status='ready',file_name='stub.mp4' WHERE id=?", (vid,)); con.commit()
+            import video_worker; video_worker._notify_video_requests(con, vid); video_worker._notify_video_requests(con, vid)
+            n = con.execute("SELECT count(*) FROM notifications WHERE type='card_video_ready'").fetchone()[0]
+>       assert n == 1
+E       assert 0 == 1
+
+tests/test_videos.py:226: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../../../../../../Users/xicheng/WorkBuddy/AI学习小组app::test_manual_requests_create_one_notification
+EXIT=1
