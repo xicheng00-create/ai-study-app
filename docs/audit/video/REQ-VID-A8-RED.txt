@@ -3,7 +3,7 @@ F                                                                        [100%]
 =================================== FAILURES ===================================
 _____________________ test_prewarm_uses_task_deck_card_set _____________________
 
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a4ec510>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10bcec510>
 client = <FlaskClient <Flask 'app'>>
 
     def test_prewarm_uses_task_deck_card_set(monkeypatch, client):
@@ -20,9 +20,9 @@ client = <FlaskClient <Flask 'app'>>
             video_worker.warm_today_decks(con)
 >       assert calls and all(limit == 30 and mode == 'task' for _, limit, mode in calls)
 E       AssertionError: assert ([('warm-user', 30, 'extra')] and False)
-E        +  where False = all(<generator object test_prewarm_uses_task_deck_card_set.<locals>.<genexpr> at 0x10a7b0900>)
+E        +  where False = all(<generator object test_prewarm_uses_task_deck_card_set.<locals>.<genexpr> at 0x10bfc0820>)
 
-tests/test_videos.py:191: AssertionError
+tests/test_videos.py:213: AssertionError
 =========================== short test summary info ============================
 FAILED ../../../../../../../../Users/xicheng/WorkBuddy/AI学习小组app::test_prewarm_uses_task_deck_card_set
 EXIT=1

@@ -1,0 +1,3 @@
+$ pytest video green
+...........                                                              [100%]
+EXIT=0

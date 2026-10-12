@@ -4,8 +4,8 @@ F                                                                        [100%]
 _________________ test_manual_requests_create_one_notification _________________
 
 client = <FlaskClient <Flask 'app'>>
-teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MjFlZWQxYy01NTIxLTRlNjMtOGRhNy01M2MzZTQ2YmYxN2UiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMjQ4MiwiZXhwIjoxNzkxODY1NjgyfQ.6e346AxJWN2F_uAiAAX6SMhMyust58kYZlBqoEdgfDk'}
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c084510>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxYTdmMmRlMy00MzljLTRlNDUtYjQ5Mi1hODYyNjI4ZDRjYzQiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMzk2NywiZXhwIjoxNzkxODY3MTY3fQ.NGMvVvPAIgFCSZR4d22WvUwS9EOlSPW8tUp_C7WYpNQ'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109c08510>
 
     def test_manual_requests_create_one_notification(client, teacher_headers, monkeypatch):
         chapter = client.post('/api/chapters', json={'name': '单卡通知章'}, headers=teacher_headers).get_json()['data']['id']
@@ -21,7 +21,7 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c084510>
 >       assert n == 1
 E       assert 0 == 1
 
-tests/test_videos.py:226: AssertionError
+tests/test_videos.py:248: AssertionError
 =========================== short test summary info ============================
 FAILED ../../../../../../../../Users/xicheng/WorkBuddy/AI学习小组app::test_manual_requests_create_one_notification
 EXIT=1

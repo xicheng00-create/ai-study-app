@@ -4,8 +4,8 @@ F                                                                        [100%]
 ________________ test_video_index_card_link_set_and_core_flags _________________
 
 client = <FlaskClient <Flask 'app'>>
-teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkZTk2Yjc4ZC00MTYzLTRiMTItOWI0MS1mZmQ4NDNjNDdkNGYiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMjY0NSwiZXhwIjoxNzkxODY1ODQ1fQ.mods23BssVcKc1Z_3bxVwv2E8VktiHeY_iasx5bIA5I'}
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c478510>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MjUwZjgwZS02NzFmLTRiZTgtYjRjZS1lZDQxNjdjMGI2ZjAiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMzk2OSwiZXhwIjoxNzkxODY3MTY5fQ.-LWwiNeBa8o4Ms9TgYG1RK4pnTbyDhaRQoIa96Ckd3o'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a2d8510>
 
     def test_video_index_card_link_set_and_core_flags(client, teacher_headers, monkeypatch):
         chapter = client.post('/api/chapters', json={'name': '链接集合章'}, headers=teacher_headers).get_json()['data']['id']
@@ -22,10 +22,10 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c478510>
             linked_ids = {r[0] for r in con.execute('SELECT DISTINCT card_id FROM card_video_links')}
         data = client.get('/api/videos/index', headers=student).get_json()['data']
 >       assert set(data['cards']) == linked_ids
-E       AssertionError: assert {'92d74c93-4e...a04b438e1eb5'} == {'92d74c93-4e...a04b438e1eb5'}
+E       AssertionError: assert {'7a786cc0-c0...01fb12ddf318'} == {'129ce626-ac...01fb12ddf318'}
 E         
 E         Extra items in the right set:
-E         'ce7c1258-f883-42c7-a088-e2973358113e'
+E         '129ce626-ac9b-490d-9cf2-396bed61e594'
 E         Use -v to get more diff
 
 tests/test_videos.py:163: AssertionError

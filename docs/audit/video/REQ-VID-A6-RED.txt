@@ -4,8 +4,8 @@ F                                                                        [100%]
 _______________ test_batch_api_dedup_idempotency_and_permissions _______________
 
 client = <FlaskClient <Flask 'app'>>
-teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3ZGE3NDMyMC1jODFlLTQ0MTAtYjI0NC0zNTQxOWU1YmVlNDEiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMjM5NiwiZXhwIjoxNzkxODY1NTk2fQ.1YH9S-qyxRpHsfGJDoc8cViVf1pfzveSDDyp_QFcw1M'}
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x108150510>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmNTA5MjZkYS00YjAwLTQ4MTAtODRkYi02OTUzN2Q4MTZiOTYiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMzg2MiwiZXhwIjoxNzkxODY3MDYyfQ.eLquHnXCJXsT_4cHmjPp5vrS_jfSi1RTPM6K16_IHqU'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c328510>
 
     def test_batch_api_dedup_idempotency_and_permissions(client, teacher_headers, monkeypatch):
         chapter = client.post('/api/chapters', json={'name': '批量章'}, headers=teacher_headers).get_json()['data']['id']
@@ -31,7 +31,7 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x108150510>
 >       assert client.post('/api/videos/batch', json={'card_ids': [str(i) for i in range(101)]}, headers=student).status_code == 400
 E       AssertionError: assert 200 == 400
 E        +  where 200 = <WrapperTestResponse streamed [200 OK]>.status_code
-E        +    where <WrapperTestResponse streamed [200 OK]> = post('/api/videos/batch', json={'card_ids': ['0', '1', '2', '3', '4', '5', ...]}, headers={'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjNTYyYjU1YS0wZTI3LTRlYmMtYTNiYy1iZjg5OGExZThmZGIiLCJyb2xlIjoic3R1ZGVudCIsImlhdCI6MTc5MTgyMjM5NiwiZXhwIjoxNzkxODY1NTk2fQ.oUEo41cwoMfLQdPUfhSMTbkhgJOfvNWJS0DKoBes3tA'})
+E        +    where <WrapperTestResponse streamed [200 OK]> = post('/api/videos/batch', json={'card_ids': ['0', '1', '2', '3', '4', '5', ...]}, headers={'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1ZTZmNDQ5Yy02YmRjLTQ1MjMtYTYzYy01YzVjNTI3MWM4YjEiLCJyb2xlIjoic3R1ZGVudCIsImlhdCI6MTc5MTgyMzg2MiwiZXhwIjoxNzkxODY3MDYyfQ.TM5ovDOcw1UGwRfk6PxQujdQxjnmsnvudEw01tZL-_U'})
 E        +      where post = <FlaskClient <Flask 'app'>>.post
 
 tests/test_videos.py:59: AssertionError

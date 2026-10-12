@@ -4,8 +4,8 @@ F                                                                        [100%]
 __________________ test_manual_notification_and_prewarm_dedup __________________
 
 client = <FlaskClient <Flask 'app'>>
-teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YTExMzFjMi05OGI4LTQxYjEtODA1Mi0wMDMwYzZmOWQ3MDYiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMjQ4MywiZXhwIjoxNzkxODY1NjgzfQ.dK5uAfOOBKMcYl4Q7hFevWZpR6vlbsBEDYbK8eB5wMs'}
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109708510>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxYWI4NTNkNi02NzgxLTQ5NWEtYjU5ZC00NDE2OTU1OTE3ZmQiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMzk2OCwiZXhwIjoxNzkxODY3MTY4fQ.HoBlD75r_RNNjqLzC_K4K6Dg5_cyFxowpwCysT3OGJc'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10848c510>
 
     def test_manual_notification_and_prewarm_dedup(client, teacher_headers, monkeypatch):
         import video_worker
@@ -29,7 +29,7 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109708510>
 E       assert (0 == 1)
 E        +  where 0 = len([])
 
-tests/test_videos.py:212: AssertionError
+tests/test_videos.py:234: AssertionError
 =========================== short test summary info ============================
 FAILED ../../../../../../../../Users/xicheng/WorkBuddy/AI学习小组app::test_manual_notification_and_prewarm_dedup
 EXIT=1

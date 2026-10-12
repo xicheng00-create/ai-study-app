@@ -4,8 +4,8 @@ F                                                                        [100%]
 __________________ test_video_listing_adjacent_topics_fields ___________________
 
 client = <FlaskClient <Flask 'app'>>
-teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjMjgzMzY4My0yMTA3LTRmZmEtODlmNy1kNTE3ZWU4YjMzZTciLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyMjg3NSwiZXhwIjoxNzkxODY2MDc1fQ.4YzHxMOMYneKMtAgra51uSOlO_m97fvP7CwhIVdy6Ok'}
-monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1080bc510>
+teacher_headers = {'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5M2EwYWM0MS02MDM5LTRhZmQtYmM0NC1hZDQzZDAxM2ZiNWQiLCJyb2xlIjoidGVhY2hlciIsImlhdCI6MTc5MTgyNDIwNCwiZXhwIjoxNzkxODY3NDA0fQ.B9bAx1ZXLN4nhz0koYHmmoma-qaXbCQG5hZ_3BwkBpI'}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1099d0510>
 
     def test_video_listing_adjacent_topics_fields(client, teacher_headers, monkeypatch):
         chapter = client.post('/api/chapters', json={'name': '跨主题章'}, headers=teacher_headers).get_json()['data']['id']
