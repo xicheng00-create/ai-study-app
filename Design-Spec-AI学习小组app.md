@@ -1978,3 +1978,13 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - REQ-VID-033：保留总时长比例闸门，逐 scene 输出必须存在且达到 max(0.5s, 配音时长×0.85)；场次不得重复、顺序必须匹配 narration；成片音频/视频轨均覆盖配音，轨长差不超过 max(0.25s, 配音总长×0.05)。白名单保持冻结规则：渲染器 kind 缺白名单项 die，额外 legacy style 只 warn。
 - 六项按序独立提交：9023dc9、914f1b3、092d375、0674da4、080d998、7be8060。原始 RED/GREEN：docs/audit/video/REQ-VID-FIX{1..6}-{RED,GREEN}.txt；RED 为真实旧/故障实现执行 pytest，并发触发 UNIQUE 冲突，媒体反证使用 ffmpeg 真产物，不用源码字符串模拟。
 - 验收通过：make lint test ui-audit（240 个 pytest 用例及完整浏览器审计）、临时 SQLite 库 make smoke SMOKE_PORT=5299、py_compile。完整输出：REQ-VID-FIX-FINAL-GATES.txt、REQ-VID-FIX-SMOKE.txt。未 push、未重启已有服务、未碰 launchd 或 5003 生产库。版本维持本次尚未发布的 2.16.0。
+
+### REQ-NFR-TESTISO-001｜测试数据隔离：生产库零写入（2026-10-13 建，对后续一律适用）
+
+- **触发点**：新增/修改任何 `tests/` 用例，或任何「以应用上下文直连库」的测试/调试脚本时。
+- **事故（2026-10-13 用户实报）**：`tests/test_videos.py::test_prewarm_uses_task_deck_card_set` 曾在未隔离路径下跑过一次，把假用户 `warm-user`（`display_name='Warm'`、`created_at='2099'`、`password_hash='x'` 仅 1 字符）连同 **30 条 prewarm 视频请求 + 2 条 daily_runs** 写进生产库 `instance/aistudy.sqlite3`，并**真的生成 30 个视频**；该假号随后出现在学生端「班级」排行榜（用户截图实报）。处置：备份（`backups/aistudy.sqlite3.pre-warmuser-purge-20261013-183752`）→ `wal_checkpoint(FULL)` → 事务删除（users 7→6、card_video_requests 181→151、card_video_daily_runs 10→8；`card_videos` 196 未删，其中 30 个是按卡产物、可被真人复用）→ 残留引用扫描 `{}` → `integrity_check ok` → **真实接口复核** `/api/class/leaderboard`（生产 5003，学生身份）不再含 `Warm`。
+- **覆盖路径**：全部 pytest 路径（含未来新增用例）+ 任何直连库的脚本入口。
+- **口径条款**：① 测试默认库一律指向临时库——`tests/conftest.py` 新增全局 autouse fixture `_default_db_to_tmp`（`DATABASE_PATH=tmp_path/guard.sqlite`），使「忘了写隔离」的代码路径也只能写临时库；② 残留由 `scripts/audit_test_residue.py` 常驻体检（判据：`password_hash` 长度 ≠ 162、或 `created_at` 不匹配 ISO-8601）；③ 此后新增任何「测试/脚本直连库」入口，必须同时满足 ①②。
+- **机械断言**：`python3 scripts/audit_test_residue.py` 对生产库 exit 0；对删除前备份库 exit 1 并点名 `warm-user`（**RED 已实测**：对 `backups/aistudy.sqlite3.pre-warmuser-purge-20261013-183752` → exit 1，两条判据均命中）。
+- **违规处置**：发现残留即按本条款清理（备份 → checkpoint → 事务删除 → 残留引用扫描 → integrity_check → 真实接口复核），并追查来源路径是否漏了 ①②。
+- **版本**：纯测试基建改动、无 `CHANGELOG` 条目，故不 bump `app.py`（维持 2.16.0）。

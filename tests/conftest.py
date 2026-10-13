@@ -26,6 +26,21 @@ def _isolate_usage_log(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _default_db_to_tmp(tmp_path, monkeypatch):
+    """全局兜底：测试默认库一律指向临时库，绝不落在真实 instance 库。
+
+    来历（2026-10-13 事故）：`tests/test_videos.py::test_prewarm_uses_task_deck_card_set`
+    在「没有隔离」的路径下跑过一次，把假用户 `warm-user`（`created_at='2099'`、密码哈希只有
+    1 个字符 `x`）连同 30 条 prewarm 视频请求写进生产库 `instance/aistudy.sqlite3`，
+    并真的生成了 30 个视频；该假号随后出现在学生端「班级」排行榜上（用户实报）。
+    修法：会话内所有测试默认 DB = tmp_path（`client` fixture 仍按原样覆盖为 test.sqlite），
+    这样「忘了写隔离」的代码路径也只是写临时库，不会碰生产数据。
+    存量体检 = `scripts/audit_test_residue.py`（判据：密码哈希长度非 162 / created_at 非 ISO-8601）。
+    """
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "guard.sqlite"))
+
+
+@pytest.fixture(autouse=True)
 def _isolate_card_gate_log(tmp_path, monkeypatch):
     """全局隔离卡片止血闸门审计日志，避免测试写入真实 instance/logs/card_gate.jsonl。
 
