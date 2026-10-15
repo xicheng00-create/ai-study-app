@@ -2,7 +2,7 @@
 # 中文配音 + 时长表。输入 narration.json（{"scenes":[{"id","text"}]}），
 # 输出 audio/<id>.mp3 与 durations.json（每段 ffprobe 实测秒数，供 Manim 补时）。
 # 用法: bash build_audio_zh.sh [narration.json]
-# 覆盖: VOICE / VOICE_POOL / RATE / EDGE_TTS / SAY_VOICE / SAY_RATE / MIN_DUR
+# 覆盖: VOICE / VOICE_POOL / RATE / EDGE_TTS / SAY_VOICE / SAY_RATE / MIN_DUR / TTS_DATE / AZURE_SPEECH_ENV
 # 零 API 成本：edge-tts 是本机免费通道（hermes venv 里的可执行文件），不需要 key；
 # 它挂掉时退回 macOS 自带的 `say`（同样本地、零成本、无词级时刻）。
 #
@@ -46,16 +46,27 @@ AZURE_SPEECH_REGION="${AZURE_SPEECH_REGION:-}"
 NARR="${1:-narration.json}"
 mkdir -p audio
 
-# ---- 选音色：有池就按日期确定性挑一支（同一天重跑 = 同一支，便于复盘） ----
+# ---- 选音色：有池就按**日期序号轮换**挑一支 ----
+# 为什么不用哈希：`sha256(日期) % n` 只保证「同一天稳定」，相邻日会撞色
+# —— 2026-10-15 实算：10-09~10-12 连着四天同一支，相邻日同色 5/11 对。
+# 改成 `toordinal() % n`（连续整数、每天 +1）→ **相邻日必然不同**、长期绝对均匀，
+# 且同日重跑仍是同一支（可复盘）。
+# TTS_DATE=YYYY-MM-DD 可覆盖日期 —— 只为回归测试伪造相邻两天用，不碰系统时钟。
 # 空池/全是逗号必须报清楚的人话，不能漏 python traceback。
 if [ -n "$VOICE_POOL" ]; then
-  picked=$(python3 - "$VOICE_POOL" "$(date +%Y-%m-%d)" <<'PY'
-import hashlib, sys
+  TTS_DATE="${TTS_DATE:-$(date +%Y-%m-%d)}"
+  picked=$(python3 - "$VOICE_POOL" "$TTS_DATE" <<'PY'
+import datetime, sys
 pool = [v.strip() for v in sys.argv[1].split(",") if v.strip()]
 if not pool:
     sys.stderr.write("VOICE_POOL 里没有有效音色（只有逗号/空白）\n")
     sys.exit(3)
-sys.stdout.write(pool[int(hashlib.sha256(sys.argv[2].encode()).hexdigest(), 16) % len(pool)])
+try:
+    d = datetime.date.fromisoformat(sys.argv[2])
+except ValueError:
+    sys.stderr.write("TTS_DATE 不是 YYYY-MM-DD 格式：%r\n" % sys.argv[2])
+    sys.exit(4)
+sys.stdout.write(pool[d.toordinal() % len(pool)])
 PY
   ) || { echo "❌ 音色池解析失败：VOICE_POOL='${VOICE_POOL}'（需为逗号分隔的音色名）" >&2; exit 1; }
   VOICE="$picked"
@@ -211,9 +222,11 @@ fi
 echo "[tts] 实际通道=${CH}" >&2
 
 # 记录本次实际用的是什么（复盘靠它）
-python3 - "$VOICE" "$CH" "$RATE" "$VOICE_POOL" <<'PY'
+python3 - "$VOICE" "$CH" "$RATE" "$VOICE_POOL" "${TTS_DATE:-}" <<'PY'
 import json, sys, datetime
-json.dump({"date": datetime.date.today().isoformat(), "voice": sys.argv[1],
+# 留痕必须记「实际用的是哪天的挑法」：TTS_DATE 被伪造时不能记成系统日期（否则复盘时会撒谎）
+d = sys.argv[5] or datetime.date.today().isoformat()
+json.dump({"date": d, "voice": sys.argv[1],
            "channel": sys.argv[2], "rate": sys.argv[3], "pool": sys.argv[4] or None},
           open("tts_used.json", "w"), ensure_ascii=False, indent=1)
 PY
