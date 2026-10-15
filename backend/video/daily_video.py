@@ -314,7 +314,12 @@ def main():
     print("narration.json 已写入 (%d 场)" % len(scenes), flush=True)
 
     print("① 配音 …", flush=True)
-    run(["bash", "build_audio_zh.sh"], cwd=proj, label="edge-tts")
+    # 音色池：按日期确定性挑一支（云希/云健/云扬），同一天重跑同一支便于复盘。
+    # 挑中哪支、走的哪条通道由 build_audio_zh.sh 写进 tts_used.json。
+    tts_env = dict(os.environ)
+    tts_env.setdefault("VOICE_POOL",
+                       "zh-CN-YunxiNeural,zh-CN-YunjianNeural,zh-CN-YunyangNeural")
+    run(["bash", "build_audio_zh.sh"], cwd=proj, label="edge-tts", env=tts_env)
 
     print("② 渲染 …", flush=True)
     # 渲染跑在一次性 project 目录里，皮肤状态必须外置到持久目录，否则「不撞脸」静默失效。
