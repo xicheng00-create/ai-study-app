@@ -36,21 +36,32 @@ SAY_VOICE="${SAY_VOICE:-Tingting}"       # macOS 本机中文声音（`say -v '?
 SAY_RATE="${SAY_RATE:-215}"              # 实测 Tingting r≈215 ≒ 5.3 字/秒，对齐 Yunyang +0%
 MIN_DUR="${MIN_DUR:-0.3}"                # 单段配音最短合法时长（秒）：防「非空但极短」的假成功
 PROBE_TEXT="${PROBE_TEXT:-配音通道探测。}"  # 预探用的短句（可用 env 覆盖）
+# Azure 官方语音（推荐通道）：有 key 才启用，没 key 行为与以前完全一致。
+# key 从文件读，**不进聊天记录**：~/.hermes/secrets/azure_speech.env（chmod 600）两行：
+#   AZURE_SPEECH_KEY=...   AZURE_SPEECH_REGION=eastasia
+AZURE_SPEECH_ENV="${AZURE_SPEECH_ENV:-$HOME/.hermes/secrets/azure_speech.env}"
+if [ -f "$AZURE_SPEECH_ENV" ]; then . "$AZURE_SPEECH_ENV"; fi
+AZURE_SPEECH_KEY="${AZURE_SPEECH_KEY:-}"
+AZURE_SPEECH_REGION="${AZURE_SPEECH_REGION:-}"
 NARR="${1:-narration.json}"
 mkdir -p audio
 
 # ---- 选音色：有池就按日期确定性挑一支（同一天重跑 = 同一支，便于复盘） ----
+# 空池/全是逗号必须报清楚的人话，不能漏 python traceback。
 if [ -n "$VOICE_POOL" ]; then
-  VOICE=$(python3 - "$VOICE_POOL" "$(date +%Y-%m-%d)" <<'PY'
+  picked=$(python3 - "$VOICE_POOL" "$(date +%Y-%m-%d)" <<'PY'
 import hashlib, sys
 pool = [v.strip() for v in sys.argv[1].split(",") if v.strip()]
-day = sys.argv[2]
-print(pool[int(hashlib.sha256(day.encode()).hexdigest(), 16) % len(pool)])
+if not pool:
+    sys.stderr.write("VOICE_POOL 里没有有效音色（只有逗号/空白）\n")
+    sys.exit(3)
+sys.stdout.write(pool[int(hashlib.sha256(sys.argv[2].encode()).hexdigest(), 16) % len(pool)])
 PY
-)
+  ) || { echo "❌ 音色池解析失败：VOICE_POOL='${VOICE_POOL}'（需为逗号分隔的音色名）" >&2; exit 1; }
+  VOICE="$picked"
 fi
 if [ -z "$VOICE" ]; then
-  echo "❌ 音色池为空且 VOICE 未设" >&2
+  echo "❌ 没有可用音色：VOICE 为空且 VOICE_POOL 没给出有效值" >&2
   exit 1
 fi
 
@@ -82,6 +93,26 @@ tts_edge() {
   return 0
 }
 
+# tts_azure <id> <text>：Azure 官方 REST。只出音频（词级时刻要 SDK/WebSocket）→ 与 say 路同为 0 words。
+tts_azure() {
+  local sid="$1" text="$2" esc code
+  [ -n "$AZURE_SPEECH_KEY" ] && [ -n "$AZURE_SPEECH_REGION" ] || return 1
+  # 文本必须 XML 转义后再进 SSML（中文文案里的 & < > 会直接弄坏请求）
+  esc=$(python3 -c 'import sys,html;sys.stdout.write(html.escape(sys.argv[1],quote=False))' "$text")
+  rm -f "audio/${sid}.mp3" "audio/${sid}.vtt"
+  code=$(printf '%s' "<speak version='1.0' xml:lang='zh-CN'><voice name='${VOICE}'><prosody rate='${RATE}'>${esc}</prosody></voice></speak>" | \
+    curl -sS --max-time 30 -o "audio/${sid}.mp3" -w '%{http_code}' \
+      -X POST "https://${AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1" \
+      -H "Ocp-Apim-Subscription-Key: ${AZURE_SPEECH_KEY}" \
+      -H "Content-Type: application/ssml+xml" \
+      -H "X-Microsoft-OutputFormat: audio-24khz-48kbitrate-mono-mp3" \
+      -H "User-Agent: brain-kb-tts" \
+      --data-binary @- 2>/dev/null)
+  [ "$code" = "200" ] || { echo "  [tts] azure HTTP ${code}（key/region 不对？）" >&2; rm -f "audio/${sid}.mp3"; return 1; }
+  legal "audio/${sid}.mp3" || { rm -f "audio/${sid}.mp3"; return 1; }
+  return 0
+}
+
 # tts_say <id> <text>：只走 macOS say，不做任何兜底（无词级时刻 → 调用方按字数比例）
 tts_say() {
   local sid="$1" text="$2"
@@ -95,17 +126,26 @@ tts_say() {
   return 0
 }
 
-# probe <channel>：单次短句预探，判断这条通道当前能不能用
+# probe <channel>：单次短句预探，判断这条通道当前能不能用（预探产物一律清掉）
 probe() {
-  local ch="$1"
-  if [ "$ch" = "edge" ]; then
-    [ -x "$EDGE" ] || return 1
-    rm -f audio/_probe.mp3
-    "$EDGE" --voice "$VOICE" --rate="$RATE" --text "$PROBE_TEXT" --write-media audio/_probe.mp3 >/dev/null 2>&1
-    legal audio/_probe.mp3
-  else
-    [ -n "$SAY_VOICE" ]
-  fi
+  local ch="$1" ok=1
+  case "$ch" in
+    azure)
+      [ -n "$AZURE_SPEECH_KEY" ] && [ -n "$AZURE_SPEECH_REGION" ] || return 1
+      tts_azure _probe "$PROBE_TEXT" && ok=0
+      rm -f audio/_probe.mp3 audio/_probe.vtt
+      return $ok ;;
+    edge)
+      [ -x "$EDGE" ] || return 1
+      rm -f audio/_probe.mp3
+      "$EDGE" --voice "$VOICE" --rate="$RATE" --text "$PROBE_TEXT" --write-media audio/_probe.mp3 >/dev/null 2>&1
+      legal audio/_probe.mp3 && ok=0
+      rm -f audio/_probe.mp3   # 成功那次也会留文件，必须清掉
+      return $ok ;;
+    say)
+      [ -n "$SAY_VOICE" ] ;;
+    *) return 1 ;;
+  esac
 }
 
 # render_all <channel>：整片用同一条通道渲染。任一段失败 → 立刻返回 1（不留半成品）
@@ -114,11 +154,12 @@ render_all() {
   : > durations.jsonl
   while IFS=$'\t' read -r sid text; do
     [ -z "$sid" ] && continue
-    if [ "$ch" = "edge" ]; then
-      tts_edge "$sid" "$text" || { echo "  [tts] edge 在 ${sid} 段失败" >&2; return 1; }
-    else
-      tts_say "$sid" "$text" || { echo "  [tts] say 在 ${sid} 段失败" >&2; return 1; }
-    fi
+    case "$ch" in
+      azure) tts_azure "$sid" "$text" || { echo "  [tts] azure 在 ${sid} 段失败" >&2; return 1; } ;;
+      edge)  tts_edge  "$sid" "$text" || { echo "  [tts] edge 在 ${sid} 段失败"  >&2; return 1; } ;;
+      say)   tts_say   "$sid" "$text" || { echo "  [tts] say 在 ${sid} 段失败"   >&2; return 1; } ;;
+      *) return 1 ;;
+    esac
     dur=$(duraff "audio/${sid}.mp3")
     python3 - "$sid" "$dur" "audio/${sid}.vtt" <<'PY' >> durations.jsonl
 import json, re, sys
@@ -148,20 +189,26 @@ PY
 
 echo "[tts] 音色=${VOICE}${VOICE_POOL:+（池 ${VOICE_POOL}）} 语速=${RATE}" >&2
 
-# ---- 先预探，再整片渲染；edge 中途失败就整支重来换 say（绝不留混音色） ----
-CH="edge"; probe edge || CH="say"
-[ "$CH" = "say" ] && echo "  [tts] edge 预探失败（403/限流）→ 整片改用本机 say(${SAY_VOICE} r=${SAY_RATE})" >&2
+# ---- 通道优先级：Azure 官方（有 key 时）→ edge-tts 免费通道（会限流）→ 本机 say ----
+# 每条通道都是「整片渲一次」：任一段失败就换下一条重渲整支，绝不让一支片里两个嗓子。
+CANDS=()
+if [ -n "$AZURE_SPEECH_KEY" ] && [ -n "$AZURE_SPEECH_REGION" ]; then CANDS+=("azure"); fi
+CANDS+=("edge" "say")
 
-if ! render_all "$CH"; then
-  if [ "$CH" = "edge" ]; then
-    echo "  [tts] edge 中途失败 → 整支重来，全部改用 say（避免混音色）" >&2
-    CH="say"
-    render_all "$CH" || { echo "❌ 配音失败：两条通道都产出不了合法音频" >&2; exit 1; }
-  else
-    echo "❌ 配音失败：say 通道也产出不了合法音频" >&2
-    exit 1
+CH=""
+for c in "${CANDS[@]}"; do
+  if ! probe "$c"; then
+    echo "  [tts] $c 预探不过 → 跳过" >&2
+    continue
   fi
+  if render_all "$c"; then CH="$c"; break; fi
+  echo "  [tts] $c 中途失败 → 整支重来换下一条通道（避免混音色）" >&2
+done
+if [ -z "$CH" ]; then
+  echo "❌ 配音失败：${CANDS[*]} 全部产出不了合法音频" >&2
+  exit 1
 fi
+echo "[tts] 实际通道=${CH}" >&2
 
 # 记录本次实际用的是什么（复盘靠它）
 python3 - "$VOICE" "$CH" "$RATE" "$VOICE_POOL" <<'PY'

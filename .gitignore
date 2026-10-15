@@ -24,6 +24,15 @@ backend/video/durations.json
 backend/video/durations.jsonl
 backend/video/narration.json
 backend/video/tts_used.json
+# stitch_av.sh 的中间产物与成片（同一渲染目录，跑一次真管线就会落在这里）
+backend/video/padded/
+backend/video/concat.txt
+backend/video/audio_concat.txt
+backend/video/video_only.mp4
+backend/video/audio_all.wav
+backend/video/final.mp4
+backend/video/media/
+backend/video/out/
 
 # Env & secrets
 .env
