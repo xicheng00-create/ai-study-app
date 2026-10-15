@@ -1956,7 +1956,7 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **覆盖路径（对后续一律适用）**：任何**新增**调用 `build_audio_zh.sh` 的管线或脚本必须同批设 `VOICE_POOL`；任何把调用方改回固定单音色（不设池 / 写死 `VOICE`）的改动都视为违规。
 - **违规处置**：未设池的管线不得合入；已合入的回滚重做。
 - **机械断言**：每次出片后渲染目录的 `tts_used.json` 必须同时满足 —— `pool` 非空、`voice` ∈ `pool`、`channel` ∈ `{azure, edge, say}`；代码侧 `grep -n 'VOICE_POOL' backend/video/daily_video.py` 必须有命中。**真跑证据（2026-10-15）**：`tts_used.json` = `{"date":"2026-10-15","voice":"zh-CN-YunjianNeural","channel":"azure","rate":"+0%","pool":"zh-CN-YunxiNeural,zh-CN-YunjianNeural,zh-CN-YunyangNeural"}`（当日池选择落第 2 支 = 云健，不再是此前固定的云扬），全片 4 段同通道，成片 33.5s。
-- **已知留痕盲点（app 侧，未修）**：`video_worker.render()` 的渲染目录是一次性 `TemporaryDirectory`（`backend/video_worker.py:72`），跑完即删 → `tts_used.json` 不在 app 生产链路上留存，且 `daily_video.run()` 用 `capture_output=True`（成功时脚本 stderr 不转发），故 app 侧**看不出这条视频用了哪支嗓子**。修法（另开 commit，非本 REQ 口径）：照 brain 侧 `daily_video.py:225-227` 把 `tts_used.json` 内容打进流水线日志，或落进 `card_videos` 记录。
+- **音色留痕（app 侧，2026-10-15 晚部分闭环）**：`daily_video.py` 已照 brain 侧 `225-227` 打印 `配音记录:` + `tts_used.json` 内容（commit `3e48d9d`）→ **手工跑**与**失败排查**（`video_worker._run()` 失败时把 stdout 尾巴带进异常并写 `video_worker.log`）都能看到 `voice/channel/pool`。**成功路径仍未进生产日志**：`video_worker._run()`（`video_worker.py:55-61`）成功时丢弃子进程 stdout，渲染目录又是一次性 `TemporaryDirectory`（`:72`）跑完即删 → 要彻底闭环需 worker 侧转存一行（改动 + 重启 worker，属**独立决策**，本轮未动）。
 - **A12–A19 验收证据**：`docs/audit/video/REQ-VID-A12-A19-GREEN.txt`；逐项 `REQ-VID-Axx-RED.txt` 为临时坏实现运行真实 pytest/浏览器断言的原始输出。runner 除非零退出码外必须命中目标断言失败标识，环境错误不计 RED。既有 `audit/video/*red.txt` 为早期字符串模拟，作废，不作为验收依据。
 - **UI 技能自查**：已全文读取 taste 路由、redesign-existing-projects 与 impeccable 规范；沿用既有字体、颜色令牌、卡片与导航结构，仅修正常显状态、语义分组、后台静默与导航目的地，不进行无关视觉重设计。
 
