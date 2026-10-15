@@ -222,12 +222,24 @@ fi
 echo "[tts] 实际通道=${CH}" >&2
 
 # 记录本次实际用的是什么（复盘靠它）
-python3 - "$VOICE" "$CH" "$RATE" "$VOICE_POOL" "${TTS_DATE:-}" <<'PY'
+python3 - "$VOICE" "$CH" "$RATE" "$VOICE_POOL" "${TTS_DATE:-}" "$SAY_VOICE" "$SAY_RATE" <<'PY'
 import json, sys, datetime
-# 留痕必须记「实际用的是哪天的挑法」：TTS_DATE 被伪造时不能记成系统日期（否则复盘时会撒谎）
-d = sys.argv[5] or datetime.date.today().isoformat()
-json.dump({"date": d, "voice": sys.argv[1],
-           "channel": sys.argv[2], "rate": sys.argv[3], "pool": sys.argv[4] or None},
+# 参数顺序必须与上面的 shell 调用一一对应（踩过：少解一个值会把日期当嗓音名）。
+voice, ch, rate, pool, tts_date, say_voice, say_rate = sys.argv[1:8]
+# 留痕必须记「实际用的是哪天的挑法」：TTS_DATE 被伪造时不能记成系统日期（否则复盘时会撒谎）。
+d = tts_date or datetime.date.today().isoformat()
+is_say = ch == "say"
+json.dump({"date": d,
+           # voice / rate 是「标称」值（池里挑中的那支、请求的语速）。
+           # 走 say 路时真正出声的嗓子与语速都是本机 say 的，必须在 *_actual 里如实记
+           # —— 否则会出现「标称云扬、实发 Tingting」这种撒谎的留痕。
+           # 注：channel=say 时 rate_actual 是 say -r 的值（词/分），其余通道同 rate（百分比）。
+           "voice": voice,
+           "voice_actual": say_voice if is_say else voice,
+           "channel": ch,
+           "rate": rate,
+           "rate_actual": say_rate if is_say else rate,
+           "pool": pool or None},
           open("tts_used.json", "w"), ensure_ascii=False, indent=1)
 PY
 
