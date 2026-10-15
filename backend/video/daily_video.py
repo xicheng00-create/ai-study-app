@@ -320,6 +320,9 @@ def main():
     tts_env.setdefault("VOICE_POOL",
                        "zh-CN-YunxiNeural,zh-CN-YunjianNeural,zh-CN-YunyangNeural")
     run(["bash", "build_audio_zh.sh"], cwd=proj, label="edge-tts", env=tts_env)
+    used = os.path.join(proj, "tts_used.json")
+    if os.path.exists(used):
+        print("   配音记录:", open(used, encoding="utf-8").read().replace("\n", " "), flush=True)
 
     print("② 渲染 …", flush=True)
     # 渲染跑在一次性 project 目录里，皮肤状态必须外置到持久目录，否则「不撞脸」静默失效。
