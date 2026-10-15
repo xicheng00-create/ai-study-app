@@ -1,9 +1,12 @@
 """Real ffmpeg artifacts exercise scene and audio/video coverage gates."""
 import json
+import os
 import subprocess
+import time
 
 import pytest
-from video.daily_video import check_duration, check_scene_outputs
+from video.daily_video import (MID_FILES, check_duration, check_intermediates,
+                               check_scene_outputs)
 
 
 def media(path, duration, audio=False):
@@ -39,3 +42,50 @@ def test_real_complete_media(tmp_path):
     media(tmp_path / 'final.mp4', 2, audio=True)
     check_duration(str(tmp_path), 2)
     check_scene_outputs(str(tmp_path), str(tmp_path), str(tmp_path / 'final.mp4'))
+
+
+def test_reject_zero_duration_row(tmp_path):
+    """任一拍时长为 0：只看总时长的体检会放行，逐拍断言必须拦住。"""
+    rows = [{'id': 'S1', 'dur': 2}, {'id': 'S2', 'dur': 0}]
+    (tmp_path / 'durations.json').write_text(json.dumps(rows))
+    with pytest.raises(SystemExit):
+        check_duration(str(tmp_path), 2)
+
+
+def test_reject_empty_duration_table(tmp_path):
+    (tmp_path / 'durations.json').write_text('[]')
+    with pytest.raises(SystemExit):
+        check_duration(str(tmp_path), 2)
+
+
+def _seed_intermediates(tmp_path):
+    """把中间产物铺成「昨天的」并返回拼接前 mtime 表。"""
+    before, old = {}, time.time() - 86400
+    for name in MID_FILES:
+        p = tmp_path / name
+        p.write_bytes(b'OLD')
+        os.utime(p, (old, old))
+        before[name] = p.stat().st_mtime
+    return before
+
+
+def test_reject_stale_intermediates(tmp_path):
+    """stitch 没重写中间产物 = 拿旧片重封：final.mp4 再新也要拦。"""
+    before = _seed_intermediates(tmp_path)
+    (tmp_path / 'final.mp4').write_bytes(b'NEW')      # final 是新的，正是在骗人
+    with pytest.raises(SystemExit):
+        check_intermediates(str(tmp_path), before)
+
+
+def test_reject_missing_intermediates(tmp_path):
+    with pytest.raises(SystemExit):
+        check_intermediates(str(tmp_path), {MID_FILES[0]: 0})
+
+
+def test_accept_fresh_intermediates(tmp_path):
+    """正常重跑：中间产物确实变新 → 放行，不误杀。"""
+    before = _seed_intermediates(tmp_path)
+    time.sleep(0.01)
+    for name in MID_FILES:
+        (tmp_path / name).write_bytes(b'NEW')
+    check_intermediates(str(tmp_path), before)

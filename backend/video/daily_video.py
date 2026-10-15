@@ -153,10 +153,15 @@ def check_duration(proj, dur):
     try:
         rows = json.load(open(durations, encoding="utf-8"))
         want = sum(float(row["dur"]) for row in rows)
+        zero = [row.get("id") for row in rows if float(row["dur"]) <= 0]
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         die("无法读取有效的配音时长表：%s" % exc)
-    if want <= 0:
-        die("配音总时长必须大于 0")
+    if not rows or want <= 0:
+        die("配音总时长必须大于 0（durations.json 为空或全零）")
+    # 只看总时长会被「一段正常 + 一段为 0」蒙过去（0 字节配音就是这种形态），
+    # 所以逐拍也断言：任一拍时长 <= 0 一律不许往下走。
+    if zero:
+        die("配音时长表含零/负时长拍：%s" % zero)
     try:
         got = float(dur)
     except (TypeError, ValueError):
@@ -164,6 +169,26 @@ def check_duration(proj, dur):
     if not 0.85 * want <= got <= 1.6 * want:
         die("成片时长异常：%.1fs，但配音合计 %.1fs（疑似截断或空片）" % (got, want))
     return want
+
+
+MID_FILES = ("video_only.mp4", "audio_all.wav")   # stitch_av.sh 的两个中间产物
+
+
+def _mtime(path):
+    return os.path.getmtime(path) if os.path.exists(path) else 0
+
+
+def check_intermediates(proj, before):
+    """stitch 的中间产物必须晚于本次拼接开始。
+
+    「旧片重封」假成功：配音全空 → durations.json 为 [] → stitch 拿不到新输入，就抓
+    **旧的** video_only.mp4/audio_all.wav 重新封装 —— final.mp4 的 mtime 照样变新，
+    内容却是昨天那条（sha256 完全相同）。只看 final 的新鲜度抓不住它。
+    """
+    for name, t in before.items():
+        path = os.path.join(proj, name)
+        if not os.path.exists(path) or os.path.getmtime(path) <= t:
+            die("中间产物没有更新，疑似用旧产物重封：%s" % name)
 
 
 def _probe_streams(path):
@@ -311,13 +336,15 @@ def main():
     vdir = os.path.relpath(vids[0], proj)
     env = dict(os.environ, VIDEO_DIR=vdir)
     final = os.path.join(proj, "final.mp4")
-    before = os.path.getmtime(final) if os.path.exists(final) else 0
+    before = _mtime(final)
+    mid_before = {n: _mtime(os.path.join(proj, n)) for n in MID_FILES}
     # stitch_av.sh 末尾是 ffmpeg 探测（无输出文件 → 必然 exit 1），别信它的返回码；
     # 以「final.mp4 是否新鲜」为准。
     run(["bash", "stitch_av.sh"], cwd=proj, env=env, label="ffmpeg", allow_fail=True)
 
     if not os.path.exists(final) or os.path.getmtime(final) <= before:
         die("stitch 没产出新的 final.mp4")
+    check_intermediates(proj, mid_before)
     dur = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
          "-of", "csv=p=0", final],
