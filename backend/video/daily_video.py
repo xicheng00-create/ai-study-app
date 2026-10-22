@@ -118,9 +118,13 @@ def check_style_drift():
     """
     vk = os.environ.get("VIDEOKIT_HOME", os.path.expanduser("~/VideoKit"))
     init = os.path.join(vk, "videokit", "__init__.py")
+    scene = os.path.join(vk, "videokit", "scene.py")
     if not os.path.exists(init):
         die("找不到唯一实现库：%s（可用 VIDEOKIT_HOME 覆盖）" % init)
-    text = open(init, encoding="utf-8").read()
+    # STYLES 的实物在 scene.py（唯一库刻意让 __init__ 零重依赖，只经 __getattr__ 转出），
+    # 所以两个文件都读——只读 __init__ 会误判「缺少 STYLES 注册」而把全部出片打死。
+    text = "\n".join(open(p, encoding="utf-8").read()
+                     for p in (init, scene) if os.path.exists(p))
     m = re.search(r"^STYLES\s*=\s*\{(.*?)\}", text, re.M | re.S)
     if not m:
         die("videokit 缺少 STYLES 注册")
