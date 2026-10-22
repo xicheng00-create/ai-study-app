@@ -275,20 +275,6 @@ body{font-family:var(--font);background:#E9E4DD;color:var(--text);overflow:hidde
 .kc-card.out-l{transform:translateX(-135%) rotate(-16deg);opacity:.35;transition:transform .32s ease-in,opacity .32s ease-in;pointer-events:none}
 @keyframes kcIn{from{transform:translateY(26px) scale(.94);opacity:0}to{transform:none;opacity:1}}
 .kc-card.kc-in{animation:kcIn .34s cubic-bezier(.2,.8,.3,1)}
-/* ===== 六格卡片版式（与讲解视频同一份 spec · videokit.from_card.map_kcard 产出 · 2026-10-22）===== */
-.kc-face.vk-page{justify-content:flex-start;gap:0;padding:22px 22px 16px;overflow:hidden}
-.vk-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.vk-label{font-size:13px;font-weight:700;color:var(--coral-strong);flex:0 0 auto}
-.vk-pill{max-width:64%;font-size:12px;font-weight:600;color:var(--text-2);background:var(--surface-2);border-radius:999px;padding:5px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.vk-title{font-size:25px;line-height:1.44;font-weight:800;margin:16px 0 0;letter-spacing:.2px;overflow-wrap:break-word}
-.vk-title.long{font-size:21px;line-height:1.5;margin-top:12px}
-.vk-stage{flex:1 1 auto;display:flex;align-items:center;justify-content:center;position:relative;min-height:140px;margin:6px 0}
-.vk-icon{width:58%;max-width:220px;filter:drop-shadow(0 14px 18px rgba(35,32,22,.16))}
-.vk-shadow{position:absolute;bottom:14%;width:42%;height:13px;border-radius:50%;background:radial-gradient(ellipse at center,rgba(35,32,22,.22),transparent 70%)}
-.vk-bottom{margin-top:auto}
-.vk-caption{background:#1E2A32;color:#F7F4EC;border-radius:12px;padding:11px 14px;font-size:15px;font-weight:700;line-height:1.45;text-align:center}
-.vk-foot{margin-top:10px;text-align:center;font-size:11.5px;color:var(--text-3)}
-.vk-tip{margin-top:6px;text-align:center;font-size:12px;color:var(--text-3)}
 .kc-hint{text-align:center;font-size:12px;color:var(--text-3);margin-top:14px}
 .kc-bar{height:4px;border-radius:4px;background:var(--border);margin-top:8px;max-width:230px;overflow:hidden}
 .kc-bar i{display:block;height:100%;border-radius:4px;background:var(--coral)}
