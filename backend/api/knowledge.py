@@ -54,13 +54,16 @@ def _vk_spec(front, back, chapter=""):
 
 
 @knowledge_bp.route("/icon/<name>", methods=["GET"])
-@jwt_required
 def icon(name):
-    """3D 物件图：直接从唯一库的素材目录取，不在 app 里存副本。"""
+    """3D 物件图：直接从唯一库的素材目录取，不在 app 里存副本。
+
+    故意不挂 jwt：这张图是 <img src> 直接拉的，浏览器不会带 Authorization 头，
+    挂了鉴权就必然破图（实测就是这个 bug）。素材本身是 MIT 公共图，无用户数据。
+    """
     root = Path(os.environ.get("VIDEOKIT_HOME", os.path.expanduser("~/VideoKit"))) / "assets" / "icons3d"
     safe = re.sub(r"[^a-z0-9_]", "", name.replace(".png", ""))
     path = root / ("%s.png" % safe)
-    if not path.exists():
+    if not path.exists() or path.stat().st_size < 1024:
         return e_not_found("没有这个物件")
     return send_file(str(path), mimetype="image/png", max_age=86400)
 
