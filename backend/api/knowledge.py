@@ -47,7 +47,7 @@ def _vk_spec(front, back, chapter=""):
     """
     try:
         from videokit.from_card import map_kcard
-    except Exception as exc:  # noqa: BLE001 - 环境缺失时的可见兜底：任何导入失败都退回纯文本卡面
+    except Exception as exc:  # pragma: no cover - 环境缺失时的可见兜底
         current_app.logger.warning("videokit 不可用，卡片页退回纯文本：%s", exc)
         return None
     return map_kcard(front, back, chapter)
@@ -62,7 +62,7 @@ def icon(name):
     """
     root = Path(os.environ.get("VIDEOKIT_HOME", os.path.expanduser("~/VideoKit"))) / "assets" / "icons3d"
     safe = re.sub(r"[^a-z0-9_]", "", name.replace(".png", ""))
-    path = root / f"{safe}.png"
+    path = root / ("%s.png" % safe)
     if not path.exists() or path.stat().st_size < 1024:
         return e_not_found("没有这个物件")
     return send_file(str(path), mimetype="image/png", max_age=86400)

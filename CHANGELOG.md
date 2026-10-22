@@ -1,13 +1,3 @@
-## [2.17.0] - 2026-10-22
-
-- **卡片正面六格版式（REQ-UI-017）**：卡片页与它的讲解视频共用同一份 spec —— 由唯一实现库 `~/VideoKit` 的 `videokit.from_card.map_kcard` 产出（label / badge / title / icon_file / caption / footer）。`GET /api/knowledge/<chapter_id>` 每张卡新增 `vk` 字段；前端 `Student.vkFront()` 渲染。库缺失时退回纯文本卡面并记 warning，**不静默假装新版式生效**。
-- **3D 物件图接口 `GET /api/knowledge/icon/<name>`**：直接读 `~/VideoKit/assets/icons3d/*.png`（Fluent Emoji 3D，MIT），不在本仓存副本。**刻意不挂 jwt**：`<img src>` 不带 Authorization 头，挂鉴权必然破图；只接受 `[a-z0-9_]`，<1KB 视为缺图。
-- **修：卡片正面全显示「?」（用户实报）**。根因＝`icon` 路由只存在于工作树，5003 自今日 11:42/12:45/13:03 三次提交后**从未重启** → 请求落到 SPA 兜底返回 `text/html` 当图片 → 浏览器破图。处置＝`launchctl kickstart`，本地与公网 `icon` 均返 `image/png`（22450B / 256×256）。
-- **修：今日视频全部生成失败**。根因＝`daily_video.py::check_style_drift()` 只读 `videokit/__init__.py` 文本找 `STYLES = {`，而唯一库刻意让 `__init__` 零重依赖、STYLES 实物在 `scene.py` → 误判「缺少 STYLES 注册」并 `die`。改为两文件合并读；反证：临时库把 `STYLES` 改名 → exit 1。
-- **视频渲染切到唯一库**：删除本仓 `script.py` / `video_base.py` / `video_scenes_a.py` / `video_scenes_b.py` 副本，`daily_video.py` 改调 `videokit.cli.render_card`。
-- **版本三件套**：`app.py 2.17.0`（补齐——原停留在 2.16.0，而 `sw.js` 与 `index.html` 已是 2.17.0）、`sw.js CACHE aistudy-shell-v84 / V 2.17.0`、`index.html` 全部资源 `?v=2.17.0`。
-- **今日卡组 30 支视频按新管线重做**：产物先落临时目录、时长门（60–120s）通过才原子换入，学生端全程不出现「生成中」。
-
 ## [2.16.0] - 2026-10-12
 
 - **REQ-VID-010~023**：静默请求、全页共享 15 秒轮询与原地更新、今日卡组静默预热/批量入队/一次性通知、卡片墙与详情视频态、章→主题视频分组、多对一共享视频及视频→卡片反向导航；A1–A19 均有 GREEN 与真实坏构建 RED 原始证据。
