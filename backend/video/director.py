@@ -133,11 +133,30 @@ PROMPT = """你是「讲解视频」的导演。给你知识库里的**一页概
 - source     出处卡，固定放最后
   stage: {"headline":"这页从哪来","lines":["文件路径","书名 · 章节"]}
 
-## 全片结构（按此顺序；中间拍可增删，末两拍固定）
-（situation / dayband / object / dialogue —— **四选一**做开场器）→ crossout
-→ （chain / axis / loop / threshold / transform / balance / stack 里挑 1–5 拍）
-→ steps → close → source
-总长 60–120 秒 = 配音 300–560 字。每拍 5–14 秒（约 20–55 字）。
+## 第零步：判形态（决定这一集长什么样，顺序在骨架之后）
+读完这页，先判定它属于哪一种讲解形态（**形态决定页数，页数决定结构，不许先套模板**）：
+- 因果机制型：一个东西为什么会导致另一个结果 → 用「链/箭头」逐环点亮，2–4 环
+- 对比型：两件事差在哪 → 用「两列对照 / 天平」同屏对比，一页只比一个维度
+- 流程步骤型：要按顺序做几件事 → 用「可操作步骤」，**三步就必须 1→2→3 逐拍点亮**，不许合成一段话
+- 量变阈值型：一直在加，过某条线才质变 → 用「轴 + 虚线 + 滑标」
+- 层级结构型：一套东西由几层组成 → 用「堆叠/中心+轨道」，先整体后分层
+- 误区反转型：他以为 A，其实是 B → 先画 A 打叉，再立 B
+判不出来就选因果机制型；**不许所有页都用同一种画法**。
+
+## 第二步：排页（先出 pages 计划，再写 scenes）
+一条 60–120 秒的片子 **3–6 页**，每页只负责一件事，页与页必须递进，常见递进是：
+问题 → 机制 → 怎么做 → 回到开头收束。
+- 第一页先把「他以为的答案」演出来（开场器四选一）；
+- 中间每页一个**视觉主体**：箭头流向 / 编号步骤 / 两列对比 / 轴与阈值 / 分层堆叠 —— 页面上必须能看出结构，不能只有字；
+- 最后一页收束（回到开场画面，但距离/误解已解开）+ 出处卡。
+每页在 pages 里写清：`job`（这页负责什么）、`claim`（一句主张）、`visual`（用哪种画法）、`why`（为什么排在上一页之后）。
+写完 pages 再逐页填 scenes，**scenes 的页数与顺序必须与 pages 一致**。
+
+## 字幕（text）铁律
+- 一页一句 **完整的话**，句末必须有标点（。！？），**禁止以「…」结尾、禁止半句、禁止把一句话拆到两页**。
+- 每页 18–40 字；全片 300–560 字。宁可少讲一页，也不许为了控字数把句子截断。
+- 讲到三步就写三步，读到「第一/第二/第三」时，画面上要真的出现 1/2/3 三次点亮。
+
 
 ## 开场器轮换（硬规则，先读这段再选开场器）
 %(recent)s
@@ -162,12 +181,17 @@ PROMPT = """你是「讲解视频」的导演。给你知识库里的**一页概
 3. 有没有哪句话是原页的句子直接搬过来的？（有就删，只留骨架派生的）
 4. chain 的几个节点，是因果链还是并列清单？（并列就换掉）
 5. 术语超过 3 个了吗？中心类比换过没有？
+6. 形态判对了吗？这页讲的是三步，我是不是真的画了 1/2/3？
+7. 页与页之间有没有递进？把任意一页删掉，片子会不会塌？（不会塌的那页就是废页，删掉）
+8. 有没有两页用了同一种画法？（除开场+收束呼应用同一画法外，**中间各页画法不许重复**）
+9. 每一页的 text 都是**完整句子**吗？句末有标点吗？有没有以「…」收尾的半句？（有就补完整）
 
 ## 输出格式（只输出这个 JSON）
-{"date":"%(date)s","concept":"页名","source":"相对路径",
+{"date":"%(date)s","concept":"页名","source":"相对路径","form":"causal|compare|steps|threshold|layers|myth",
  "skeleton":"一句话因果链",
- "scenes":[{"id":"B1_Hook","style":"situation","role":"H","text":"配音原文","stage":{...}}]}
-id 与 role 固定：B1_Hook/H、B2_Wrong/M、B3_*/K、B4_*/A、B5_Steps/X、B6_Close/Z、B7_Source/S。
+ "pages":[{"n":1,"job":"这页负责什么","claim":"一句主张","visual":"chain","why":"为什么排在上一页之后"}],
+ "scenes":[{"id":"P1","style":"chain","role":"K","text":"一句完整的配音（带句末标点）","stage":{...}}]}
+id 自拟（P1、P2…），**不要再套 B1_Hook/B7_Source 那套固定编号**；source 拍固定最后一页。
 
 ## 这一页
 标题：%(title)s
@@ -227,8 +251,20 @@ def repair(card, source_default):
         warns.append("补了收尾的 source 拍")
     card["scenes"] = keep
 
-    if len(keep) < 4:
-        fatal.append("可用场数 %d，至少要 4 拍" % len(keep))
+    if len(keep) < 3:
+        fatal.append("可用场数 %d，至少要 3 拍" % len(keep))
+    # 2026-10-22 Ray 判词：字幕不能是半句。以「…」收尾＝被截断，打回重写（硬拦，逼模型补完整）。
+    for s in keep:
+        t = (s.get("text") or "").strip()
+        if t.endswith("…") or t.endswith("..."):
+            fatal.append("%s: text 以省略号收尾＝半句被截断，必须补成完整句子" % s.get("id"))
+        elif not t.endswith(("。", "！", "？", "!", "?", "」", "』")):
+            warns.append("%s: text 句末没有标点（念起来会断）" % s.get("id"))
+    mid = [s.get("style") for s in keep[1:-2]]
+    if len(mid) >= 2 and len(set(mid)) == 1:
+        warns.append("中间 %d 页都是同一种画法（%s）——结构没有区分，考虑换图形" % (len(mid), mid[0]))
+    if not card.get("pages"):
+        warns.append("缺 pages 分页计划（不影响渲染，但说明导演没做分页设计）")
     if not card.get("skeleton"):
         warns.append("缺 skeleton（不影响渲染）")
     total = sum(len(s.get("text") or "") for s in keep)
