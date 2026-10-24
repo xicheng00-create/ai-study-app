@@ -328,9 +328,10 @@ def main():
                 dur_map[sid] = float(d)
     run([pyman, "-c",
          "import sys; sys.path.insert(0, %r)\n"
-         "from videokit.cli import render_card\n"
-         "render_card(%r, %r, durations=%r)\n"
-         % (vk_home, os.path.abspath(args.card), vk_out, dur_map)],
+         "from videokit.cli import render_narration\n"
+         "render_narration(%r, %r, audio_dir=%r)\n"
+         % (vk_home, os.path.join(proj, "narration.json"), vk_out,
+            os.path.join(proj, "audio"))],
         cwd=proj, label="videokit",
         env=dict(os.environ, VIDEOKIT_HOME=vk_home, VIDEOKIT_MANIM=MANIM,
                  PYTHONPATH=vk_home))
