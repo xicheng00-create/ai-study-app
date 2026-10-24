@@ -733,6 +733,19 @@ const Student = {
   resetKnowledgeDeck() {
     closeSheet(); this._kcClear(); this.knowledgePos = 0; this.knowledgeFlipped = false; this._suppressClick = false; this.knowledgeDeck = true; render();
   },
+  vkFront(c, chTxt) {
+    // 六格版式：与讲解视频同一份 spec（c.vk 由后端 videokit.from_card.map_kcard 产出）
+    const v = c.vk || {};
+    const title = v.title || c.front || '';
+    const badge = v.badge || chTxt || '知识卡片';
+    const icon = v.icon_file || v.icon || 'light_bulb';
+    const cap = v.caption || '';
+    const foot = v.footer || (chTxt ? chTxt + ' · 复习卡片' : '复习卡片');
+    return `<div class="vk-top"><span class="vk-label">知识卡片</span><span class="vk-pill" title="${esc(badge)}">${esc(badge)}</span></div>
+      <h1 class="vk-title${title.length > 46 ? ' long' : ''}">${esc(title)}</h1>
+      <div class="vk-stage"><img class="vk-icon" alt="" src="/api/knowledge/icon/${encodeURIComponent(icon)}"><i class="vk-shadow"></i></div>
+      <div class="vk-bottom">${cap ? `<div class="vk-caption">${esc(cap)}</div>` : ''}<div class="vk-foot">${esc(foot)}</div><div class="vk-tip">点击翻转查看答案</div></div>`;
+  },
   viewKnowledgeDeck() {
     const c = this.knowledgeCards[this.knowledgePos];
     if (!c) {
@@ -746,7 +759,7 @@ const Student = {
     return appbar('复习知识卡片', `第 ${this.knowledgePos + 1} / ${total} 张`, 'Student.pauseKnowledge()') + `<div class="content"><div class="video-batch-progress" id="videoBatchProgress"${this._videoBatchTotal ? '' : ' hidden'}>AI 视频 ${this._videoBatchReady || 0}/${this._videoBatchTotal || 0}</div><div class="kc-progress"><i style="width:${(this.knowledgePos + 1) / total * 100}%"></i></div>
     <div class="kc-scene" ontouchstart="Student.kcTouchStart(event)" ontouchmove="Student.kcTouchMove(event)" ontouchend="Student.kcTouchEnd(event)" ontouchcancel="Student.kcTouchEnd(event)">
       <div class="kc-card ${this.knowledgeFlipped ? 'is-flipped' : ''} kc-in" onmousedown="Student.kcMouseDown(event)" onclick="Student.flipKnowledge()">
-        <div class="kc-face kc-front"><small>${esc(chTxt)} · ${esc(c.sub_concept || '知识点')}</small><b>${esc(c.front)}</b><span>点击翻转查看答案</span></div>
+        <div class="kc-face kc-front vk-page">${this.vkFront(c, chTxt)}</div>
         <div class="kc-face kc-back"><small>${esc(chTxt)} · 答案与解析</small><b>${esc(c.back)}</b></div>
       </div></div>
     <div class="kc-hint">拖动卡片：右滑 = 记住了 · 左滑 = 没记住</div>
