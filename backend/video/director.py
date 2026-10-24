@@ -268,6 +268,16 @@ def repair(card, source_default):
     mid = [s.get("style") for s in keep[1:-2]]
     if len(mid) >= 2 and len(set(mid)) == 1:
         warns.append("中间 %d 页都是同一种画法（%s）——结构没有区分，考虑换图形" % (len(mid), mid[0]))
+    # 2026-10-24 未完成项（视频规格 v2 · 下一步 1）：单图标居中页不合格。
+    # 这里先做软提醒，每次跑导演都会打印，不再靠人记。
+    for s in keep:
+        st = s.get("stage") or {}
+        bare = (s.get("style") in ("data", "statement", "dayband", "close"))
+        has_struct = any(st.get(k) for k in ("steps", "nodes", "before", "after",
+                                             "wrong", "root", "branches", "from", "to"))
+        if bare and not has_struct:
+            warns.append("%s: 这页只有图标+一句字幕（无结构素材）——按规格 v2 该补 2–3 个短词/节点"
+                         % s.get("id"))
     if not card.get("pages"):
         warns.append("缺 pages 分页计划（不影响渲染，但说明导演没做分页设计）")
     if not card.get("skeleton"):
