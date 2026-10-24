@@ -111,40 +111,23 @@ def wrap(text, limit=13):
 
 
 def check_style_drift():
-    """在系统 Python 下按文本核对渲染器 KINDS 与本档 STYLES。"""
-    path = os.path.join(PROJ, "script.py")
-    try:
-        text = open(path, encoding="utf-8").read()
-    except OSError as exc:
-        die("无法读取渲染器 script.py：%s" % exc)
-    m = re.search(r"^KINDS\s*=\s*\{", text, re.M)
+    """渲染器已外置到唯一库 ~/VideoKit（2026-10-22 切换）。
+
+    以前这里读本目录 script.py 的 KINDS 和本文件 STYLES 对表；现在本目录不再保留渲染器，
+    改为核对「唯一库在不在、套路注册齐不齐」——库缺失就当场失败，不许静默退回旧路径。
+    """
+    vk = os.environ.get("VIDEOKIT_HOME", os.path.expanduser("~/VideoKit"))
+    init = os.path.join(vk, "videokit", "__init__.py")
+    if not os.path.exists(init):
+        die("找不到唯一实现库：%s（可用 VIDEOKIT_HOME 覆盖）" % init)
+    text = open(init, encoding="utf-8").read()
+    m = re.search(r"^STYLES\s*=\s*\{(.*?)\}", text, re.M | re.S)
     if not m:
-        die("script.py 缺少可解析的 KINDS 注册")
-    depth, i = 0, m.end() - 1
-    while i < len(text):
-        if text[i] == "{":
-            depth += 1
-        elif text[i] == "}":
-            depth -= 1
-            if depth == 0:
-                break
-        i += 1
-    if depth != 0:
-        die("script.py 的 KINDS 注册未闭合")
-    body = text[m.end():i]
-    keys = set(re.findall(r"[\"']([A-Za-z_]+)[\"']\s*:", body))
+        die("videokit 缺少 STYLES 注册")
+    keys = set(re.findall(r"[\"']([A-Za-z_]+)[\"']\s*:", m.group(1)))
     if not keys:
-        die("script.py 的 KINDS 没有可解析的键")
-    # Frozen PM contract: renderer kinds missing from whitelist die; extra legacy
-    # whitelist styles only warn, preserving old card.json compatibility.
-    missing = keys - STYLES
-    if missing:
-        die("script.py 的 KINDS 注册了 %s，但本文件 STYLES 白名单里没有"
-            % sorted(missing))
-    gone = STYLES - keys
-    if gone:
-        print("[warn] STYLES 里有渲染器已不存在的 style：%s" % sorted(gone),
-              file=sys.stderr)
+        die("videokit 的 STYLES 没有可解析的键")
+    print("[videokit] 套路：%s（%s）" % (sorted(keys), vk), flush=True)
 
 
 def check_duration(proj, dur):
@@ -251,7 +234,7 @@ def seed_project(proj):
     这几个文件是派生物、不允许按项目各自魔改，所以直接覆盖是安全的。
     """
     os.makedirs(proj, exist_ok=True)
-    for fn in ("script.py", "video_base.py", "video_scenes_a.py", "video_scenes_b.py", "build_audio_zh.sh", "stitch_av.sh"):
+    for fn in ("build_audio_zh.sh", "stitch_av.sh"):
         src = os.path.join(PROJ, fn)
         dst = os.path.join(proj, fn)
         if not os.path.exists(src):
@@ -324,11 +307,29 @@ def main():
     if os.path.exists(used):
         print("   配音记录:", open(used, encoding="utf-8").read().replace("\n", " "), flush=True)
 
-    print("② 渲染 …", flush=True)
-    # 渲染跑在一次性 project 目录里，皮肤状态必须外置到持久目录，否则「不撞脸」静默失效。
-    os.makedirs(STATE_DIR, exist_ok=True)
-    run([MANIM, "-qm", "script.py"] + ids, cwd=proj, label="manim",
-        env=dict(os.environ, VIDEO_STATE_DIR=STATE_DIR))
+    print("② 渲染（videokit）…", flush=True)
+    # 唯一实现库：~/VideoKit（Ray 2026-10-22 定：所有工作流共用一个库，不许留副本）。
+    vk_home = os.environ.get("VIDEOKIT_HOME", os.path.expanduser("~/VideoKit"))
+    vk_out = os.path.join(proj, "media", "videos", "script", "720p30")
+    pyman = os.path.join(os.path.dirname(MANIM), "python")
+    # 逐场配音时长：画面按它拉齐，否则拼接会判「成片时长异常」
+    dur_map = {}
+    for sid in ids:
+        mp3 = os.path.join(proj, "audio", sid + ".mp3")
+        if os.path.exists(mp3):
+            d = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "csv=p=0", mp3], capture_output=True, text=True).stdout.strip()
+            if d:
+                dur_map[sid] = float(d)
+    run([pyman, "-c",
+         "import sys; sys.path.insert(0, %r)\n"
+         "from videokit.cli import render_card\n"
+         "render_card(%r, %r, durations=%r)\n"
+         % (vk_home, os.path.abspath(args.card), vk_out, dur_map)],
+        cwd=proj, label="videokit",
+        env=dict(os.environ, VIDEOKIT_HOME=vk_home, VIDEOKIT_MANIM=MANIM,
+                 PYTHONPATH=vk_home))
 
     print("③ 拼接 …", flush=True)
     vids = []
