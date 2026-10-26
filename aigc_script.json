@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-24",
+  "concept": "AIGC 是什么？其英文全称是什么？",
+  "source": "books/AI产品地图/第1章-大模型是什么-概念扫盲",
+  "form": "myth",
+  "skeleton": "因为有人把 AIGC 理解成「让 AI 变聪明」，所以一直以为关键在模型；其实 AIGC 的关键动作是「自动生成内容」——模型只负责生成，产物才是成品，所以它是把 AI 变成生产工具。",
+  "pages": [
+    {"n": 1, "job": "演出他以为的答案", "claim": "大多数人的第一反应是「AI 更聪明了」", "visual": "dialogue", "why": "开场先站在观众的误解里，后面才有得剥"},
+    {"n": 2, "job": "把误解钉死并打叉", "claim": "「AI 变聪明」不是 AIGC 的定义", "visual": "crossout", "why": "误解必须被明确否掉，否则机制讲了也没落点"},
+    {"n": 3, "job": "给出真正的机制：模型到成品的一条链", "claim": "内容是模型一环一环生成出来的", "visual": "chain", "why": "先破后立，破完立刻立因果链"},
+    {"n": 4, "job": "压成一句可记的定性", "claim": "自动生成内容，才是它区别于旧 AI 的性质", "visual": "transform", "why": "链讲完要收成一句话，才好带走"},
+    {"n": 5, "job": "把抽象的「内容」摊成看得见的形式", "claim": "文字、图片、视频、音乐、代码都属于内容", "visual": "stack", "why": "具体先于抽象，落到他已经见过的形态"},
+    {"n": 6, "job": "换一个视角：为什么这不是新东西", "claim": "AI 早就在区分「看懂」和「创造」", "visual": "axis", "why": "把 1.0 到 2.0 的迁徙落成一维标尺，解释为什么现在才叫 AIGC"},
+    {"n": 7, "job": "收束回开场，误解解开", "claim": "关键不是它更聪明，而是它开始生产", "visual": "close", "why": "回到第一场的画面，但误解已经消失"},
+    {"n": 8, "job": "出处卡", "claim": "这页的来处", "visual": "source", "why": "固定最后一页"}
+  ],
+  "scenes": [
+    {"id": "P1", "style": "dialogue", "role": "hook", "text": "听到AIGC，你可能以为是AI变聪明了。", "stage": {"caption": "我以为是这个意思", "lines": ["AI现在更聪明了。", "聪明到能自己想事。", "所以叫AI生成内容。"]}},
+    {"id": "P2", "style": "dialogue", "role": "hook2", "text": "这个理解不算错，但它没说到关键。", "stage": {"caption": "那关键在哪", "lines": ["好像也说得通。", "可是那为什么叫生成？", "生成出来的是什么？"]}},
+    {"id": "P3", "style": "crossout", "role": "K", "text": "因为AIGC的重点根本不是AI变聪明。", "stage": {"claim": "AI变聪明了", "note": "不是重点"}},
+    {"id": "P4", "style": "crossout", "role": "K", "text": "它的名字，落在最后那个词上：内容。", "stage": {"claim": "重点是内容", "note": "不是模型"}},
+    {"id": "P5", "style": "chain", "role": "K", "text": "它的英文全称是人工智能生成内容。", "stage": {"nodes": [{"label": "人工智能"}, {"label": "生成"}, {"label": "内容"}]}},
+    {"id": "P6", "style": "chain", "role": "K", "text": "所以它做的是一件事：自动把内容做出来。", "stage": {"nodes": [{"label": "你说一句"}, {"label": "它来生成"}, {"label": "拿到成品"}]}},
+    {"id": "P7", "style": "chain", "role": "K", "text": "因为模型负责生成，所以产物才是要的东西。", "stage": {"nodes": [{"label": "你的需求"}, {"label": "模型生成"}, {"label": "可用的成品"}]}},
+    {"id": "P8", "style": "transform", "role": "K", "text": "于是它从一个会回答的工具，变成了生产工具。", "stage": {"from": {"label": "会回答的AI"}, "to": {"label": "会生产的AI"}, "caption": "性质变了"}},
+    {"id": "P9", "style": "transform", "role": "K", "text": "这正是现在这代AI最有代表性的用法。", "stage": {"from": {"label": "问一句答一句"}, "to": {"label": "要什么产出什么"}, "caption": "从工具到产能"}},
+    {"id": "P10", "style": "stack", "role": "K", "text": "那内容到底是什么？先看文字。", "stage": {"blocks": ["文字"], "caption": "内容的第一种形态"}},
+    {"id": "P11", "style": "stack", "role": "K", "text": "新闻稿、电影剧本、写代码，都算生成文字。", "stage": {"blocks": ["文字", "代码"], "caption": "写和编都算"}},
+    {"id": "P12", "style": "stack", "role": "K", "text": "再往上是图片，连老照片的修复也算。", "stage": {"blocks": ["文字", "代码", "图片"], "caption": "图和修复都算"}},
+    {"id": "P13", "style": "stack", "role": "K", "text": "再往上还有视频和音频，一层层加满。", "stage": {"blocks": ["文字", "图片", "视频"], "caption": "越往上越像成品"}},
+    {"id": "P14", "style": "axis", "role": "K", "text": "把AI排成一条线，会发现它早就在两头。", "stage": {"axis": "AI在做的事", "left": "看懂", "right": "创造", "at": 0.2, "marker": "识图"}},
+    {"id": "P15", "style": "axis", "role": "K", "text": "早期它擅长看懂，识别图片、听懂语音。", "stage": {"axis": "AI在做的事", "left": "看懂", "right": "创造", "at": 0.3, "marker": "识别"}},
+    {"id": "P16", "style": "axis", "role": "K", "text": "现在标尺滑到另一端，它开始自己造东西。", "stage": {"axis": "AI在做的事", "left": "看懂", "right": "创造", "at": 0.85, "marker": "生成"}},
+    {"id": "P17", "style": "threshold", "role": "K", "text": "量一直涨，越过后才够得上生成这两个字。", "stage": {"level": "能力", "line": "够不够生成", "below": "辅助", "above": "生成"}},
+    {"id": "P18", "style": "threshold", "role": "K", "text": "所以它不是AI突然变聪明，而是跨过了那条线。", "stage": {"level": "能力", "line": "质变点", "below": "认得出", "above": "造得出"}},
+    {"id": "P19", "style": "loop", "role": "K", "text": "内容越用它，它越像你的生产工具。", "stage": {"nodes": ["你要内容", "它生成", "你再用"]}},
+    {"id": "P20", "style": "loop", "role": "K", "text": "你用得越多，就越难离开它。", "stage": {"nodes": ["生成更快", "你更依赖", "用得更多"]}},
+    {"id": "P21", "style": "close", "role": "close", "text": "回到开头那句话，现在可以改口了。", "stage": {"headline": ["不是变聪明", "是开始生产"], "left": "AIGC", "right": "内容", "gap": "自动生成"}},
+    {"id": "P22", "style": "close", "role": "close", "text": "AIGC，就是人工智能自动生成内容。", "stage": {"headline": ["一句记住", "自动生成内容"], "left": "你出需求", "right": "拿到成品", "gap": "零距离"}},
+    {"id": "P23", "style": "source", "role": "source", "text": "这页来自课程第一章的概念扫盲。", "stage": {"headline": "这页从哪来", "lines": ["books/AI产品地图/第1章-大模型是什么-概念扫盲", "大语言模型的基础认知 · 第 1 章"]}}
+  ]
+}
