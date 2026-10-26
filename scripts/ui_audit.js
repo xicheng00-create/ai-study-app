@@ -206,6 +206,52 @@ const audit = `(() => {
     }
    }
   }
+  /* REQ-PROG-018（v2.17.3）：薄弱点错题 = 菜单行 + 详情弹层。
+     反模式回归：把整张错题卡（含全部选项）塞进 flex 行 → 卡片被挤成窄条、内容变形（Ray 2026-10-26 实报）。 */
+  try {
+   ab(['set','viewport','390','900']);
+   ab(['open', `${BASE}/?cb=${Date.now()}#weak`]);
+   ab(['wait','--fn',"location.hash==='#weak' && !document.querySelector('.loading') && document.querySelector('.content')!==null"]);
+   const wk = pageEval(`(async()=>{
+     const r0 = await API.get('/api/progress/weak-points');
+     const pts = (r0.weak_points||[]).slice().sort((a,b)=>(b.evidence||[]).length-(a.evidence||[]).length);
+     if(!pts.length) return JSON.stringify({empty:true});
+     Student.weakOpen = pts[0].chapter_id; Student.weakGroupOpen = {};
+     await render(); await new Promise(s=>setTimeout(s,300));
+     [...document.querySelectorAll('.wgroup-head')].forEach(h=>h.click());
+     await new Promise(s=>setTimeout(s,700));
+     const rows=[...document.querySelectorAll('.wq')], qs=[...document.querySelectorAll('.wq-q')];
+     const card=document.querySelector('.content .card'), cr=card.getBoundingClientRect();
+     const ovf=rows.filter(r=>{const b=r.getBoundingClientRect();return b.right>cr.right+0.5||b.left<cr.left-0.5;}).length;
+     const wrapped=qs.filter(e=>e.getClientRects().length!==1).length;
+     const noEll=qs.filter(e=>getComputedStyle(e).textOverflow!=='ellipsis').length;
+     const noWrap=qs.filter(e=>getComputedStyle(e).whiteSpace!=='nowrap').length;
+     const innerCards=document.querySelectorAll('.wq .opt, .wq .card').length;
+     let sheet=null;
+     if(rows.length){
+       rows[0].click(); await new Promise(s=>setTimeout(s,500));
+       const sh=document.querySelector('.sheet-mask.show .sheet');
+       if(sh){const t=sh.innerText; sheet={w:Math.round(sh.getBoundingClientRect().width),
+         opts:sh.querySelectorAll('.opt').length, correct:t.includes('正确答案'), yours:t.includes('你的答案'),
+         ovf:(()=>{const c=sh.querySelector('.card');return c?c.scrollWidth-c.clientWidth:0;})()};}
+     }
+     return JSON.stringify({empty:false, chapter:pts[0].name, rows:rows.length, wrapped, noEll, noWrap, ovf, innerCards, sheet});
+   })()`);
+   if(wk.empty) pass('薄弱点：本期无错题（跳过菜单断言）');
+   else {
+     if(!(wk.rows>0)) fail('#weak@390: 展开后没有错题菜单行（.wq）');
+     else pass(`#weak@390: ${wk.chapter} 错题菜单行 ${wk.rows} 条`);
+     if(wk.wrapped) fail(`#weak@390: 菜单行题干换行 ${wk.wrapped} 条（须单行省略）`); else pass('#weak@390: 题干全部单行');
+     if(wk.noEll) fail(`#weak@390: ${wk.noEll} 条题干未设 text-overflow:ellipsis`); else pass('#weak@390: 题干省略号生效');
+     if(wk.noWrap) fail(`#weak@390: ${wk.noWrap} 条题干未设 white-space:nowrap（会折行）`); else pass('#weak@390: 题干 nowrap 不折行');
+     if(wk.ovf) fail(`#weak@390: ${wk.ovf} 条菜单行溢出卡片框体`); else pass('#weak@390: 零行溢出卡片框体');
+     if(wk.innerCards) fail(`#weak@390: 菜单行里仍嵌着完整卡片/选项（${wk.innerCards} 处，会被 flex 挤变形）`); else pass('#weak@390: 菜单行只出摘要，无内嵌卡片');
+     if(!wk.sheet) fail('#weak@390: 点菜单行没有弹出详情层');
+     else if(wk.sheet.opts<2||!wk.sheet.correct||!wk.sheet.yours) fail(`#weak@390: 详情层内容不全（选项 ${wk.sheet.opts} / 正确答案 ${wk.sheet.correct} / 你的答案 ${wk.sheet.yours}）`);
+     else if(wk.sheet.ovf>0) fail(`#weak@390: 详情卡片横向溢出 ${wk.sheet.ovf}px`);
+     else pass(`#weak@390: 点开弹出完整卡片（${wk.sheet.opts} 选项，标注正确答案/你的答案，宽 ${wk.sheet.w}px）`);
+   }
+  } catch (e) { fail(`#weak 错题菜单审计异常：${e.message}`); }
   /* REQ-VID：在副本库验证实际入队、只列 ready 和播放器卸载。 */
   try {
    ab(['set','viewport','390','900']);

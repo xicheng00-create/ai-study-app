@@ -25,6 +25,38 @@ function fmtWrongCard(w) {
   return `<div class="card sm" style="border-color:#FAD9D6"><div style="font-size:13.5px"><b>题：</b>${esc(w.content)}${w.sub_concept ? ` <span class="muted">（${esc(w.sub_concept)}）</span>` : ''}</div>${inner}</div>`;
 }
 
+/* 错题「菜单行」：一行一条，点开弹完整卡片看详情（REQ-PROG-017）。
+   2026-10-26 修：原来把整张错题卡（含全部选项）塞进 `.weak` 这个 flex 行里，
+   卡片作为 flex 子项被挤成窄条、换行错位 —— 现在列表只出单行摘要，详情走弹层。 */
+function wrongTypeLabel(t) {
+  return t === 'choice' ? '选择题' : t === 'bool' ? '判断题' : '问答题';
+}
+/* 你答了什么（列表行里只给短标签，详情里给完整文本） */
+function wrongYourShort(w) {
+  const your = w.your_answer;
+  if (your == null || your === '') return '未作答';
+  if (w.type === 'bool') return String(your);
+  if (w.type === 'choice') {
+    const i = parseInt(your, 10);
+    return Number.isNaN(i) ? String(your) : String.fromCharCode(65 + i);
+  }
+  const s = String(your).replace(/\s+/g, ' ').trim();
+  return s.length > 12 ? s.slice(0, 12) + '…' : s;
+}
+function fmtWrongRow(key, n, w) {
+  const tag = wrongTypeLabel(w.type);
+  const sub = w.sub_concept ? ' · ' + esc(w.sub_concept) : '';
+  return `<div class="wq" role="button" tabindex="0" onclick="Student.openWrong('${key}')"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();Student.openWrong('${key}')}">
+      <span class="wq-idx">${n}</span>
+      <div class="wq-main">
+        <div class="wq-q">${esc(w.content || '（题干缺失）')}</div>
+        <div class="wq-meta">${tag}${sub} · 你答「${esc(wrongYourShort(w))}」</div>
+      </div>
+      <span class="wq-go" aria-hidden="true">›</span>
+    </div>`;
+}
+
 /* REQ-PROG-016：章节卡五角星（0~5，进位那颗按比例裁切；不足部分 = 同一 path 半透明） */
 const CC_STAR_PATH = 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z';
 let ccStarUid = 0;
@@ -1522,6 +1554,9 @@ const Student = {
     quizzes.forEach(function (qq) { quizMap[qq.id] = qq; });
     const pts = weak.weak_points || [];
     const totalWrong = pts.reduce(function (s, w) { return s + (w.evidence || []).length; }, 0);
+    // 菜单行只存一个 key；点开时从这里取全文（避免把整份题干塞进 onclick 属性）
+    const wrongMap = {};
+    this._wrongMap = wrongMap;
     // 章节纵向列表：点章头展开，章内按「练习错题 / 测评错题」分组，点组向下展开全部错题
     const chapterList = pts.map(w => {
       const evs = w.evidence || [];
@@ -1542,14 +1577,22 @@ const Student = {
           const label = sess ? `测评 · 第 ${sess.chapter_no} 章 · ${sess.title}` : (q.title || '测评');
           const gkey = `${w.chapter_id}:${qid}`;
           const gOpen = !!this.weakGroupOpen[gkey];
-          const errs = quizErr[qid].map(function (e) { return fmtWrongCard({ content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept }); }).join('');
-          groups.push(`<div class="weak" style="margin-left:12px"><div style="cursor:pointer;font-weight:600;font-size:13px;color:var(--coral-strong)" onclick="Student.toggleWeakGroup('${w.chapter_id}','${qid}')">${esc(label)} <span class="muted">(${quizErr[qid].length} 道)</span> <span>${gOpen ? '▾' : '▸'}</span></div>${gOpen ? errs : ''}</div>`);
+          const errs = quizErr[qid].map(function (e, i) {
+            const key = `${w.chapter_id}:${qid}:${i}`;
+            wrongMap[key] = { w: { content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept }, from: label, chapter: w.name };
+            return fmtWrongRow(key, i + 1, wrongMap[key].w);
+          }).join('');
+          groups.push(`<div class="wgroup" style="margin-left:12px"><div class="wgroup-head" style="color:var(--coral-strong)" onclick="Student.toggleWeakGroup('${w.chapter_id}','${qid}')">${esc(label)} <span class="muted">(${quizErr[qid].length} 道)</span> <span>${gOpen ? '▾' : '▸'}</span></div>${gOpen ? `<div class="wq-list">${errs}</div>` : ''}</div>`);
         }, this);
         if (practiceErr.length) {
           const gkey = `${w.chapter_id}:practice`;
           const gOpen = !!this.weakGroupOpen[gkey];
-          const pe = practiceErr.map(function (e) { return fmtWrongCard({ content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept }); }).join('');
-          groups.push(`<div class="weak" style="margin-left:12px"><div style="cursor:pointer;font-weight:600;font-size:13px" onclick="Student.toggleWeakGroup('${w.chapter_id}','practice')">练习错题 <span class="muted">(${practiceErr.length} 道)</span> <span>${gOpen ? '▾' : '▸'}</span></div>${gOpen ? pe : ''}</div>`);
+          const pe = practiceErr.map(function (e, i) {
+            const key = `${w.chapter_id}:practice:${i}`;
+            wrongMap[key] = { w: { content: e.question, type: e.type, options: e.options, your_answer: e.your_answer, answer_key: e.answer_key, sub_concept: e.sub_concept }, from: '自主练习', chapter: w.name };
+            return fmtWrongRow(key, i + 1, wrongMap[key].w);
+          }).join('');
+          groups.push(`<div class="wgroup" style="margin-left:12px"><div class="wgroup-head" onclick="Student.toggleWeakGroup('${w.chapter_id}','practice')">练习错题 <span class="muted">(${practiceErr.length} 道)</span> <span>${gOpen ? '▾' : '▸'}</span></div>${gOpen ? `<div class="wq-list">${pe}</div>` : ''}</div>`);
         }
         body = groups.join('') || '<div class="muted" style="margin-left:12px">暂无错题依据</div>';
       }
@@ -1559,6 +1602,18 @@ const Student = {
       <button class="btn ghost sm" style="margin-bottom:10px" onclick="go('progress')">‹ 返回进度</button>
       <div class="card"><div class="sec-title">薄弱章节 · ${pts.length} 章 · ${totalWrong} 道错题</div>${chapterList}</div>
     </div>` + tabbar();
+  },
+  /* 错题详情弹层：点菜单行 → 弹出完整卡片（题干全文 + 全部选项 + 正确答案/你的答案 + 来源） */
+  openWrong(key) {
+    const item = (this._wrongMap || {})[key];
+    if (!item) return;
+    const w = item.w || {};
+    // 组标签本身就带章名（「测评 · 第 2 章 · …」）→ 不要再叠一次
+    const raw = String(item.from || '');
+    const from = (item.chapter && raw.indexOf(item.chapter) < 0) ? `${item.chapter} · ${raw}` : (raw || item.chapter || '错题详情');
+    openSheet(`<div class="sheet-txt dim">${esc(from || '错题详情')}</div>
+      ${fmtWrongCard(w)}
+      <div class="row cancel" onclick="closeSheet()">关闭</div>`);
   },
   async genReview() {
     try { const d = await API.post("/api/progress/review-items/generate", {}); toast("已为 " + d.created + " 个薄弱章生成巩固练习"); render(); }
