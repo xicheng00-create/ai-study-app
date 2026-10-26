@@ -4,9 +4,15 @@ import os
 import subprocess
 import time
 
+import sys
+
 import pytest
-from video.daily_video import (MID_FILES, check_duration, check_intermediates,
-                               check_scene_outputs)
+
+# 闸门的唯一实现在 ~/VideoKit/videokit/pipeline.py（v3 收编后 daily_video.py 是 14 行薄壳，
+# 曾经这三个函数只留在 .bak 里 → 本文件在收集阶段 ImportError，整套 pytest 中断）。
+sys.path.insert(0, os.environ.get("VIDEOKIT_HOME", os.path.expanduser("~/VideoKit")))
+from videokit.pipeline import (  # noqa: E402
+    MID_FILES, check_duration, check_intermediates, check_scene_outputs)
 
 
 def media(path, duration, audio=False):
