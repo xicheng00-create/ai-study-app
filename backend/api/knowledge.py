@@ -1,7 +1,6 @@
 """共享知识卡片及学生个人间隔复习状态。"""
 import os
 import re
-import sys
 from pathlib import Path
 
 from ai import knowledge, mastery
@@ -13,11 +12,6 @@ from data.db import get_db
 from flask import Blueprint, current_app, g, request, send_file
 from middleware.errors import e_forbidden, e_input, e_not_found, ok
 from middleware.rate_limit import rate_limit
-
-# 唯一视频/卡片实现库：卡片页与讲解视频共用同一份 spec（Ray 2026-10-22 定，不许各留副本）
-VIDEOKIT_HOME = os.environ.get("VIDEOKIT_HOME", os.path.expanduser("~/VideoKit"))
-if VIDEOKIT_HOME not in sys.path:
-    sys.path.insert(0, VIDEOKIT_HOME)
 
 knowledge_bp = Blueprint("knowledge_bp", __name__, url_prefix="/api/knowledge")
 
@@ -36,21 +30,6 @@ def _card(row):
 _CARD_COLS = ("kc.id,kc.chapter_id,kc.sub_concept,kc.front,kc.back,kr.learn_count,kr.interval_days,"
               "kr.next_review_at,kr.status,kr.last_review_at,COALESCE(ct.topic,'') AS topic")
 _CARD_FROM = "knowledge_cards kc JOIN knowledge_reviews kr ON kr.card_id=kc.id LEFT JOIN card_topics ct ON ct.card_id=kc.id"
-
-
-def _vk_spec(front, back, chapter=""):
-    """卡片页与它的讲解视频共用同一份 spec（唯一实现库 ~/VideoKit）。
-
-    故意不在这里写版式逻辑：映射只存在于 videokit.from_card.map_kcard，
-    本处只做「传数据、拿结果」。库缺失时返回 None，前端退回纯文本卡面并记一条告警，
-    不静默假装新版式生效。
-    """
-    try:
-        from videokit.from_card import map_kcard
-    except Exception as exc:  # noqa: BLE001 - 环境缺失时的可见兜底：任何导入失败都退回纯文本卡面
-        current_app.logger.warning("videokit 不可用，卡片页退回纯文本：%s", exc)
-        return None
-    return map_kcard(front, back, chapter)
 
 
 @knowledge_bp.route("/icon/<name>", methods=["GET"])
@@ -159,15 +138,7 @@ def cards(chapter_id):
     rows = con.execute(f"SELECT {_CARD_COLS} FROM {_CARD_FROM} WHERE kc.chapter_id=? AND kr.user_id=? ORDER BY CASE kr.status WHEN 'new' THEN 0 WHEN 'learning' THEN 1 WHEN 'reviewing' THEN 2 ELSE 3 END,kr.next_review_at", (chapter_id, g.user_id)).fetchall()
     card_scores = {c["id"]: {k: c[k] for k in ("m", "acc", "evidence")}
                    for c in mastery.card_mastery(con, g.user_id, chapter_id)}
-    ch = con.execute("SELECT name FROM chapters WHERE id=?", (chapter_id,)).fetchone()
-    ch_name = (ch["name"] if ch else "") or ""
-
-    def _with_vk(r):
-        # vk = 卡片页与讲解视频共用的那份 spec（唯一实现库产出）
-        return dict(_card(r), mastery=card_scores[r["id"]],
-                    vk=_vk_spec(r["front"], r["back"], ch_name))
-
-    return ok({"chapter_id": chapter_id, "cards": [_with_vk(r) for r in rows],
+    return ok({"chapter_id": chapter_id, "cards": [dict(_card(r), mastery=card_scores[r["id"]]) for r in rows],
                "mastery": mastery.compute_mastery(con, g.user_id, chapter_id), "deck_max": SESSION_DECK_MAX})
 
 

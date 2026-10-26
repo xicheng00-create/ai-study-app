@@ -1,7 +1,7 @@
 # AI 学习小组 App — 设计规格说明书 (Design Spec)
 
-> 版本：v2.13.0（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
-> 日期：2026-10-01（随代码现状回写）
+> 版本：v2.17.2（`backend/app.py` 权威版本常量，每次入 CHANGELOG 必同步 bump）
+> 日期：2026-10-26（随代码现状回写；v2.17.2 = 知识卡片卡面回滚纯文本，KNOW-016）
 > 状态：设计评审（正文静态章节以**当前生产代码**为准；§12.x 为实现状态回写历史）
 > 上游文档：PRD-AI学习小组app.md（v2.1）｜architecture-design.md（v1.1，架构再审有条件通过）
 > 方法论：pm-toolkit 架构分层 / 领域建模 / API 契约 / 角色分端 UI 规格 + 架构再审（F1–F10）
@@ -234,6 +234,7 @@
 | KNOW-012 | student | P1 | **复习卡组界面内「问 TUTOR」（v2.9.0，CR-2026-0923-RESUME）**：复习 deck 在「没记住/记住了」操作区之下、暂停退出之上新增「💬 问 TUTOR 这张卡」按钮。点击**先存进度再跳对话页**（复用 `askKcTutor` + `kc_ctx` 自动就当前这张卡提问），否则离开卡组后复习位置丢失。不改 `askKcTutor` 现有行为，不加后端接口。**v2.9.3 补**：该按钮与上方「没记住/记住了」操作区之间间距统一为 10px（`.kc-tutor{margin-top:10px}`，真机反馈） |
 | KNOW-013 | student | P1 | **一键续学（v2.9.0，CR-2026-0923-RESUME）**：① 首页「继续复习」卡**常显两种状态**（有存档 → 「第 X/Y 张」+「继续」；无存档 → 按钮置灰「暂无进行中的复习」），读 localStorage 纯读判定「今日任务 / 知识卡片」两类存档；② 今日任务卡「继续」存在当日存档 → 直接进存档位置；③ 「知识卡片」入口与今日任务卡组的「继续上次复习」**取消二次确认 sheet**，直接续学（「重新开始」仍保留在卡组内）；④ `_kcSave` 增存 `total`（旧记录缺 total 视为 0，向后兼容） |
 | KNOW-014 | student | P1 | **知识卡片「重复出卡」止血闸门（v2.9.4）**：**触发点 = 任何生成/导入/重建写卡路径**（在线 `knowledge.ensure_chapter_cards`、离线 `scripts/rebuild_cards.py` 的 `rebuild_chapter`/`fill_gaps`/`fill_orphans` 三处写卡，以及**未来新增的任何 `INSERT/REPLACE INTO knowledge_cards` 入口**，tests 除外），**写库前**必须过 `backend/ai/cardgate.py::filter_new_cards`（确定性预筛 R1~R5 宁可多召回 → LLM 确认「同一考点同一件事、答案可无损合并」→ 丢弃信息较少一张并记审计 `instance/logs/card_gate.jsonl`）。**阈值口径（v2.9.4 热修固化）**：R4 共享稀有拉丁 token 的 df 区间 = **2..40**、R5 前置术语 head 的 df 区间 = **2..40**（上界 40 守「泛词不触发」，下界 2 必须覆盖候选对自身 df=2 的最小情形——本章只有这两张卡共享该 token/head；下界写成 3 会把「BRD 全称/缩写」这类同实体卡整类漏掉，2026-09-24 真机实测复现）；**每条预筛路径都必须有「断言确实触发了 LLM 确认」的测试**（不能只断言结果被丢，否则阈值回归成不触发时只断言结果会静默通过）。**违规处置**：闸门丢弃重复卡 + 记 `gate_degraded` 审计日志 + 现有 `merge_duplicate_cards.py`/`purge_low_value_cards.py` 报告可回滚；**对后续一律适用**——闸门是长期规则而非一次性清理，任何生成入口旁路按「口径旁路」缺陷记审计 FAIL（同 KNOW-010⑤ 的旁路处置口径）。**测试隔离（2026-09-25 修）**：tests 经 `tests/conftest.py` 的 autouse fixture `_isolate_card_gate_log` 把 `CARD_GATE_LOG` 重定向到 `tmp_path`，绝不写生产 `instance/logs/`（此前 pytest 噪声占该日志 99.2%，使告警通道失真，见 §12.51 第 6 条） |
+| KNOW-016 | student | **P0** | **卡面只准纯文本翻转——禁止任何图标/六格「花活」（v2.17.2 回滚裁定，Ray 2026-10-26）**：① 卡面固定三段：`small`（章名 · 知识点）、`b`（正面问题/知识点）、`span`（点击翻转查看答案）；**不得**注入视频 spec（`videokit.from_card.map_kcard`）、六格版式（顶部 label+pill / 居中 3D 图标 / 底部 caption+footer+tip）或任何装饰性口号、图标、动效。② **触发点** = 任何改动 `viewKnowledgeDeck()` 卡面 DOM、`kc-face` 样式、或给 `GET /api/knowledge/<chapter_id>` 卡片 payload 加字段的提交。③ **覆盖路径** = 前端 `kc-face kc-front` 渲染 + `style.css` 的 `.kc-*` 规则 + 卡片接口 payload；**视频链路的改动不得反推改卡面**（视频只走 `backend/video/` 与 `~/VideoKit`）。④ **违规处置** = 卡面再出现图标/六格/标语 → 该 commit 回滚并在 CHANGELOG 记「越界改卡面」；视频需求只能改视频，不改卡片。⑤ `/api/knowledge/icon/<name>` 仅作历史兼容保留，卡面不再引用它。（背景：2026-10-22 曾把卡面改成与视频同一份六格 spec，2026-10-23 已 revert 但被 967a86b 重新应用，造成卡面正中破图问号 + 灯泡当封面，Ray 2026-10-26 判定「都是灯泡没有意义」，第二次回滚并立本条长期口径）|
 
 **Technical**
 - **独立数据层（共享内容 + 每生独立复习态，v1.17.x 重构）**：`knowledge_cards`（id, chapter_id, sub_concept, front, back, source_chunk_id, created_at）——**无 user_id，是共享内容**（每章一组，发布时生成一次）；`knowledge_reviews`（id, card_id, user_id, learn_count, interval_days, next_review_at, status CHECK(new/learning/reviewing/mastered), last_review_at, created_at, UNIQUE(card_id,user_id)）——**每学生独立复习状态**，学生首次打开该章卡组时**懒建**（默认 new）。已废弃 v1.17.0 的「knowledge_cards 带 user_id」旧形（表空可安全重建）。
@@ -245,6 +246,7 @@
 - **AI 抽取（v2.5.1 整改，CR-2026-0919-CARDS）**：`backend/ai/knowledge.py` `generate_knowledge_cards(chapter_ids)` + `prompts.py` `KNOWLEDGE_SYSTEM`。**历史缺陷**：旧实现用 `quizzer._retrieve_chunks` 抽 ~18 个切片、每片截断 300 字、总长再砍到 6000 字 → 长资料（W1S2 有 96 片）只能被模型看到约 1/5，卡片必然「只覆盖大框架、遗漏细碎考点」，用户实报「无法支撑做题」。**整改后**：`_chapter_text()` 按资料分层投喂**全章每个切片**（每片 ≤600 字、每份资料保底 1200 字、总预算 `CONTENT_BUDGET=20000`），配合 KNOW-004 的提示词硬性要求 + `MIN_CARDS=40`，并过滤重复/空正面。**批量重做历史章节**走 `scripts/rebuild_cards.py`（逐片组独立调模型，片组按教案小节切分、每片组上限 16 张，按 front 归一化精确继承复习态）。LLM 真返空返空列表、端点提示「生成失败请重试」。
 - **路由（去掉「学生手动生成」主路径）**：`POST /api/knowledge/generate`（保留为**懒加载兜底**：卡片缺失时教师/系统可触发，学生一般不必点）、`GET /api/knowledge/:chapter`（卡组+该生复习态，学生首次打开自动懒建 review 行）、`POST /api/knowledge/:card/review`（body `{remembered: true|false}` → 更新该生 learn_count/interval/status/next_review）、`GET /api/knowledge/overview`（各章该生掌握进度：已掌握/学习中/未学/今日待复习）。学生本人，越权 403；蓝图 `knowledge_bp` 注册进 app.py。
 - **教师端核查路由（v2.6.0，KNOW-005）**：`GET /api/teacher/knowledge`（章级汇总：`cards/sub_concepts/chunks/orphan_chunks/status`，教师可见 draft 章）+ `GET /api/teacher/knowledge/<chapter_id>`（单章明细：`groups[{sub_concept,count,cards[{front,back,source_material,source_snippet}]}]`，源切片 `re.sub(r"\s+"," ")` 折叠后截 220 字；章节不存在 404）。均 `@jwt_required + @role_required("teacher")`，**只读**（不写库、不改卡、不发布），学生访问 403。前身缺口：`GET /api/knowledge/<chapter_id>` 是**学生专属**且要求章节已发布，教师只能查库/铸学生 token 才能核对卡片内容。
+- **卡面口径（v2.17.2 回滚，KNOW-016，**对后续一律适用**）**：知识卡片正面 = 纯文本翻转卡，只有「章名 · 知识点 / 问题 / 点击翻转」三行，**不挂图标、不做六格版式、不注入视频 spec**。视频是独立链路（`backend/video/` + `~/VideoKit`），它的版式改造**不许**回流到卡面。历史：`a928c5d` 把卡面改成六格（复用 `map_kcard`）→ `3b63f9d` revert → `967a86b` 重新应用 → 2026-10-26 线上卡面出现破图问号（`icon_file` 返回裸名 `book` → `/api/knowledge/icon/book` 404）＋「灯泡当封面」，Ray 判定无意义，v2.17.2 二次回滚（`git revert 967a86b`）：删 `_vk_spec`/`vk` 字段、删 `vkFront()` 与全部 `.vk-*` 样式、卡面恢复旧 DOM。`icon_file()` 与 `/api/knowledge/icon` 保留但**只作历史兼容**，且映射改为查磁盘、路由缺图兜底回默认图（永不 404 → 永不破图）。
 - **⚠️ 自动生成钩子（v1.17.x，核心）**：`knowledge.ensure_chapter_cards(chapter_id)`（查 `knowledge_cards` 该章已有卡则复用返 True，无则 LLM 生成 + 入库返 False；LLM 失败返回 False，由懒加载兜底）。在**学习路径发布**（`curriculum_bp` 发布 session → 对其 `chapter_ids` 逐个 `ensure_chapter_cards`）与**资料发布**（`materials_bp` 发布 material → 其 `chapter_id` `ensure_chapter_cards`）处调用。同步调用 + try/except（发布请求可容忍 ~秒级 LLM 延迟，3 学生规模可接受）。
 - **前端（v2.0.0 导航+多选+动画重构）**：「学习」tab = **学习主菜单 hub**（资料库**可滚动多选 list**——每章圆形勾选框 + 已选计数 + 全选/清空，勾选记忆 localStorage `aistudy_sel_chapters`；对话页原横滑选章卡已撤除，选章统一在此）；「对话」子页（多选集驱动**跨章检索**：`post_message` 带 `chapter_ids` → `tutor._retrieve_multi` 逐章 RAG 合并去重、片段【章名】标注）；点「知识卡片」→ **跨章卡片列表页**（所选各章全部卡按章分组折叠、点章头展开卡网格，「开始复习」按钮置顶）+ 复习 deck（每卡标章名，跨章合并）。复习进度 localStorage `aistudy_kc_progress` 存**章 id 集签名 `ids`**（兼容旧 `{cid}` 单章格式），暂停退出/续学；换选集不误续旧进度。**卡片动画**：翻转 = 同一 DOM 切 `is-flipped` class 驱动 3D 过渡（非整页 render）；touch/mouse 跟手拖拽（`translateX + rotate`，拖拽期 `.dragging` 关 transition），超 70px 甩出判定（右滑=记住了/左滑=没记住，播 `.out-r/.out-l` 飞出）否则弹回；按钮点击同样先飞后提交；换卡 `.kc-in` 入场动画。`Student` 状态 `learnChat`/`knowledgeIdx`/`knowledgeDeck`/`selChapters` + `viewLearnHome()`/`viewLearnChat()`/`viewKnowledge()`/`viewKnowledgeDeck()`。改前端须 bump sw.js CACHE + app.py version。
 
@@ -2025,3 +2027,22 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 - **口径**：新片先渲染到临时目录 → 时长门（60–120s）通过 → `os.replace` 原子换入 `instance/media/videos/<video_id>.mp4` → 最后才改 DB。**禁止**把行改成 `queued/generating` 后再渲染（学生端会看不到旧片）。
 - **机械断言**：批量作业期间 `SELECT COUNT(*) FROM card_videos WHERE status IN ('queued','generating')` 相对作业前**不得增加**；作业结束后 `status='ready'` 数与作业前相同（只换内容不换可用性）。
 - **违规处置**：若出现失败行，`status` 保持 `ready`（旧片仍可看）并在报告里单列失败清单，不得整批标 failed。
+
+### 12.76 KNOW-016（v2.17.2）：知识卡片卡面回滚纯文本 —— 视频改造不许外溢到卡片
+
+**需求来源**：2026-10-26 Ray 真机截图（复习卡片第 2/30 张，卡面正中一个破图问号）＋原话「为什么 ai 学习小组的卡片又出现问号了，之前不是让你回滚了吗」「其实都是灯泡没有意义，你还是把知识卡片回滚成之前的版本，把 design spec 写好，不要再在知识卡片上整这些花活，我之前的需求是改视频，不是改知识卡片」。
+
+**根因（两条，均已实测）**：
+1. 卡面被 `967a86b`「Reapply 六格版式」重新接管，卡面中间是 `<img src="/api/knowledge/icon/<icon_file>">`；`from_card.ICON_FILE` 是手写字典，只登记了旧 11 个图标，图标库长到 18 个后新增的 `book/gear/rocket/...` 走到 `ICON_FILE.get(name, name)` 返回裸名 → 路由 404 → iOS 破图占位（蓝底问号）。
+2. 即使图标能出来，卡面也只剩「一个大图标 + 一句问题」，Ray 判定「都是灯泡没有意义」。
+
+**改动**：
+- `backend/api/knowledge.py`：删 `_vk_spec()`、删卡片 payload 的 `vk` 字段；`/icon/<name>` 保留（历史兼容）并加兜底（未知/缺素材回默认图，不返回 404）。
+- `backend/frontend/js/student.js`：删 `vkFront()`，`viewKnowledgeDeck()` 卡面恢复 `<div class="kc-face kc-front"><small>章名 · 知识点</small><b>问题</b><span>点击翻转查看答案</span></div>`。
+- `backend/frontend/css/style.css`：删全部 `.vk-*` 六格样式。
+- `~/VideoKit/videokit/from_card.py`：`icon_file()` 从手写字典改为查磁盘 + 别名表，任何语义名都落到真实素材（`map_kcard` 现已不被卡片调用，此修复只作库的健壮性）。
+
+**验收（实测）**：
+- `grep -rn "vkFront\|vk-page\|_vk_spec" backend/` = 0 命中；卡片接口响应无 `vk` 字段。
+- `pytest tests/test_knowledge_icon.py`：语义图标名全部映射到真实文件；未知名路由仍回 `image/png`；以 `VIDEOKIT_HOME=/tmp/emptyvk` 跑同一测试 → 3 条 fail（反证门禁能红）。
+- 真机/浏览器复核：卡面只有三行文字，无 `<img>`、无破图。

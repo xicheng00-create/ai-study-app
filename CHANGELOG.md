@@ -1,3 +1,15 @@
+## [2.17.2] - 2026-10-26
+
+- **知识卡片卡面回滚纯文本（KNOW-016）**：`git revert 967a86b`。删 `_vk_spec()` 与卡片 payload 的 `vk` 字段、删 `Student.vkFront()`、删全部 `.vk-*` 样式；卡面恢复「章名 · 知识点 / 问题 / 点击翻转」三段纯文本。**视频改造不得再回流到卡面**（口径见 DESIGN SPEC §3.4.2 KNOW-016 与 §12.76）。
+- **根因（破图问号）**：`from_card.ICON_FILE` 是手写字典，图标库 11→18 后新增项落到裸名（`book`）→ `/api/knowledge/icon/book` 404 → iOS 破图占位；且卡面即便正常也只是一个大灯泡，Ray 判定无意义，故整体回滚而不是继续修图标。
+- **遗留兼容**：`/api/knowledge/icon/<name>` 保留但不被卡面引用，且加兜底（未知/缺素材回默认图，永不 404）；`videokit.from_card.icon_file()` 改查磁盘 + 别名表。
+- **测试**：新增 `tests/test_knowledge_icon.py`（映射 / 路由兜底；`VIDEOKIT_HOME=/tmp/emptyvk` 可反证为红）。
+- **版本三件套**：`app.py 2.17.2`、`sw.js V 2.17.2 / CACHE v86`、`index.html ?v=2.17.2`。
+
+## [2.17.1] - 2026-10-26
+
+- **修：卡片图标 404 破图**。`icon_file` 改查磁盘；`/icon/<name>` 支持带/不带 `_3d` 后缀并兜底回默认图。此版仍保留六格卡面，2.17.2 起卡面已整体回滚。
+
 ## [2.17.0] - 2026-10-22
 
 - **卡片正面六格版式（REQ-UI-017）**：卡片页与它的讲解视频共用同一份 spec —— 由唯一实现库 `~/VideoKit` 的 `videokit.from_card.map_kcard` 产出（label / badge / title / icon_file / caption / footer）。`GET /api/knowledge/<chapter_id>` 每张卡新增 `vk` 字段；前端 `Student.vkFront()` 渲染。库缺失时退回纯文本卡面并记 warning，**不静默假装新版式生效**。
