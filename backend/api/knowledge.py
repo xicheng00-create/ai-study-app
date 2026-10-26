@@ -62,10 +62,20 @@ def icon(name):
     """
     root = Path(os.environ.get("VIDEOKIT_HOME", os.path.expanduser("~/VideoKit"))) / "assets" / "icons3d"
     safe = re.sub(r"[^a-z0-9_]", "", name.replace(".png", ""))
-    path = root / f"{safe}.png"
-    if not path.exists() or path.stat().st_size < 1024:
-        return e_not_found("没有这个物件")
-    return send_file(str(path), mimetype="image/png", max_age=86400)
+    # 名字可能带/不带 _3d 后缀（历史 spec 里两种都出现过），逐个试
+    candidates = [safe + ".png"] if not safe.endswith("_3d") else []
+    candidates += [safe + "_3d.png", safe + ".png"]
+    for fn in candidates:
+        path = root / fn
+        if path.exists() and path.stat().st_size >= 1024:
+            return send_file(str(path), mimetype="image/png", max_age=86400)
+    # 兜底而不是 404：<img> 收不到图就是卡面正中一个问号（2026-10-26 线上事故）。
+    # 少了某个物件属于素材缺失，可以借默认图标顶上，但不能让用户看见破图。
+    fallback = root / "light_bulb_3d.png"
+    if fallback.exists():
+        current_app.logger.warning("icon 缺失，退回默认图标：%s", safe)
+        return send_file(str(fallback), mimetype="image/png", max_age=300)
+    return e_not_found("没有这个物件")
 
 
 def _published(con, chapter_id):

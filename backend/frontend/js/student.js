@@ -738,12 +738,12 @@ const Student = {
     const v = c.vk || {};
     const title = v.title || c.front || '';
     const badge = v.badge || chTxt || '知识卡片';
-    const icon = v.icon_file || v.icon || 'light_bulb';
+    const icon = v.icon_file || v.icon || 'light_bulb_3d';
     const cap = v.caption || '';
     const foot = v.footer || (chTxt ? chTxt + ' · 复习卡片' : '复习卡片');
     return `<div class="vk-top"><span class="vk-label">知识卡片</span><span class="vk-pill" title="${esc(badge)}">${esc(badge)}</span></div>
       <h1 class="vk-title${title.length > 46 ? ' long' : ''}">${esc(title)}</h1>
-      <div class="vk-stage"><img class="vk-icon" alt="" src="/api/knowledge/icon/${encodeURIComponent(icon)}"><i class="vk-shadow"></i></div>
+      <div class="vk-stage"><img class="vk-icon" alt="" src="/api/knowledge/icon/${encodeURIComponent(icon)}" onerror="this.onerror=null;this.src='/api/knowledge/icon/light_bulb_3d'"><i class="vk-shadow"></i></div>
       <div class="vk-bottom">${cap ? `<div class="vk-caption">${esc(cap)}</div>` : ''}<div class="vk-foot">${esc(foot)}</div><div class="vk-tip">点击翻转查看答案</div></div>`;
   },
   viewKnowledgeDeck() {
