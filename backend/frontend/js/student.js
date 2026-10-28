@@ -642,7 +642,9 @@ const Student = {
     const video = this.videoIndex?.all_cards?.[id] || this.videoIndex?.cards?.[id];
     const state = video?.status || 'none';
     const videoLabel = state === 'ready' ? '▶ 看 AI 视频讲解' : state === 'queued' || state === 'generating' ? '⏳ 视频生成中，完成后通知你' : state === 'failed' ? '↻ 重新生成视频' : '▶ 生成 AI 视频讲解';
-    const videoAction = state === 'ready' ? `Student.openVideoPlayer('${video.video_id}')` : (state === 'queued' || state === 'generating') ? '' : `Student.openCardVideo('${c.id}')`;
+    // 播放前一律回服务端核验这张卡自己的视频状态：客户端 videoIndex 可能是旧快照，
+    // 旧快照里还留着已被清理的「借链」，照着它播就会播到别人的片（REQ-VID-LINK-01）。
+    const videoAction = (state === 'queued' || state === 'generating') ? '' : `Student.openCardVideo('${c.id}')`;
     openSheet(`<div class="row" style="font-weight:700;cursor:default;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${ic('cards')}知识卡片${c.chName ? `<span class="muted" style="font-size:12px;font-weight:500">${esc(c.chName)}</span>` : ''}${this.kcStatusBadge(c.status)}</div>
       <div class="muted">掌握度 ${c.mastery ? c.mastery.m + "%" : "未评估"} · ${c.mastery && c.mastery.acc != null ? "作答正确率 " + c.mastery.acc + "%" : "无练习证据"}</div>
       <div class="sheet-txt"><b>${esc(c.front)}</b></div>
@@ -904,7 +906,7 @@ const Student = {
       this._videoBatchReady = batch.ready;
       this._videoBatchTotal = batch.total;
       this._videoBatchPending = batch.pending;
-      this.videoStates = Object.fromEntries(this.knowledgeCards.map(c => [c.id, batch.pending ? 'queued' : (this.videoIndex?.cards?.[c.id]?.status || 'ready')]));
+      this.videoStates = Object.fromEntries(this.knowledgeCards.map(c => [c.id, batch.pending ? 'queued' : (this.videoIndex?.cards?.[c.id]?.status || 'none')]));
       const label = document.getElementById('videoBatchProgress');
       if (label) { label.hidden = false; label.textContent = `AI 视频 ${batch.ready}/${batch.total}`; }
       this._videoStart();
