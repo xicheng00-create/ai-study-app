@@ -8,7 +8,6 @@ import tempfile
 import time
 from pathlib import Path
 
-from ai.agents import _chat
 from app import create_app
 from data import checkin, models, timeutil
 from data.db import get_db
@@ -21,11 +20,9 @@ MEDIA = ROOT / "instance/media/videos"
 LOG = ROOT / "instance/logs/video_worker.log"
 logger = logging.getLogger("video_worker")
 
-
 def recover(con):
     con.execute("UPDATE card_videos SET status='queued' WHERE status='generating'")
     con.commit()
-
 
 def claim(con):
     row = con.execute("SELECT id FROM card_videos WHERE status='queued' ORDER BY requested_at,id LIMIT 1").fetchone()
@@ -37,20 +34,16 @@ def claim(con):
         return None
     return con.execute("SELECT * FROM card_videos WHERE id=?", (row["id"],)).fetchone()
 
-
 def neighbours(con, card):
-    rows = con.execute("SELECT kc.id,kc.front FROM knowledge_cards kc LEFT JOIN card_topics ct ON ct.card_id=kc.id WHERE kc.chapter_id=? AND kc.id!=? ORDER BY (ct.topic=? AND ct.topic!='') DESC,ct.ord LIMIT 40", (card["chapter_id"], card["id"], card["topic"])).fetchall()
-    if not rows:
-        return []
-    prompt = "从同章候选里挑与核心卡知识点最接近的5到10个；不够就少挑，不许硬凑。只输出JSON数组，元素为候选id。核心：" + card["front"][:500] + "\n候选：" + json.dumps([{"id": r["id"], "front": r["front"][:160]} for r in rows], ensure_ascii=False)
-    raw = _chat([{"role": "user", "content": prompt}], feature="video_neighbours")
-    try:
-        ids = json.loads(raw or "[]")
-        allowed = {r["id"] for r in rows}
-        return list(dict.fromkeys(i for i in ids if isinstance(i, str) and i in allowed))[:10]
-    except (ValueError, TypeError):
-        return []
+    """同章里与本卡属同一知识点的其它卡。
 
+    2026-10-27 起改为机械判定（REQ-VID-LINK-01）：原来是叫 LLM「挑最接近的 5–10 个」，
+    实测把「六大核心设计对象」和「持久化上下文工作台」这种八竿子打不着的卡连到一起。
+    现在只认：同切片 / 同子概念 / 字面重合 ≥0.30，确定性可复现。
+    """
+    from video_links import neighbours as mechanical_neighbours
+
+    return mechanical_neighbours(con, card)
 
 def _run(cmd, timeout, label):
     """跑子进程；失败时把 stdout/stderr 带进异常（失败必须留痕，不许只报 exit code）。"""
@@ -59,7 +52,6 @@ def _run(cmd, timeout, label):
         detail = (r.stderr or r.stdout or "").strip()[-600:]
         raise ValueError(f"{label} 失败(exit {r.returncode})：{detail}")
     return r
-
 
 def render(con, row):
     card = con.execute("SELECT kc.*,ch.name AS chapter_name,COALESCE(ct.topic,'') AS topic FROM knowledge_cards kc JOIN chapters ch ON ch.id=kc.chapter_id LEFT JOIN card_topics ct ON ct.card_id=kc.id WHERE kc.id=?", (row["core_card_id"],)).fetchone()
@@ -91,14 +83,12 @@ def render(con, row):
             target.unlink(missing_ok=True)
             raise
 
-
 def _batch_card_state(con, card_id):
     """批次结算与学生卡片查询使用同一覆盖判据，支持复用他人生成的视频。"""
     return con.execute("""SELECT v.status FROM card_videos v
         LEFT JOIN card_video_links l ON l.video_id=v.id
         WHERE v.core_card_id=? OR l.card_id=?
         ORDER BY CASE WHEN v.status='ready' THEN 0 ELSE 1 END LIMIT 1""", (card_id, card_id)).fetchone()
-
 
 def _notify_video_requests(con, video_id):
     # manual 单卡请求仍单独通知请求者。
@@ -136,14 +126,30 @@ def _notify_video_requests(con, video_id):
         con.execute("UPDATE card_video_requests SET notify=2 WHERE batch_id=? AND source='batch'", (batch["id"],))
         con.commit()
 
-
 def process(con, row):
     try:
         linked, script, duration, size = render(con, row)
         con.execute("UPDATE card_videos SET status='ready',file_name=?,duration_s=?,size_bytes=?,script_json=?,ready_at=?,error=NULL WHERE id=?", (row["id"] + ".mp4", duration, size, script, models.utcnow(), row["id"]))
         con.execute("INSERT OR IGNORE INTO card_video_links(video_id,card_id,is_core) VALUES(?,?,1)", (row["id"], row["core_card_id"]))
+        from video_links import is_related
+
+        core = con.execute(
+            "SELECT id,front,back,sub_concept,source_chunk_id FROM knowledge_cards WHERE id=?",
+            (row["core_card_id"],),
+        ).fetchone()
+        kept = 0
         for cid in linked:
+            cand = con.execute(
+                "SELECT id,front,back,sub_concept,source_chunk_id FROM knowledge_cards WHERE id=?",
+                (cid,),
+            ).fetchone()
+            # 二道闸：链接落库前再按机械判据核一次，防止上游给出不相干的邻居（REQ-VID-LINK-01）
+            if not cand or core is None or not is_related(cand, core):
+                logger.warning("跳过不相干共享链接 video=%s card=%s", row["id"], cid)
+                continue
             con.execute("INSERT OR IGNORE INTO card_video_links(video_id,card_id,is_core) VALUES(?,?,0)", (row["id"], cid))
+            kept += 1
+        logger.info("视频 %s 就绪，共享给 %d 张同知识点卡", row["id"], kept)
         con.commit()
         _notify_video_requests(con, row["id"])
     except Exception as exc:
@@ -152,7 +158,6 @@ def process(con, row):
         con.execute("UPDATE card_videos SET status='failed',error=? WHERE id=?", (str(exc)[:1000], row["id"]))
         con.commit()
         _notify_video_requests(con, row["id"])
-
 
 def warm_today_decks(con):
     """按上海日历日为每位活跃学生静默预热当日任务卡组，主键保证每日幂等。"""
@@ -191,7 +196,6 @@ def warm_today_decks(con):
             con.commit()
             logger.exception("daily_warmup failed date=%s user_id=%s queued=%s skipped=%s elapsed_s=%.3f", day, uid, queued, skipped, time.monotonic() - started)
 
-
 def main():
     LOG.parent.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(filename=LOG, level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -221,7 +225,6 @@ def main():
                 process(get_db(), row)
             else:
                 time.sleep(5)
-
 
 if __name__ == "__main__":
     main()

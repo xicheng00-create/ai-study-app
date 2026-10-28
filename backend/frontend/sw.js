@@ -14,7 +14,7 @@
 /* v61：v2.9.5 催学弹窗移除「今晚不再提示」出口（NOTIF-012 调整，前端改动） */
 /* v80：v2.15.2 学习页同视图原地重绘保住滚动位置（REQ-UI-015，勾选章节不再跳回顶端） */
 /* v81：v2.15.3 REQ-VID 收尾（导演重试 + 失败留痕 + worker launchd），前端资源版本同步 */
-const CACHE = "aistudy-shell-v87";
+const CACHE = "aistudy-shell-v88";
 /* 预缓存 URL 必须与 index.html 里的 ?v= 同版（CF 对 .js/.css 强制 4h 浏览器缓存，换 URL 才能穿透） */
 const V = "2.17.3";
 const ASSETS = ["/", `/css/style.css?v=${V}`, `/js/api.js?v=${V}`, `/js/app.js?v=${V}`, `/js/student.js?v=${V}`, `/js/teacher.js?v=${V}`, "/manifest.webmanifest"];

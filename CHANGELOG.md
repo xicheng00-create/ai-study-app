@@ -1,3 +1,13 @@
+## [2.17.4] - 2026-10-27
+
+### 修复·卡片视频张冠李戴（REQ-VID-LINK-01）
+- 现象：第 3 章「大模型 PM 设计对象」那张卡，点「视频 · 已就绪」播的是「持久化上下文工作台」。
+- 根因：`neighbours()` 让 LLM 从同章 40 个候选里「挑最接近的 5–10 个」，返回结果无校验就写成共享链接；全库 1044 条借链里 661 条八竿子打不着。
+- 改法：共享只认「同一区块」——同切片（`source_chunk_id`）或同子概念（`sub_concept`）；其余必须过 LLM 裁定且给出共同知识点名称才留。`process()` 落链接前再过一道 `is_related` 闸，不合格记 `skipped` 日志。
+- 存量：118 张「自己有片却挂别人片」改指自己的片；661 条不相干借链删除；删除后这些卡如实退回「▶ AI 视频讲解」（点了才生成），不再冒充「已就绪」。
+- 留痕：裁定结果落 `video_link_reviews`；脚本 `fix_borrowed_video_links.py` / `judge_video_links_llm.py` / `prune_unrelated_video_links.py` 全部支持预演。
+- 验收：`tests/test_video_links.py` 6 passed（含用户实测那一对判不相关、PMF⇢MVP 判不相关、`neighbours` 只出同块）；把 `is_related` 改成 `return True` 反证 → 4 条红；`make lint` 全过、`make test` 全绿（80.03% 覆盖）。
+
 ## [2.17.3] - 2026-10-26
 
 ### 修复·薄弱点错题被挤压变形（REQ-PROG-018）

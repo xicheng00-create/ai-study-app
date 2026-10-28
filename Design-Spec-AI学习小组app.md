@@ -2064,3 +2064,24 @@ scripts/（仓库根，离线运维/上架工具）audit_alignment · audit_bind
 **反证**：把 `fmtWrongCard` 换回组容器内（即还原改前结构）→ 断言「菜单行里仍嵌着完整卡片」「没有错题菜单行」必红。**真跑证据（2026-10-26，v2.17.3，生产 5003 冷载 390 宽真数据）**：第 2 章 19 条菜单行、题干换行 0、溢出 0、内嵌卡片 0；点第一条弹出 4 选项，命中「✅ 正确答案 C / ❌ 你的答案 D」，弹层宽 390px、卡片宽 374px、横向溢出 0。
 
 **版本**：`app.py 2.17.3` / `sw.js CACHE aistudy-shell-v87` / `index.html ?v=2.17.3`。
+
+### 12.79 REQ-VID-LINK-01（v2.17.4）：视频共享只允许「同一区块的知识点」
+
+**需求来源**：2026-10-27 Ray 原话「别人的片不是问题，但是逻辑是知识点是类似的同一个区块的知识点而不是八竿子打不着关系的卡和视频」。触发点：第 3 章「大模型 PM 设计对象」那张卡，点开「视频 · 已就绪」播的是「持久化上下文工作台」那一集。
+
+**根因（实测）**：`video_worker.neighbours()` 把「同章 40 个候选」丢给 LLM，让它「挑最接近的 5–10 个」，返回值**没有任何校验**就写成 `card_video_links(is_core=0)`。全库 1044 条借链，机械判据下只有 200 条说得通；LLM 逐条裁定后另有 183 条同知识点，剩 **661 条八竿子打不着**。
+
+**口径（对后续一律适用）**：
+- 一张卡的视频来源只有两种：**自己的片**（`card_videos.core_card_id = 卡`，`is_core=1`），或**同一知识点的借链**（`is_core=0`）。
+- 「同一知识点」= 同切片（`source_chunk_id` 相同）或同子概念（`sub_concept` 相同且非空）；两者都不成立的，必须再过一次 LLM 裁定，且裁定必须给出**共同知识点名称**（`same=true` + 非空 concept）才准落库。
+- **禁止**再用「同章 + LLM 模糊挑邻居」决定链接关系；LLM 只能写文案，不能决定关系。判不准 → 不共享。
+- 没有合适视频的卡，按钮必须如实回到「▶ AI 视频讲解」（点了才生成），**禁止**挂别人的片冒充「已就绪」。界面不得隐藏状态（沿用「不可用控件常显+置灰」口径）。
+- 所有借链裁定落表 `video_link_reviews(video_id, card_id, same, concept, source)`，可追溯。
+
+**落地**：`backend/video_links.py`（`is_related` / `neighbours` / `dice`）；`video_worker.neighbours()` 改为调用机械判据，`process()` 落链接前再过一次 `is_related` 二道闸并记 `skipped` 日志；存量清理脚本 `scripts/fix_borrowed_video_links.py`（自己有片→改指自己）、`scripts/judge_video_links_llm.py`（LLM 裁定）、`scripts/prune_unrelated_video_links.py`（按裁定删借链）。
+
+**机械断言**：`pytest tests/test_video_links.py` 6 条 —— 同切片/同子概念放行；用户实测那一对（六大设计对象 ⇢ 持久化上下文工作台）判不相关；PMF ⇢ MVP 判不相关；证据全空判不相关；`neighbours()` 只返回同块且不含自己。反证：把 `is_related` 改成 `return True` → 4 条立刻红。
+
+**真跑证据（2026-10-27，生产库）**：借链 1044 → 剩 383；删除 661；先改指 118 张（自己有片的卡不再播别人的片）；用户点开的那张卡链接数为 **0**，按钮回到「▶ AI 视频讲解」。裁定明细 `/tmp/video_link_judge.json`（844 条：同块 183 / 不相关 661）。
+
+**版本**：`app.py 2.17.4` / `sw.js CACHE aistudy-shell-v88` / `index.html ?v=2.17.4`。
