@@ -1,3 +1,17 @@
+## [2.17.6] - 2026-10-28
+
+### 修复·「练习生成失败，请稍后重试」（根因：5003 上跑着一个没有 .env 的重复实例）
+- 现象：周大维尼点「今日任务 → 练习」，报「练习生成失败，请稍后重试」，题数一直 0/5；同时所有需要 LLM 的功能（出题、TUTOR）都会失败。
+- 根因（实测）：`127.0.0.1:5003` 上还挂着一个**重复的 waitress 实例**（PID 67628，20:27:54 启动），它的进程环境里**没有** `JWT_SECRET` / `DEEPSEEK_API_KEY`（`ps eww` 计数为 0）。CF 隧道指向 `127.0.0.1:5003`，请求全被这个「无密钥实例」接走：JWT 校验退到默认 `SECRET_KEY`（所有正式 token 401），LLM 调用无 key → 出题返回空 → 前端看到「练习生成失败」。
+- 处置：终止该重复实例；确认只剩正式实例（PID 67613，`*:5003`，环境含全部密钥）。修后同一账号 `POST /api/checkin/start-practice` 立即返回 5 道题（`session 2c661f21…`）。
+- 附带加固：`quizzer.generate_practice_questions` 严格档题源全练过时不再直接判失败，退回全量卡片走兜底档（换场景重出），避免「题练完 = 永久报错」。
+
+### 新增·冰冻可人工补发（REQ-ICE-01）
+- 新表 `freeze_grants(id,user_id,count,reason,created_at)`：`granted = 2 + 每 5 天里程碑 + 补发合计`，`available = granted − used`。
+- 补发**只加余额、不改历史 `streak_freezes`**：不伪造「哪天被冻住」，不误判连胜已断。
+- 工具：`scripts/grant_freeze.py --user <用户名> --count N --reason "原因" [--apply]`（默认预演）。
+- 验收：`tests/test_checkin.py::test_freeze_grant_adds_balance_without_touching_history` 绿；去掉补发累加后同用例转红（反证）。
+
 ## [2.17.5] - 2026-10-28
 
 ### 修复·旧缓存里的借链还能直接播别人的片（REQ-VID-LINK-01 补刀）

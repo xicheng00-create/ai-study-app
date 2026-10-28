@@ -1,6 +1,8 @@
 """共享知识卡片及学生个人间隔复习状态。"""
 import os
 import re
+import sys
+import zlib
 from pathlib import Path
 
 from ai import knowledge, mastery
@@ -49,7 +51,28 @@ def icon(name):
         if path.exists() and path.stat().st_size >= 1024:
             return send_file(str(path), mimetype="image/png", max_age=86400)
     # 兜底而不是 404：<img> 收不到图就是卡面正中一个问号（2026-10-26 线上事故）。
-    # 少了某个物件属于素材缺失，可以借默认图标顶上，但不能让用户看见破图。
+    # 但不能一律退回灯泡（Ray 2026-10-28：灯泡出镜率太高，宁可给个相近的实物）。
+    # 顺序：① 名字里的词去语义表里找一个相近的 → ② 按名字哈希固定挑一个中性实物。
+    guess = None
+    try:
+        sys.path.insert(0, os.environ.get("VIDEOKIT_HOME", os.path.expanduser("~/VideoKit")))
+        from videokit.icons import NEUTRAL_POOL, pick_slug
+        guess = pick_slug(safe)
+    except Exception:                                  # noqa: BLE001 - 库不在也不该 404
+        NEUTRAL_POOL = ("books", "page_facing_up", "puzzle_piece", "sparkles", "compass")
+    for cand in (guess,):
+        if not cand:
+            continue
+        path = root / (cand + "_3d.png")
+        if path.exists() and path.stat().st_size >= 1024:
+            current_app.logger.warning("icon 缺失，改用相近图标 %s（请求 %s）", cand, safe)
+            return send_file(str(path), mimetype="image/png", max_age=300)
+    if NEUTRAL_POOL:
+        pick = NEUTRAL_POOL[zlib.crc32(safe.encode()) % len(NEUTRAL_POOL)]
+        path = root / (pick + "_3d.png")
+        if path.exists() and path.stat().st_size >= 1024:
+            current_app.logger.warning("icon 缺失，改用中性图标 %s（请求 %s）", pick, safe)
+            return send_file(str(path), mimetype="image/png", max_age=300)
     fallback = root / "light_bulb_3d.png"
     if fallback.exists():
         current_app.logger.warning("icon 缺失，退回默认图标：%s", safe)

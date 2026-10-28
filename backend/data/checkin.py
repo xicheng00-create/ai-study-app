@@ -84,11 +84,15 @@ def days_since_last_checkin(con, user_id) -> int:
 
 
 def freeze_status(con, user_id) -> dict:
-    """Balance is derived from completed milestones and consumed dates, never credited manually."""
+    """Balance is derived from completed milestones, consumed dates and manual grants."""
     granted = 2 + con.execute(
         "SELECT COUNT(*) FROM daily_checkins WHERE user_id=? AND streak_after % 5 = 0",
         (user_id,),
     ).fetchone()[0]
+    # REQ-ICE-01：人工补发（服务故障补偿等）单独记账，绝不改动历史 freeze 行
+    granted += int(con.execute(
+        "SELECT COALESCE(SUM(count), 0) FROM freeze_grants WHERE user_id=?", (user_id,)
+    ).fetchone()[0] or 0)
     row = con.execute(
         "SELECT COUNT(*) AS used, MAX(freeze_date) AS last FROM streak_freezes WHERE user_id=?",
         (user_id,),

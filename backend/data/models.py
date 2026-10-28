@@ -328,6 +328,16 @@ CREATE TABLE IF NOT EXISTS streak_freezes (
   UNIQUE(user_id, freeze_date)
 );
 
+-- 人工补发冰冻（REQ-ICE-01）：余额=2+里程碑−已用+补发；补发必须留原因，便于对账
+CREATE TABLE IF NOT EXISTS freeze_grants (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  count INTEGER NOT NULL DEFAULT 1,
+  reason TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+
 -- Web Push 订阅（VAPID）
 CREATE TABLE IF NOT EXISTS push_subscriptions (
   id TEXT PRIMARY KEY,

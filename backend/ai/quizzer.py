@@ -295,6 +295,9 @@ def generate_practice_questions(chapter_ids: list[str], sub_concepts: str = "",
 
     cards = _retrieve_cards(chapter_ids, exclude_sub_concepts=exclude_sub_concepts)
     if not cards:
+        # 严格档题源全练过 ≠ 没内容：退回全量卡片走兜底档（换场景重出），不许直接判失败
+        cards = _retrieve_cards(chapter_ids)
+    if not cards:
         return []  # 无卡片＝无可考内容：不调模型、不出题
 
     def _tier(fresh_only: bool) -> list[dict]:

@@ -552,3 +552,22 @@ def test_start_practice_resume_keeps_scope_and_never_short(client, teacher_heade
             "SELECT DISTINCT chapter_id FROM practice_questions WHERE session_id=?", (d["session_id"],)).fetchall()}
     assert chaps == {c1} and c2 not in chaps
 
+
+
+def test_freeze_grant_adds_balance_without_touching_history(client, teacher_headers):
+    """REQ-ICE-01：人工补发只加余额，不改历史 freeze 行，也不伪造被冻住的日期。"""
+    _student(client, teacher_headers, "winnie")
+    from data.db import get_db
+    with client.application.app_context():
+        con = get_db()
+        uid = con.execute("SELECT id FROM users WHERE username='winnie'").fetchone()["id"]
+        before = checkin.freeze_status(con, uid)
+        con.execute(
+            "INSERT INTO freeze_grants (id,user_id,count,reason,created_at) VALUES (?,?,?,?,?)",
+            (models.new_id(), uid, 1, "故障补偿", models.utcnow()),
+        )
+        con.commit()
+        after = checkin.freeze_status(con, uid)
+        assert after["available"] == before["available"] + 1
+        assert after["used"] == before["used"]
+        assert con.execute("SELECT COUNT(*) FROM streak_freezes WHERE user_id=?", (uid,)).fetchone()[0] == 0
