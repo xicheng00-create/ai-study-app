@@ -28,9 +28,9 @@ def main() -> int:
     app = create_app()
     with app.app_context():
         from data import checkin, models
-        from data.db import get_db
+        from data.db import get_db, init_db
+        init_db()
         con = get_db()
-        models.init_db()
         row = con.execute(
             "SELECT id, username, display_name FROM users WHERE username=? OR display_name=?",
             (args.user, args.user),
